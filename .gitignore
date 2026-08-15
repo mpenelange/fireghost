@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+runtime/
+*.db
+*.db-shm
+*.db-wal
+coverage.out
+bin/
+.DS_Store
