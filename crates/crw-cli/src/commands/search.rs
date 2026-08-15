@@ -150,16 +150,18 @@ pub async fn run(args: SearchArgs) {
     let cfg = crw_core::config::AppConfig::load().ok();
     let response = if let Some(url) = resolve_camofox_url(args.camofox_url.as_deref(), cfg.as_ref())
     {
-        let (api_key, github_token) = cfg
+        let (api_key, github_token, pool_size) = cfg
             .as_ref()
             .map(|c| {
                 (
                     c.renderer.camofox.as_ref().and_then(|e| e.api_key.clone()),
                     c.search.github_token.clone(),
+                    c.search.camofox_pool_size,
                 )
             })
-            .unwrap_or((None, None));
-        let client = CamofoxSearchClient::new(url, api_key, github_token, timeout);
+            .unwrap_or((None, None, 1));
+        let client =
+            CamofoxSearchClient::new_with_pool_size(url, api_key, github_token, timeout, pool_size);
         match client.fetch(&params).await {
             Ok(r) => r,
             Err(e) => {

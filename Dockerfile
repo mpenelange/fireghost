@@ -64,7 +64,10 @@ RUN set -eux; \
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# curl is included for the Compose service healthcheck; the runtime otherwise
+# remains minimal and does not expose any browser ports.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/crw /usr/local/bin/crw
 COPY --from=builder /out/crw-server /usr/local/bin/crw-server

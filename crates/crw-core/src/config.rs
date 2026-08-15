@@ -230,6 +230,13 @@ pub struct SearchConfig {
     /// the lower unauthenticated quota. Settable via `CRW_SEARCH__GITHUB_TOKEN`.
     #[serde(default)]
     pub github_token: Option<String>,
+    /// Number of independent warm Camofox search tabs. Values are clamped to
+    /// 1..=8 to keep browser resource use bounded.
+    #[serde(
+        default = "default_camofox_pool_size",
+        deserialize_with = "deserialize_camofox_pool_size"
+    )]
+    pub camofox_pool_size: usize,
     /// Re-rank the flat result pool for the LLM answer / summarize path
     /// (RRF + junk/coverage/geo filter + BM25 + domain dedupe) instead of the
     /// raw SearXNG-score sort. Defaults to `true`. The plain (non-LLM) path is
@@ -381,6 +388,7 @@ impl Default for SearchConfig {
             research_engines: default_research_engines(),
             github_engines: default_github_engines(),
             github_token: None,
+            camofox_pool_size: default_camofox_pool_size(),
             rerank_enabled: true,
             query_expand: false,
             pipeline_overlap: false,
@@ -413,6 +421,16 @@ fn default_search_limit() -> u32 {
 }
 fn default_search_max_limit() -> u32 {
     20
+}
+fn default_camofox_pool_size() -> usize {
+    1
+}
+fn deserialize_camofox_pool_size<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    Ok(value.clamp(1, 8))
 }
 fn default_research_engines() -> Vec<String> {
     vec![
@@ -1582,6 +1600,23 @@ mod tests {
             let w: Wrap = toml::from_str(toml_str).unwrap();
             assert_eq!(w.mode, expected, "toml: {toml_str}");
         }
+    }
+
+    #[test]
+    fn camofox_pool_size_defaults_and_is_clamped() {
+        assert_eq!(SearchConfig::default().camofox_pool_size, 1);
+
+        let absent: SearchConfig = toml::from_str("").unwrap();
+        assert_eq!(absent.camofox_pool_size, 1);
+
+        let configured: SearchConfig = toml::from_str("camofox_pool_size = 4").unwrap();
+        assert_eq!(configured.camofox_pool_size, 4);
+
+        let too_large: SearchConfig = toml::from_str("camofox_pool_size = 99").unwrap();
+        assert_eq!(too_large.camofox_pool_size, 8);
+
+        let zero: SearchConfig = toml::from_str("camofox_pool_size = 0").unwrap();
+        assert_eq!(zero.camofox_pool_size, 1);
     }
 
     #[test]

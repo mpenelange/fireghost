@@ -153,6 +153,8 @@ enabled = true
 timeout_ms = 15000
 default_limit = 5
 max_limit = 20
+# Independent warm Camofox tabs available to concurrent searches (1..=8).
+camofox_pool_size = 1
 # W0 (gated, default false): pin search infoboxes[]/answers[] (Wikidata/Wikipedia
 # structured facts the results[] path discards) at the front of the answer pool.
 # Still UNTRUSTED-wrapped. Flip with CRW_SEARCH__USE_STRUCTURED_SOURCES=true after

@@ -4,14 +4,77 @@
 //! and we assert the rows map into the existing `SearxngResponse` shape so the
 //! downstream transform/rerank pipeline is reused unchanged.
 
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use crw_core::types::SearchEngine;
 use crw_search::SearxngParams;
 use crw_search::camofox_search::CamofoxSearchClient;
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{body_partial_json, method, path, path_regex};
+use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
+
+#[derive(Clone)]
+struct ConcurrencyProbe {
+    active: Arc<AtomicUsize>,
+    max_active: Arc<AtomicUsize>,
+    calls: Arc<AtomicUsize>,
+    delay: Duration,
+    response: ProbeResponse,
+}
+
+#[derive(Clone, Copy)]
+enum ProbeResponse {
+    CreateTab,
+    Ok,
+}
+
+impl ConcurrencyProbe {
+    fn new(delay: Duration, response: ProbeResponse) -> Self {
+        Self {
+            active: Arc::new(AtomicUsize::new(0)),
+            max_active: Arc::new(AtomicUsize::new(0)),
+            calls: Arc::new(AtomicUsize::new(0)),
+            delay,
+            response,
+        }
+    }
+
+    fn max_active(&self) -> usize {
+        self.max_active.load(Ordering::SeqCst)
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+
+impl Respond for ConcurrencyProbe {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active.fetch_max(active, Ordering::SeqCst);
+
+        let active_counter = Arc::clone(&self.active);
+        let delay = self.delay;
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            active_counter.fetch_sub(1, Ordering::SeqCst);
+        });
+
+        let response = match self.response {
+            ProbeResponse::CreateTab => {
+                let body: serde_json::Value = request.body_json().unwrap();
+                let session_key = body["sessionKey"].as_str().unwrap();
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "tabId": format!("tab-{session_key}") }))
+            }
+            ProbeResponse::Ok => ResponseTemplate::new(200).set_body_json(json!({ "ok": true })),
+        };
+        response.set_delay(delay)
+    }
+}
 
 fn params(q: &str) -> SearxngParams {
     params_with_engines(q, vec![SearchEngine::Google])
@@ -253,4 +316,181 @@ async fn recreates_tab_and_retries_after_stale_failure() {
         .await
         .expect("search should recover by recreating the tab");
     assert_eq!(resp.results.len(), 1);
+}
+
+/// A two-worker client must let two independent queries overlap. Each worker
+/// owns a distinct persistent browser identity and warm tab; the requests must
+/// not serialize behind the legacy client's single global tab mutex.
+#[tokio::test]
+async fn pool_size_two_overlaps_searches_on_independent_warm_tabs() {
+    let server = MockServer::start().await;
+    let rows = serde_json::to_string(&json!([
+        { "url": "https://a.example", "title": "A", "content": "" },
+    ]))
+    .unwrap();
+
+    // Keeps the test runnable against the pre-pool implementation so its RED
+    // is behavioral (serialized elapsed time), not a mock/setup failure.
+    Mock::given(method("POST"))
+        .and(path("/tabs"))
+        .and(body_partial_json(json!({ "sessionKey": "search" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "tab-0" })))
+        .mount(&server)
+        .await;
+
+    for (user_id, session_key, tab_id) in [
+        ("crw-search-0", "search-0", "tab-0"),
+        ("crw-search-1", "search-1", "tab-1"),
+    ] {
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .and(body_partial_json(json!({
+                "userId": user_id,
+                "sessionKey": session_key,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": tab_id })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/tabs/{tab_id}/navigate")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(400))
+                    .set_body_json(json!({ "ok": true })),
+            )
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/tabs/{tab_id}/wait")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/tabs/{tab_id}/evaluate")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
+            .mount(&server)
+            .await;
+    }
+
+    let client = Arc::new(CamofoxSearchClient::new_with_pool_size(
+        server.uri(),
+        None,
+        None,
+        Duration::from_secs(10),
+        2,
+    ));
+    let first_params = params("first");
+    let second_params = params("second");
+    let start = Instant::now();
+    let (first, second) = tokio::join!(client.fetch(&first_params), client.fetch(&second_params),);
+    let elapsed = start.elapsed();
+
+    first.expect("first concurrent search should succeed");
+    second.expect("second concurrent search should succeed");
+    assert!(
+        elapsed < Duration::from_millis(700),
+        "two 400ms navigations should overlap, but took {elapsed:?}"
+    );
+
+    let third_params = params("third");
+    let fourth_params = params("fourth");
+    let (third, fourth) = tokio::join!(client.fetch(&third_params), client.fetch(&fourth_params),);
+    third.expect("third search should reuse a warm worker tab");
+    fourth.expect("fourth search should reuse a warm worker tab");
+}
+
+/// Camofox cannot safely launch multiple persistent contexts at once. A cold
+/// pool therefore serializes only tab creation; once all workers are warm,
+/// their independent navigation requests must still overlap.
+#[tokio::test]
+async fn pool_size_four_serializes_cold_tabs_but_overlaps_warm_navigation() {
+    let server = MockServer::start().await;
+    let rows = serde_json::to_string(&json!([
+        { "url": "https://a.example", "title": "A", "content": "" },
+    ]))
+    .unwrap();
+    let creates = ConcurrencyProbe::new(Duration::from_millis(100), ProbeResponse::CreateTab);
+    let navigates = ConcurrencyProbe::new(Duration::from_millis(250), ProbeResponse::Ok);
+
+    Mock::given(method("POST"))
+        .and(path("/tabs"))
+        .respond_with(creates.clone())
+        .expect(4)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/tabs/tab-search-[0-3]/navigate$"))
+        .respond_with(navigates.clone())
+        .expect(8)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/tabs/tab-search-[0-3]/wait$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/tabs/tab-search-[0-3]/evaluate$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
+        .mount(&server)
+        .await;
+
+    let client = Arc::new(CamofoxSearchClient::new_with_pool_size(
+        server.uri(),
+        None,
+        None,
+        Duration::from_secs(10),
+        4,
+    ));
+    let cold = [
+        params("cold-0"),
+        params("cold-1"),
+        params("cold-2"),
+        params("cold-3"),
+    ];
+    let (a, b, c, d) = tokio::join!(
+        client.fetch(&cold[0]),
+        client.fetch(&cold[1]),
+        client.fetch(&cold[2]),
+        client.fetch(&cold[3]),
+    );
+    for result in [a, b, c, d] {
+        result.expect("cold search should succeed");
+    }
+
+    assert_eq!(creates.calls(), 4);
+    assert_eq!(
+        creates.max_active(),
+        1,
+        "cold create-tab requests must be serialized"
+    );
+
+    let warm = [
+        params("warm-0"),
+        params("warm-1"),
+        params("warm-2"),
+        params("warm-3"),
+    ];
+    let start = Instant::now();
+    let (a, b, c, d) = tokio::join!(
+        client.fetch(&warm[0]),
+        client.fetch(&warm[1]),
+        client.fetch(&warm[2]),
+        client.fetch(&warm[3]),
+    );
+    let elapsed = start.elapsed();
+    for result in [a, b, c, d] {
+        result.expect("warm search should succeed");
+    }
+
+    assert!(
+        navigates.max_active() >= 2,
+        "independent warm navigations should overlap"
+    );
+    assert!(
+        elapsed < Duration::from_millis(700),
+        "four 250ms warm navigations should overlap, but took {elapsed:?}"
+    );
 }

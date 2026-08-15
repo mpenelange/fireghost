@@ -177,12 +177,15 @@ impl AppState {
         let search = if config.search.enabled
             && let Some(cf) = config.renderer.camofox.as_ref()
         {
-            Some(SearchBackend::Camofox(Arc::new(CamofoxSearchClient::new(
-                cf.base_url.clone(),
-                cf.api_key.clone(),
-                config.search.github_token.clone(),
-                Duration::from_millis(config.search.timeout_ms),
-            ))))
+            Some(SearchBackend::Camofox(Arc::new(
+                CamofoxSearchClient::new_with_pool_size(
+                    cf.base_url.clone(),
+                    cf.api_key.clone(),
+                    config.search.github_token.clone(),
+                    Duration::from_millis(config.search.timeout_ms),
+                    config.search.camofox_pool_size,
+                ),
+            )))
         } else {
             None
         };

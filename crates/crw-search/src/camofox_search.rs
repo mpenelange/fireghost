@@ -14,11 +14,12 @@
 //! ~9s relaunch window in which `newPage` throws `window is null`. Creating
 //! and deleting a tab per query raced that teardown, so concurrent or
 //! rapid-sequential searches failed with empty / 5xx results. We avoid the
-//! race entirely: a single [`tokio::sync::Mutex`] serializes all browser
-//! access and guards ONE long-lived warm tab that is reused across queries and
-//! never deleted — the context never sees concurrent tabs nor drops to zero.
-//! If the warm tab goes stale (idle eviction / camofox restart) the next
-//! navigate fails and we transparently recreate the tab and retry once.
+//! race with a bounded pool of workers. Each worker serializes access to its
+//! own long-lived warm tab and persistent session identity, so the context
+//! never sees concurrent use nor drops to zero tabs. The default pool size is
+//! one, preserving the original behavior; larger explicitly configured pools
+//! allow independent queries to overlap. If a worker's warm tab goes stale
+//! (idle eviction / camofox restart), that worker recreates it and retries once.
 //!
 //! Rows are mapped into the existing [`SearxngResponse`] shape so the entire
 //! downstream transform / rerank pipeline (`transform.rs`, `rerank.rs`) is
@@ -39,10 +40,9 @@ use crate::params::SearxngParams;
 /// renderer tier's so search and scrape don't share a profile).
 const USER_ID: &str = "crw-search";
 
-/// Browser-context key. `/tabs` requires both `userId` and `sessionKey`. Fixed
-/// so the context is reused across queries; combined with the single warm tab
-/// (see [`CamofoxSearchClient::tab`]) the context never accumulates tabs nor
-/// drops to zero, and sessions don't leak toward MAX_SESSIONS.
+/// Browser-context key used by the default one-worker constructor. `/tabs`
+/// requires both `userId` and `sessionKey`; larger pools suffix this key with
+/// the worker index so every worker owns an independent persistent identity.
 const SESSION_KEY: &str = "search";
 
 /// Pause before recreating a stale tab, giving any in-flight upstream context
@@ -110,31 +110,31 @@ fn scrape_js(engine: SearchEngine) -> &'static str {
 /// camofox-browser, so we navigate their search URL directly — the macro is
 /// only URL shorthand anyway. `query` is form-url-encoded into the `q`
 /// parameter. GitHub is handled via the REST Search API and never reaches here.
-fn navigate_body(engine: SearchEngine, query: &str) -> serde_json::Value {
+fn navigate_body(engine: SearchEngine, query: &str, user_id: &str) -> serde_json::Value {
     let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
     match engine {
         SearchEngine::Google => {
-            json!({ "userId": USER_ID, "macro": "@google_search", "query": query })
+            json!({ "userId": user_id, "macro": "@google_search", "query": query })
         }
         SearchEngine::Bing => {
-            json!({ "userId": USER_ID, "url": format!("https://www.bing.com/search?q={q}") })
+            json!({ "userId": user_id, "url": format!("https://www.bing.com/search?q={q}") })
         }
         SearchEngine::DuckDuckGo => {
-            json!({ "userId": USER_ID, "url": format!("https://duckduckgo.com/?q={q}") })
+            json!({ "userId": user_id, "url": format!("https://duckduckgo.com/?q={q}") })
         }
         SearchEngine::Wikipedia => {
             // `fulltext=1` forces the search-results page; without it Wikipedia
             // redirects an exact title match straight to the article.
-            json!({ "userId": USER_ID, "url": format!("https://en.wikipedia.org/wiki/Special:Search?search={q}&fulltext=1") })
+            json!({ "userId": user_id, "url": format!("https://en.wikipedia.org/wiki/Special:Search?search={q}&fulltext=1") })
         }
         SearchEngine::Youtube => {
-            json!({ "userId": USER_ID, "url": format!("https://www.youtube.com/results?search_query={q}") })
+            json!({ "userId": user_id, "url": format!("https://www.youtube.com/results?search_query={q}") })
         }
         SearchEngine::Reddit => {
-            json!({ "userId": USER_ID, "url": format!("https://www.reddit.com/search/?q={q}") })
+            json!({ "userId": user_id, "url": format!("https://www.reddit.com/search/?q={q}") })
         }
         SearchEngine::Amazon => {
-            json!({ "userId": USER_ID, "url": format!("https://www.amazon.com/s?k={q}") })
+            json!({ "userId": user_id, "url": format!("https://www.amazon.com/s?k={q}") })
         }
         SearchEngine::Github => {
             unreachable!("github uses the REST Search API, not the browser")
@@ -194,11 +194,19 @@ pub struct CamofoxSearchClient {
     /// a mock server.
     github_api_base: String,
     timeout: Duration,
-    /// The single warm tab id, lazily created and reused across queries. The
-    /// mutex doubles as the search serializer: holding it for the whole `fetch`
-    /// guarantees one navigation at a time on the one shared tab. `None` until
-    /// the first search creates a tab, and reset to `None` when a tab goes
-    /// stale so the next search recreates it.
+    workers: Vec<CamofoxSearchWorker>,
+    available_workers: tokio::sync::Semaphore,
+    /// Camofox persistent contexts crash when multiple cold workers launch at
+    /// once. Serialize only the rare create-tab path across this client; warm
+    /// navigation and evaluation never acquire this gate.
+    launch_gate: tokio::sync::Mutex<()>,
+}
+
+struct CamofoxSearchWorker {
+    user_id: String,
+    session_key: String,
+    /// Lazily created warm tab, reused across every query assigned to this
+    /// worker and reset independently when it goes stale.
     tab: tokio::sync::Mutex<Option<String>>,
 }
 
@@ -212,11 +220,40 @@ impl CamofoxSearchClient {
         github_token: Option<String>,
         timeout: Duration,
     ) -> Self {
+        Self::new_with_pool_size(base_url, api_key, github_token, timeout, 1)
+    }
+
+    /// Build a client with up to `pool_size` simultaneous Camofox searches.
+    /// Each worker owns a distinct persistent session identity and warm tab.
+    /// A zero size is treated as one so the client always remains usable.
+    pub fn new_with_pool_size(
+        base_url: impl Into<String>,
+        api_key: Option<String>,
+        github_token: Option<String>,
+        timeout: Duration,
+        pool_size: usize,
+    ) -> Self {
+        let pool_size = pool_size.clamp(1, 8);
         let base_url = base_url.into().trim_end_matches('/').to_string();
         let http = reqwest::Client::builder()
             .timeout(timeout)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
+        let workers = (0..pool_size)
+            .map(|index| CamofoxSearchWorker {
+                user_id: if pool_size == 1 {
+                    USER_ID.to_string()
+                } else {
+                    format!("{USER_ID}-{index}")
+                },
+                session_key: if pool_size == 1 {
+                    SESSION_KEY.to_string()
+                } else {
+                    format!("{SESSION_KEY}-{index}")
+                },
+                tab: tokio::sync::Mutex::new(None),
+            })
+            .collect();
         Self {
             http,
             base_url,
@@ -224,7 +261,9 @@ impl CamofoxSearchClient {
             github_token,
             github_api_base: "https://api.github.com".to_string(),
             timeout,
-            tab: tokio::sync::Mutex::new(None),
+            workers,
+            available_workers: tokio::sync::Semaphore::new(pool_size),
+            launch_gate: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -264,8 +303,8 @@ impl CamofoxSearchClient {
     /// [`SearxngResponse`]. Typed [`SearchError`]s match the SearXNG client so
     /// the route layer's existing error mapping applies unchanged.
     ///
-    /// Serializes on the warm-tab mutex (see [`Self::tab`]) so only one search
-    /// touches the browser at a time, reusing the one long-lived tab. The
+    /// Checks out one worker for the full query, serializing only with other
+    /// searches assigned to that worker. The
     /// engines in `params.camofox_engines` are run sequentially on that tab
     /// (the single-tab design dodges camofox's teardown race, so fan-out is
     /// serial — N engines ≈ N× latency). A stale tab is recreated and the
@@ -273,7 +312,23 @@ impl CamofoxSearchClient {
     /// the engines that succeeded are merged and returned. Only when *every*
     /// engine fails is the last error surfaced.
     pub async fn fetch(&self, params: &SearxngParams) -> Result<SearxngResponse, SearchError> {
-        let mut tab = self.tab.lock().await;
+        let _permit = self
+            .available_workers
+            .acquire()
+            .await
+            .expect("Camofox worker semaphore is never closed");
+        let (worker_index, mut tab) = loop {
+            if let Some(checked_out) = self
+                .workers
+                .iter()
+                .enumerate()
+                .find_map(|(index, worker)| worker.tab.try_lock().ok().map(|tab| (index, tab)))
+            {
+                break checked_out;
+            }
+            tokio::task::yield_now().await;
+        };
+        let worker = &self.workers[worker_index];
         let mut all: Vec<SearxngResult> = Vec::new();
         let mut last_err: Option<SearchError> = None;
         let mut any_ok = false;
@@ -291,7 +346,7 @@ impl CamofoxSearchClient {
             let outcome = if matches!(engine, SearchEngine::Github) {
                 self.github_search(&params.q).await
             } else {
-                match self.attempt(&mut tab, engine, params).await {
+                match self.attempt(worker, &mut tab, engine, params).await {
                     Ok(rows) => Ok(rows),
                     Err(e) if is_stale_tab(&e) => {
                         // Warm tab/context died (idle eviction or camofox
@@ -299,7 +354,7 @@ impl CamofoxSearchClient {
                         // settle, then recreate and retry this engine once.
                         *tab = None;
                         tokio::time::sleep(RETRY_BACKOFF).await;
-                        self.attempt(&mut tab, engine, params).await
+                        self.attempt(worker, &mut tab, engine, params).await
                     }
                     Err(e) => Err(e),
                 }
@@ -335,24 +390,35 @@ impl CamofoxSearchClient {
     /// holds the tab mutex, so this is the single in-flight search.
     async fn attempt(
         &self,
+        worker: &CamofoxSearchWorker,
         tab: &mut Option<String>,
         engine: SearchEngine,
         params: &SearxngParams,
     ) -> Result<Vec<SearxngResult>, SearchError> {
-        let tab_id = self.ensure_tab(tab).await?;
-        self.run_search(&tab_id, engine, params).await
+        let tab_id = self.ensure_tab(worker, tab).await?;
+        self.run_search(worker, &tab_id, engine, params).await
     }
 
     /// Return the warm tab id, creating one if we don't have it cached. The id
     /// is cached back into `tab` so subsequent searches reuse it.
-    async fn ensure_tab(&self, tab: &mut Option<String>) -> Result<String, SearchError> {
+    async fn ensure_tab(
+        &self,
+        worker: &CamofoxSearchWorker,
+        tab: &mut Option<String>,
+    ) -> Result<String, SearchError> {
+        if let Some(id) = tab.as_ref() {
+            return Ok(id.clone());
+        }
+        let _launch = self.launch_gate.lock().await;
+        // Re-check after waiting: keep this correct if tab ownership is ever
+        // narrowed so another task can warm the same worker while we queue.
         if let Some(id) = tab.as_ref() {
             return Ok(id.clone());
         }
         let create = self
             .post(
                 "/tabs",
-                json!({ "userId": USER_ID, "sessionKey": SESSION_KEY }),
+                json!({ "userId": worker.user_id, "sessionKey": worker.session_key }),
             )
             .await?;
         if !create.status().is_success() {
@@ -372,6 +438,7 @@ impl CamofoxSearchClient {
 
     async fn run_search(
         &self,
+        worker: &CamofoxSearchWorker,
         tab_id: &str,
         engine: SearchEngine,
         params: &SearxngParams,
@@ -379,7 +446,7 @@ impl CamofoxSearchClient {
         let nav = self
             .post(
                 &format!("/tabs/{tab_id}/navigate"),
-                navigate_body(engine, &params.q),
+                navigate_body(engine, &params.q, &worker.user_id),
             )
             .await?;
         if !nav.status().is_success() {
@@ -392,14 +459,14 @@ impl CamofoxSearchClient {
         let _ = self
             .post(
                 &format!("/tabs/{tab_id}/wait"),
-                json!({ "userId": USER_ID, "timeout": self.timeout.as_millis() as u64 }),
+                json!({ "userId": worker.user_id, "timeout": self.timeout.as_millis() as u64 }),
             )
             .await;
 
         let eval = self
             .post(
                 &format!("/tabs/{tab_id}/evaluate"),
-                json!({ "userId": USER_ID, "expression": scrape_js(engine) }),
+                json!({ "userId": worker.user_id, "expression": scrape_js(engine) }),
             )
             .await?;
         let raw = eval
@@ -585,28 +652,28 @@ mod extractor_tests {
 
     #[test]
     fn google_navigates_by_macro_others_by_url() {
-        let g = navigate_body(SearchEngine::Google, "rust lang");
+        let g = navigate_body(SearchEngine::Google, "rust lang", USER_ID);
         assert_eq!(g["macro"], "@google_search");
         assert_eq!(g["query"], "rust lang");
 
         // Non-macro browser engines navigate a search URL, query url-encoded.
-        let b = navigate_body(SearchEngine::Bing, "rust lang");
+        let b = navigate_body(SearchEngine::Bing, "rust lang", USER_ID);
         assert_eq!(b["url"], "https://www.bing.com/search?q=rust+lang");
-        let d = navigate_body(SearchEngine::DuckDuckGo, "rust lang");
+        let d = navigate_body(SearchEngine::DuckDuckGo, "rust lang", USER_ID);
         assert_eq!(d["url"], "https://duckduckgo.com/?q=rust+lang");
-        let w = navigate_body(SearchEngine::Wikipedia, "rust lang");
+        let w = navigate_body(SearchEngine::Wikipedia, "rust lang", USER_ID);
         assert_eq!(
             w["url"],
             "https://en.wikipedia.org/wiki/Special:Search?search=rust+lang&fulltext=1"
         );
-        let y = navigate_body(SearchEngine::Youtube, "rust lang");
+        let y = navigate_body(SearchEngine::Youtube, "rust lang", USER_ID);
         assert_eq!(
             y["url"],
             "https://www.youtube.com/results?search_query=rust+lang"
         );
-        let rd = navigate_body(SearchEngine::Reddit, "rust lang");
+        let rd = navigate_body(SearchEngine::Reddit, "rust lang", USER_ID);
         assert_eq!(rd["url"], "https://www.reddit.com/search/?q=rust+lang");
-        let am = navigate_body(SearchEngine::Amazon, "rust lang");
+        let am = navigate_body(SearchEngine::Amazon, "rust lang", USER_ID);
         assert_eq!(am["url"], "https://www.amazon.com/s?k=rust+lang");
     }
 

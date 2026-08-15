@@ -11,6 +11,7 @@ package-lock.json
 docker-compose.override.yml
 config.local.toml
 .env
+core.*
 
 # Service-account / API-key files (never commit)
 bench/secrets/
