@@ -272,9 +272,9 @@ async fn scrape_url_inner(
         //     stub (bandbhdwr, cascadehomecenter, laportehardware, apploi,
         //     indiamart, zujuan.xkw) — bumping the lightpanda-only threshold to
         //     500 captures all of them without changing http-tier behavior.
-        // Tier of renderer that produced fetch_result. We always escalate from
-        // "below" — http and lightpanda → try chrome — but never re-call chrome
-        // when chrome already produced the empty markdown (that would just churn).
+        // Tier of renderer that produced fetch_result. HTTP retries enter the JS
+        // chain normally; a low-tier JS result retries only on the next configured
+        // backend, never on the backend that just produced empty markdown.
         // Thresholds default to 100B (http) and 2000B (lightpanda); both are
         // overridable via [extraction] in server config so operators can tune
         // per-deployment without recompiling.
@@ -322,17 +322,16 @@ async fn scrape_url_inner(
             && used_low_tier
             && should_escalate_status
             && escalation_eligible;
-        if should_escalate {
-            // If the prior tier was lightpanda (returned 200 with thin/no content
-            // that fooled the renderer-level thinness check), force chrome on the
-            // escalation. Falling back to "auto" would just hit lightpanda again.
-            // Otherwise (http tier), let the chain decide so chrome can be reached
-            // through the existing failover path.
-            let escalation_target: Option<&str> = if prior_renderer == Some("lightpanda") {
-                Some("chrome")
-            } else {
-                pinned
-            };
+        let escalation_target = if should_escalate {
+            post_extract_escalation_target(prior_renderer, pinned, &renderer.js_renderer_names())
+        } else {
+            None
+        };
+        if should_escalate
+            && (prior_renderer == Some("http")
+                || prior_renderer == Some("http_only_fallback")
+                || escalation_target.is_some())
+        {
             let quality_score_before = md_quality.as_ref().map(|q| q.score);
             tracing::info!(
                 url = %req.url,
@@ -902,6 +901,32 @@ fn formats_include_summary(formats: &[OutputFormat]) -> bool {
     formats.contains(&OutputFormat::Summary)
 }
 
+fn post_extract_escalation_target<'a>(
+    prior_renderer: Option<&str>,
+    pinned: Option<&'a str>,
+    fallback_order: &[&'a str],
+) -> Option<&'a str> {
+    let prior_renderer = prior_renderer?;
+
+    // HTTP-origin escalation retains the caller's explicit pin. With no pin,
+    // None means auto mode and lets the renderer start its configured JS chain.
+    if matches!(prior_renderer, "http" | "http_only_fallback") {
+        return pinned;
+    }
+
+    // An explicit renderer request must not silently move to another backend.
+    if pinned.is_some() {
+        return None;
+    }
+
+    fallback_order
+        .iter()
+        .skip_while(|name| **name != prior_renderer)
+        .skip(1)
+        .copied()
+        .find(|name| *name != prior_renderer)
+}
+
 /// Build an `LlmConfig` from per-request BYOK fields, falling back to the
 /// server-config values for non-credential fields (concurrency, header
 /// guard) so a single request can't escape global limits.
@@ -929,6 +954,46 @@ mod tests {
     use super::*;
 
     const THRESH: usize = 100;
+
+    #[test]
+    fn post_extract_escalation_uses_next_configured_renderer() {
+        assert_eq!(
+            post_extract_escalation_target(Some("lightpanda"), None, &["lightpanda", "camofox"]),
+            Some("camofox")
+        );
+    }
+
+    #[test]
+    fn post_extract_escalation_skips_retry_without_a_later_renderer() {
+        assert_eq!(
+            post_extract_escalation_target(Some("lightpanda"), None, &["lightpanda"]),
+            None
+        );
+    }
+
+    #[test]
+    fn post_extract_http_escalation_preserves_explicit_pin() {
+        assert_eq!(
+            post_extract_escalation_target(
+                Some("http"),
+                Some("camofox"),
+                &["lightpanda", "camofox"]
+            ),
+            Some("camofox")
+        );
+    }
+
+    #[test]
+    fn post_extract_js_escalation_preserves_explicit_pin() {
+        assert_eq!(
+            post_extract_escalation_target(
+                Some("lightpanda"),
+                Some("lightpanda"),
+                &["lightpanda", "camofox"]
+            ),
+            None
+        );
+    }
 
     #[test]
     fn classify_block_challenge_on_cf_200() {
