@@ -37,6 +37,25 @@ func TestBuildBudgetLedgerWiresMonthlyResetDay(t *testing.T) {
 	}
 }
 
+func TestBuildBudgetLedgerWiresTokenBucket(t *testing.T) {
+	now := time.Date(2026, time.August, 19, 12, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		LedgerPath:          filepath.Join(t.TempDir(), "budget.json"),
+		MonthlyCloudCredits: 100, MonthlyResetDay: 1,
+		CloudBurstCredits: 3, CloudRefillCreditsPerDay: 1,
+	}
+	ledger, err := buildBudgetLedger(cfg, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Reserve(context.Background(), 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Reserve(context.Background(), 1); !errors.Is(err, budgetpkg.ErrLimitExceeded) {
+		t.Fatalf("reserve above depleted burst = %v, want ErrLimitExceeded", err)
+	}
+}
+
 func TestBuildHandlerCreatesPersistentRuntimeStorage(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.Config{

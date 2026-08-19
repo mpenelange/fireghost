@@ -11,9 +11,11 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Edit `.env`. Set a strong `ROUTER_API_KEY`. Leave `FIRECRAWL_CLOUD_API_KEY` empty to disable cloud fallback, or provide it with the conservative 20/day and 200/month limits. Authenticate Docker to `git.firewire.cc` if the configured CRW image is private.
+Edit `.env`. Set a strong `ROUTER_API_KEY`. Leave `FIRECRAWL_CLOUD_API_KEY` empty to disable cloud fallback, or provide it with the conservative 20-credit burst guard and 200-credit monthly hard cap. Authenticate Docker to `git.firewire.cc` if the configured CRW image is private.
 
 Monthly cloud usage resets at 00:00 UTC on day 1 by default. Set `ROUTER_MONTHLY_RESET_DAY` to a day from 1 through 28 to align the ledger with the Cloud billing cycle; before that day, usage remains in the prior billing period.
+
+The optional burst guard is configured by setting both `ROUTER_CLOUD_BURST_CREDITS` and `ROUTER_CLOUD_REFILL_CREDITS_PER_DAY` to positive integers; setting both to zero disables it. The bucket starts full, refills continuously, persists across restarts, never exceeds its burst capacity, and resets full with the monthly billing cycle. `ROUTER_DAILY_CLOUD_CREDITS` remains available for backward compatibility, but defaults to zero in the shipped deployment.
 
 The persistent response cache defaults to a 1 GiB total on-disk cap via `ROUTER_CACHE_MAX_BYTES`; the existing `ROUTER_CACHE_MAX_ENTRY_BYTES` independently limits each response body.
 

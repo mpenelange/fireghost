@@ -18,6 +18,7 @@ type Config struct {
 	CacheMaxEntryBytes                                   int
 	MaxInflight                                          int
 	DailyCloudCredits, MonthlyCloudCredits               int
+	CloudBurstCredits, CloudRefillCreditsPerDay          int
 	MonthlyResetDay                                      int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
 }
@@ -85,6 +86,8 @@ func Parse(getenv func(string) string) (Config, error) {
 		{"ROUTER_CACHE_MAX_ENTRY_BYTES", &c.CacheMaxEntryBytes}, {"ROUTER_MAX_INFLIGHT", &c.MaxInflight},
 		{"ROUTER_DAILY_CLOUD_CREDITS", &c.DailyCloudCredits},
 		{"ROUTER_MONTHLY_CLOUD_CREDITS", &c.MonthlyCloudCredits}, {"ROUTER_MONTHLY_RESET_DAY", &c.MonthlyResetDay},
+		{"ROUTER_CLOUD_BURST_CREDITS", &c.CloudBurstCredits},
+		{"ROUTER_CLOUD_REFILL_CREDITS_PER_DAY", &c.CloudRefillCreditsPerDay},
 		{"ROUTER_SEARCH_ESTIMATED_CREDITS", &c.SearchEstimatedCredits},
 		{"ROUTER_SCRAPE_ESTIMATED_CREDITS", &c.ScrapeEstimatedCredits},
 	}
@@ -145,6 +148,15 @@ func validate(c Config) error {
 	}
 	if c.MonthlyCloudCredits < 0 {
 		return fmt.Errorf("ROUTER_MONTHLY_CLOUD_CREDITS must not be negative")
+	}
+	if c.CloudBurstCredits < 0 {
+		return fmt.Errorf("ROUTER_CLOUD_BURST_CREDITS must not be negative")
+	}
+	if c.CloudRefillCreditsPerDay < 0 {
+		return fmt.Errorf("ROUTER_CLOUD_REFILL_CREDITS_PER_DAY must not be negative")
+	}
+	if (c.CloudBurstCredits == 0) != (c.CloudRefillCreditsPerDay == 0) {
+		return fmt.Errorf("ROUTER_CLOUD_BURST_CREDITS and ROUTER_CLOUD_REFILL_CREDITS_PER_DAY must both be zero or both be positive")
 	}
 	if c.MonthlyResetDay < 1 || c.MonthlyResetDay > 28 {
 		return fmt.Errorf("ROUTER_MONTHLY_RESET_DAY must be between 1 and 28")

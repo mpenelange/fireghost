@@ -29,7 +29,7 @@ func TestParseDefaults(t *testing.T) {
 	if got.MaxInflight != 64 {
 		t.Fatalf("max inflight = %d, want 64", got.MaxInflight)
 	}
-	if got.DailyCloudCredits != 0 || got.MonthlyCloudCredits != 0 || got.SearchEstimatedCredits != 2 || got.ScrapeEstimatedCredits != 1 {
+	if got.DailyCloudCredits != 0 || got.MonthlyCloudCredits != 0 || got.CloudBurstCredits != 0 || got.CloudRefillCreditsPerDay != 0 || got.SearchEstimatedCredits != 2 || got.ScrapeEstimatedCredits != 1 {
 		t.Fatalf("credits = %#v", got)
 	}
 }
@@ -68,6 +68,18 @@ func TestParseMonthlyResetDay(t *testing.T) {
 	}
 }
 
+func TestParseRejectsHalfConfiguredCloudBurstPolicy(t *testing.T) {
+	for _, variable := range []string{"ROUTER_CLOUD_BURST_CREDITS", "ROUTER_CLOUD_REFILL_CREDITS_PER_DAY"} {
+		values := map[string]string{
+			"ROUTER_LOCAL_URL": "http://local:3000",
+			variable:           "5",
+		}
+		if _, err := config.Parse(func(name string) string { return values[name] }); err == nil {
+			t.Fatalf("configuration with only %s succeeded, want error", variable)
+		}
+	}
+}
+
 func TestParseRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name, variable, value string
@@ -85,6 +97,8 @@ func TestParseRejectsInvalidConfiguration(t *testing.T) {
 		{"positive cache total", "ROUTER_CACHE_MAX_BYTES", "0", nil},
 		{"positive max inflight", "ROUTER_MAX_INFLIGHT", "0", nil},
 		{"nonnegative credits", "ROUTER_DAILY_CLOUD_CREDITS", "-1", nil},
+		{"nonnegative burst", "ROUTER_CLOUD_BURST_CREDITS", "-1", nil},
+		{"nonnegative refill", "ROUTER_CLOUD_REFILL_CREDITS_PER_DAY", "-1", nil},
 		{"positive estimate", "ROUTER_SEARCH_ESTIMATED_CREDITS", "0", nil},
 		{"cloud key needs hard limit", "FIRECRAWL_CLOUD_API_KEY", "secret", nil},
 	}
@@ -126,6 +140,7 @@ func TestParseOverrides(t *testing.T) {
 		"ROUTER_MAX_REQUEST_BYTES": "100", "ROUTER_MAX_RESPONSE_BYTES": "200", "ROUTER_CACHE_MAX_ENTRY_BYTES": "150", "ROUTER_CACHE_MAX_BYTES": "300",
 		"ROUTER_MAX_INFLIGHT":        "7",
 		"ROUTER_DAILY_CLOUD_CREDITS": "10", "ROUTER_MONTHLY_CLOUD_CREDITS": "100",
+		"ROUTER_CLOUD_BURST_CREDITS": "8", "ROUTER_CLOUD_REFILL_CREDITS_PER_DAY": "6",
 		"ROUTER_SEARCH_ESTIMATED_CREDITS": "3", "ROUTER_SCRAPE_ESTIMATED_CREDITS": "4",
 	}
 	got, err := config.Parse(func(name string) string { return values[name] })
@@ -144,7 +159,7 @@ func TestParseOverrides(t *testing.T) {
 	if got.MaxInflight != 7 {
 		t.Fatalf("max inflight = %d, want 7", got.MaxInflight)
 	}
-	if got.DailyCloudCredits != 10 || got.MonthlyCloudCredits != 100 || got.SearchEstimatedCredits != 3 || got.ScrapeEstimatedCredits != 4 {
+	if got.DailyCloudCredits != 10 || got.MonthlyCloudCredits != 100 || got.CloudBurstCredits != 8 || got.CloudRefillCreditsPerDay != 6 || got.SearchEstimatedCredits != 3 || got.ScrapeEstimatedCredits != 4 {
 		t.Fatalf("credits = %#v", got)
 	}
 }

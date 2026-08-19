@@ -73,6 +73,19 @@ class ComposeContractTest(unittest.TestCase):
         self.assertIn(f"{setting}=${{{setting}:-1}}", self.service_block("router"))
         self.assertRegex(ENV_EXAMPLE.read_text(encoding="utf-8"), rf"(?m)^{setting}=1$")
 
+    def test_router_receives_documented_token_bucket_defaults(self):
+        router = self.service_block("router")
+        for setting, default in (
+            ("ROUTER_DAILY_CLOUD_CREDITS", "0"),
+            ("ROUTER_CLOUD_BURST_CREDITS", "20"),
+            ("ROUTER_CLOUD_REFILL_CREDITS_PER_DAY", "20"),
+        ):
+            self.assertIn(f"{setting}=${{{setting}:-{default}}}", router)
+            self.assertRegex(
+                ENV_EXAMPLE.read_text(encoding="utf-8"),
+                rf"(?m)^{setting}={default}$",
+            )
+
     def test_services_have_security_and_operational_limits(self):
         for name in ("router", "crw", "camofox", "lightpanda"):
             block = self.service_block(name)

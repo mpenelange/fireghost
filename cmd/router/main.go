@@ -106,11 +106,13 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 }
 
 func buildBudgetLedger(cfg config.Config, clock func() time.Time) (*budgetpkg.File, error) {
-	return budgetpkg.NewFileWithResetDay(
+	return budgetpkg.NewFileWithOptions(
 		cfg.LedgerPath,
-		cfg.DailyCloudCredits,
-		cfg.MonthlyCloudCredits,
-		cfg.MonthlyResetDay,
+		budgetpkg.Options{
+			DailyLimit: cfg.DailyCloudCredits, MonthlyLimit: cfg.MonthlyCloudCredits,
+			MonthlyResetDay: cfg.MonthlyResetDay, BurstCredits: cfg.CloudBurstCredits,
+			RefillCreditsPerDay: cfg.CloudRefillCreditsPerDay,
+		},
 		clock,
 	)
 }

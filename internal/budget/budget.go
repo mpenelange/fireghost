@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,33 +21,50 @@ type Ledger interface {
 	Reserve(context.Context, int) error
 }
 
+// Options configures calendar limits and an optional token-bucket burst guard.
+// A zero limit is unlimited. The burst guard is disabled when both burst
+// values are zero.
+type Options struct {
+	DailyLimit          int
+	MonthlyLimit        int
+	MonthlyResetDay     int
+	BurstCredits        int
+	RefillCreditsPerDay int
+}
+
 type state struct {
 	Day             string `json:"day"`
 	Month           string `json:"month"`
 	DailyUsed       int    `json:"dailyUsed"`
 	MonthlyUsed     int    `json:"monthlyUsed"`
 	MonthlyResetDay int    `json:"monthlyResetDay,omitempty"`
+	BurstBalance    *int64 `json:"burstBalanceCreditNanoseconds,omitempty"`
+	BurstUpdatedAt  int64  `json:"burstUpdatedUnixNano,omitempty"`
 }
 
 // Memory is a concurrency-safe in-memory ledger.
 type Memory struct {
-	mu           sync.Mutex
-	dailyLimit   int
-	monthlyLimit int
-	resetDay     int
-	clock        func() time.Time
-	state        state
+	mu                  sync.Mutex
+	dailyLimit          int
+	monthlyLimit        int
+	resetDay            int
+	clock               func() time.Time
+	state               state
+	burstCredits        int
+	refillCreditsPerDay int
 }
 
 // File is a concurrency-safe ledger persisted as an atomic JSON snapshot.
 type File struct {
-	mu           sync.Mutex
-	path         string
-	dailyLimit   int
-	monthlyLimit int
-	resetDay     int
-	clock        func() time.Time
-	state        state
+	mu                  sync.Mutex
+	path                string
+	dailyLimit          int
+	monthlyLimit        int
+	resetDay            int
+	clock               func() time.Time
+	state               state
+	burstCredits        int
+	refillCreditsPerDay int
 }
 
 // NewMemory creates an in-memory ledger. A zero limit is unlimited.
@@ -57,16 +75,27 @@ func NewMemory(dailyLimit, monthlyLimit int, clock func() time.Time) *Memory {
 // NewMemoryWithResetDay creates an in-memory ledger whose monthly billing
 // period rolls over at 00:00 UTC on resetDay.
 func NewMemoryWithResetDay(dailyLimit, monthlyLimit, resetDay int, clock func() time.Time) *Memory {
+	ledger, _ := NewMemoryWithOptions(Options{DailyLimit: dailyLimit, MonthlyLimit: monthlyLimit, MonthlyResetDay: resetDay}, clock)
+	return ledger
+}
+
+// NewMemoryWithOptions creates an in-memory ledger with an explicit policy.
+func NewMemoryWithOptions(options Options, clock func() time.Time) (*Memory, error) {
+	if err := validateOptions(options); err != nil {
+		return nil, err
+	}
 	if clock == nil {
 		clock = time.Now
 	}
 	return &Memory{
-		dailyLimit:   dailyLimit,
-		monthlyLimit: monthlyLimit,
-		resetDay:     resetDay,
-		clock:        clock,
-		state:        state{MonthlyResetDay: resetDay},
-	}
+		dailyLimit:          options.DailyLimit,
+		monthlyLimit:        options.MonthlyLimit,
+		resetDay:            options.MonthlyResetDay,
+		burstCredits:        options.BurstCredits,
+		refillCreditsPerDay: options.RefillCreditsPerDay,
+		clock:               clock,
+		state:               state{MonthlyResetDay: options.MonthlyResetDay},
+	}, nil
 }
 
 // NewFile opens a file-backed ledger, loading an existing snapshot when present.
@@ -77,13 +106,25 @@ func NewFile(path string, dailyLimit, monthlyLimit int, clock func() time.Time) 
 // NewFileWithResetDay opens a file-backed ledger whose monthly billing period
 // rolls over at 00:00 UTC on resetDay.
 func NewFileWithResetDay(path string, dailyLimit, monthlyLimit, resetDay int, clock func() time.Time) (*File, error) {
+	return NewFileWithOptions(path, Options{DailyLimit: dailyLimit, MonthlyLimit: monthlyLimit, MonthlyResetDay: resetDay}, clock)
+}
+
+// NewFileWithOptions opens a file-backed ledger with an explicit policy.
+func NewFileWithOptions(path string, options Options, clock func() time.Time) (*File, error) {
+	if err := validateOptions(options); err != nil {
+		return nil, err
+	}
 	if clock == nil {
 		clock = time.Now
 	}
-	l := &File{path: path, dailyLimit: dailyLimit, monthlyLimit: monthlyLimit, resetDay: resetDay, clock: clock}
+	l := &File{
+		path: path, dailyLimit: options.DailyLimit, monthlyLimit: options.MonthlyLimit,
+		resetDay: options.MonthlyResetDay, burstCredits: options.BurstCredits,
+		refillCreditsPerDay: options.RefillCreditsPerDay, clock: clock,
+	}
 	contents, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		l.state.MonthlyResetDay = resetDay
+		l.state.MonthlyResetDay = options.MonthlyResetDay
 		return l, nil
 	}
 	if err != nil {
@@ -97,11 +138,11 @@ func NewFileWithResetDay(path string, dailyLimit, monthlyLimit, resetDay int, cl
 	if legacy {
 		storedResetDay = 1
 	}
-	if storedResetDay != resetDay {
-		l.state.Month = monthlyPeriod(clock(), resetDay)
+	if storedResetDay != options.MonthlyResetDay {
+		l.state.Month = monthlyPeriod(clock(), options.MonthlyResetDay)
 	}
-	if legacy || storedResetDay != resetDay {
-		l.state.MonthlyResetDay = resetDay
+	if legacy || storedResetDay != options.MonthlyResetDay {
+		l.state.MonthlyResetDay = options.MonthlyResetDay
 		if err := persist(path, l.state); err != nil {
 			return nil, fmt.Errorf("migrate budget ledger reset day: %w", err)
 		}
@@ -110,6 +151,19 @@ func NewFileWithResetDay(path string, dailyLimit, monthlyLimit, resetDay int, cl
 		return nil, fmt.Errorf("secure budget ledger: %w", err)
 	}
 	return l, nil
+}
+
+func validateOptions(options Options) error {
+	if options.BurstCredits < 0 || options.RefillCreditsPerDay < 0 {
+		return fmt.Errorf("token-bucket values must not be negative")
+	}
+	if (options.BurstCredits == 0) != (options.RefillCreditsPerDay == 0) {
+		return fmt.Errorf("burst credits and refill credits per day must both be zero or both be positive")
+	}
+	if int64(options.BurstCredits) > math.MaxInt64/int64(24*time.Hour) {
+		return fmt.Errorf("burst credits are too large")
+	}
+	return nil
 }
 
 // Reserve records credits unless doing so would exceed a positive limit.
@@ -123,7 +177,7 @@ func (l *Memory) Reserve(ctx context.Context, credits int) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	return reserve(&l.state, l.dailyLimit, l.monthlyLimit, l.resetDay, l.clock(), credits)
+	return reserve(&l.state, l.dailyLimit, l.monthlyLimit, l.resetDay, l.burstCredits, l.refillCreditsPerDay, l.clock(), credits)
 }
 
 // Reserve persists the updated counts before reporting a successful reservation.
@@ -138,7 +192,11 @@ func (l *File) Reserve(ctx context.Context, credits int) error {
 	defer l.mu.Unlock()
 
 	next := l.state
-	if err := reserve(&next, l.dailyLimit, l.monthlyLimit, l.resetDay, l.clock(), credits); err != nil {
+	if l.state.BurstBalance != nil {
+		balance := *l.state.BurstBalance
+		next.BurstBalance = &balance
+	}
+	if err := reserve(&next, l.dailyLimit, l.monthlyLimit, l.resetDay, l.burstCredits, l.refillCreditsPerDay, l.clock(), credits); err != nil {
 		return err
 	}
 	if err := persist(l.path, next); err != nil {
@@ -148,13 +206,14 @@ func (l *File) Reserve(ctx context.Context, credits int) error {
 	return nil
 }
 
-func reserve(current *state, dailyLimit, monthlyLimit, resetDay int, now time.Time, credits int) error {
+func reserve(current *state, dailyLimit, monthlyLimit, resetDay, burstCredits, refillCreditsPerDay int, now time.Time, credits int) error {
 	now = now.UTC()
 	day := now.Format("2006-01-02")
 	month := monthlyPeriod(now, resetDay)
 	if current.Day != day {
 		current.Day, current.DailyUsed = day, 0
 	}
+	newBillingCycle := current.Month != "" && current.Month != month
 	if current.Month != month {
 		current.Month, current.MonthlyUsed = month, 0
 	}
@@ -164,6 +223,46 @@ func reserve(current *state, dailyLimit, monthlyLimit, resetDay int, now time.Ti
 	}
 	if monthlyLimit > 0 && current.MonthlyUsed+credits > monthlyLimit {
 		return ErrLimitExceeded
+	}
+	if burstCredits > 0 {
+		const unitsPerCredit = int64(24 * time.Hour)
+		if newBillingCycle {
+			current.BurstBalance = nil
+		}
+		if current.BurstBalance == nil {
+			balance := int64(burstCredits) * unitsPerCredit
+			current.BurstBalance = &balance
+			current.BurstUpdatedAt = now.UnixNano()
+		} else {
+			capacity := int64(burstCredits) * unitsPerCredit
+			if *current.BurstBalance > capacity {
+				*current.BurstBalance = capacity
+			}
+			if elapsed := now.UnixNano() - current.BurstUpdatedAt; elapsed > 0 {
+				room := capacity - *current.BurstBalance
+				if room > 0 {
+					refillRate := int64(refillCreditsPerDay)
+					refillTime := room / refillRate
+					if room%refillRate != 0 {
+						refillTime++
+					}
+					if elapsed >= refillTime {
+						*current.BurstBalance = capacity
+					} else {
+						*current.BurstBalance += elapsed * refillRate
+					}
+				}
+				current.BurstUpdatedAt = now.UnixNano()
+			}
+		}
+		if credits > burstCredits {
+			return ErrLimitExceeded
+		}
+		cost := int64(credits) * unitsPerCredit
+		if cost > *current.BurstBalance {
+			return ErrLimitExceeded
+		}
+		*current.BurstBalance -= cost
 	}
 	current.DailyUsed += credits
 	current.MonthlyUsed += credits
