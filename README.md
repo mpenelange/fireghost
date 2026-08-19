@@ -13,6 +13,8 @@ chmod 600 .env
 
 Edit `.env`. Set a strong `ROUTER_API_KEY`. Leave `FIRECRAWL_CLOUD_API_KEY` empty to disable cloud fallback, or provide it with the conservative 20/day and 200/month limits. Authenticate Docker to `git.firewire.cc` if the configured CRW image is private.
 
+Monthly cloud usage resets at 00:00 UTC on day 1 by default. Set `ROUTER_MONTHLY_RESET_DAY` to a day from 1 through 28 to align the ledger with the Cloud billing cycle; before that day, usage remains in the prior billing period.
+
 The persistent response cache defaults to a 1 GiB total on-disk cap via `ROUTER_CACHE_MAX_BYTES`; the existing `ROUTER_CACHE_MAX_ENTRY_BYTES` independently limits each response body.
 
 The router executes at most 64 unique cacheable requests concurrently by default. Set `ROUTER_MAX_INFLIGHT` to a positive integer to tune this bound; callers for an already-running request still share that work without consuming another slot.

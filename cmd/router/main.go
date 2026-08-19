@@ -93,7 +93,7 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 	if err := os.MkdirAll(filepath.Dir(cfg.LedgerPath), 0o700); err != nil {
 		return nil, fmt.Errorf("initialize budget directory: %w", err)
 	}
-	ledger, err := budgetpkg.NewFile(cfg.LedgerPath, cfg.DailyCloudCredits, cfg.MonthlyCloudCredits, time.Now)
+	ledger, err := buildBudgetLedger(cfg, time.Now)
 	if err != nil {
 		return nil, fmt.Errorf("initialize budget: %w", err)
 	}
@@ -103,4 +103,14 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 		SearchTTL: cfg.SearchTTL, ScrapeTTL: cfg.ScrapeTTL, HTTPTimeout: cfg.HTTPTimeout, SearchEstimatedCredits: cfg.SearchEstimatedCredits,
 		ScrapeEstimatedCredits: cfg.ScrapeEstimatedCredits, MaxRequestBytes: cfg.MaxRequestBytes, MaxResponseBytes: cfg.MaxResponseBytes,
 	}, router.Dependencies{HTTPClient: client, Cache: fileCache, Budget: ledger, Metrics: registry, FlightGroup: flightpkg.NewWithLimit[cachepkg.Entry](cfg.MaxInflight)}), nil
+}
+
+func buildBudgetLedger(cfg config.Config, clock func() time.Time) (*budgetpkg.File, error) {
+	return budgetpkg.NewFileWithResetDay(
+		cfg.LedgerPath,
+		cfg.DailyCloudCredits,
+		cfg.MonthlyCloudCredits,
+		cfg.MonthlyResetDay,
+		clock,
+	)
 }

@@ -2,6 +2,7 @@ package budget_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -65,6 +66,92 @@ func TestFileLedgerReloadResetsExpiredPeriods(t *testing.T) {
 	}
 }
 
+func TestFileLedgerUsesConfiguredMonthlyResetDayAfterReload(t *testing.T) {
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "budget.json")
+	ledger, err := budget.NewFileWithResetDay(path, 0, 2, 3, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Reserve(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	now = time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	reloaded, err := budget.NewFileWithResetDay(path, 0, 2, 3, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reloaded.Reserve(context.Background(), 1); !errors.Is(err, budget.ErrLimitExceeded) {
+		t.Fatalf("reserve before reset day = %v, want ErrLimitExceeded", err)
+	}
+}
+
+func TestFileLedgerResetDayChangePreservesUsageUntilNextBoundary(t *testing.T) {
+	now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "budget.json")
+	ledger, err := budget.NewFileWithResetDay(path, 0, 2, 3, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Reserve(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := budget.NewFileWithResetDay(path, 0, 2, 1, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reloaded.Reserve(context.Background(), 1); !errors.Is(err, budget.ErrLimitExceeded) {
+		t.Fatalf("reserve immediately after reset-day change = %v, want ErrLimitExceeded", err)
+	}
+
+	now = time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if err := reloaded.Reserve(context.Background(), 1); err != nil {
+		t.Fatalf("reserve at next configured boundary: %v", err)
+	}
+}
+
+func TestFileLedgerMigratesLegacyMonthlyStateConservatively(t *testing.T) {
+	tests := []struct {
+		name     string
+		resetDay int
+	}{
+		{name: "configured reset day", resetDay: 3},
+		{name: "default reset day", resetDay: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "budget.json")
+			legacy := []byte(`{"day":"2026-09-01","month":"2026-09","dailyUsed":0,"monthlyUsed":2}`)
+			if err := os.WriteFile(path, legacy, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+			ledger, err := budget.NewFileWithResetDay(path, 0, 2, test.resetDay, func() time.Time { return now })
+			if err != nil {
+				t.Fatal(err)
+			}
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var persisted struct {
+				MonthlyResetDay int `json:"monthlyResetDay"`
+			}
+			if err := json.Unmarshal(contents, &persisted); err != nil {
+				t.Fatal(err)
+			}
+			if persisted.MonthlyResetDay != test.resetDay {
+				t.Fatalf("persisted monthly reset day = %d, want %d", persisted.MonthlyResetDay, test.resetDay)
+			}
+			if err := ledger.Reserve(context.Background(), 1); !errors.Is(err, budget.ErrLimitExceeded) {
+				t.Fatalf("reserve after legacy reload = %v, want ErrLimitExceeded", err)
+			}
+		})
+	}
+}
+
 func TestMemoryLedgerReservesAgainstDailyAndMonthlyLimitsAndResetsUTC(t *testing.T) {
 	now := time.Date(2026, time.August, 31, 23, 59, 0, 0, time.UTC)
 	ledger := budget.NewMemory(4, 6, func() time.Time { return now })
@@ -107,5 +194,23 @@ func TestMemoryLedgerMonthlyLimitSurvivesDailyReset(t *testing.T) {
 	now = now.Add(2 * time.Hour)
 	if err := ledger.Reserve(context.Background(), 2); !errors.Is(err, budget.ErrLimitExceeded) {
 		t.Fatalf("monthly overage error = %v, want ErrLimitExceeded", err)
+	}
+}
+
+func TestMemoryLedgerResetsMonthlyLimitOnConfiguredBillingDay(t *testing.T) {
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	ledger := budget.NewMemoryWithResetDay(0, 2, 3, func() time.Time { return now })
+	if err := ledger.Reserve(context.Background(), 2); err != nil {
+		t.Fatalf("reserve in August billing period: %v", err)
+	}
+
+	now = time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	if err := ledger.Reserve(context.Background(), 1); !errors.Is(err, budget.ErrLimitExceeded) {
+		t.Fatalf("reserve before reset day = %v, want ErrLimitExceeded", err)
+	}
+
+	now = time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
+	if err := ledger.Reserve(context.Background(), 2); err != nil {
+		t.Fatalf("reserve after reset day: %v", err)
 	}
 }

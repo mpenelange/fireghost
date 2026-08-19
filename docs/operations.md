@@ -4,7 +4,7 @@ Start with `docker compose up -d --build`, then inspect `docker compose ps` and 
 
 Back up both persistent volumes with `./scripts/backup.sh backups/appliance.tar.gz`. The script briefly stops only the services that were running, creates a quiescent archive, and starts those same services again. Restore is deliberately explicit: `./scripts/restore.sh --force backups/appliance.tar.gz`. Restore stops the stack and replaces both volumes' contents; validate the archive and retain the previous backup first.
 
-Budget limits are enforced before cloud calls. An empty `FIRECRAWL_CLOUD_API_KEY` disables cloud fallback. Keep `.env` mode 0600 and never place credentials in Compose or source control.
+Budget limits are enforced before cloud calls. An empty `FIRECRAWL_CLOUD_API_KEY` disables cloud fallback. `ROUTER_MONTHLY_RESET_DAY` defaults to `1` and accepts `1` through `28`; the monthly ledger rolls at 00:00 UTC on that day, with earlier days assigned to the prior billing period. For example, reset day `3` keeps September 1 and 2 in the August period and starts September at September 3 00:00 UTC. Keep `.env` mode 0600 and never place credentials in Compose or source control.
 
 The persistent response cache is capped at 1 GiB by default. Set `ROUTER_CACHE_MAX_BYTES` to a positive byte count to change the total on-disk limit; `ROUTER_CACHE_MAX_ENTRY_BYTES` remains the separate per-response body limit. On writes, expired and corrupt entries are removed and the oldest cache files are evicted until the new encoded entry fits.
 

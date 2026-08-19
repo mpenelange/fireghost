@@ -21,10 +21,11 @@ type Ledger interface {
 }
 
 type state struct {
-	Day         string `json:"day"`
-	Month       string `json:"month"`
-	DailyUsed   int    `json:"dailyUsed"`
-	MonthlyUsed int    `json:"monthlyUsed"`
+	Day             string `json:"day"`
+	Month           string `json:"month"`
+	DailyUsed       int    `json:"dailyUsed"`
+	MonthlyUsed     int    `json:"monthlyUsed"`
+	MonthlyResetDay int    `json:"monthlyResetDay,omitempty"`
 }
 
 // Memory is a concurrency-safe in-memory ledger.
@@ -32,6 +33,7 @@ type Memory struct {
 	mu           sync.Mutex
 	dailyLimit   int
 	monthlyLimit int
+	resetDay     int
 	clock        func() time.Time
 	state        state
 }
@@ -42,26 +44,46 @@ type File struct {
 	path         string
 	dailyLimit   int
 	monthlyLimit int
+	resetDay     int
 	clock        func() time.Time
 	state        state
 }
 
 // NewMemory creates an in-memory ledger. A zero limit is unlimited.
 func NewMemory(dailyLimit, monthlyLimit int, clock func() time.Time) *Memory {
+	return NewMemoryWithResetDay(dailyLimit, monthlyLimit, 1, clock)
+}
+
+// NewMemoryWithResetDay creates an in-memory ledger whose monthly billing
+// period rolls over at 00:00 UTC on resetDay.
+func NewMemoryWithResetDay(dailyLimit, monthlyLimit, resetDay int, clock func() time.Time) *Memory {
 	if clock == nil {
 		clock = time.Now
 	}
-	return &Memory{dailyLimit: dailyLimit, monthlyLimit: monthlyLimit, clock: clock}
+	return &Memory{
+		dailyLimit:   dailyLimit,
+		monthlyLimit: monthlyLimit,
+		resetDay:     resetDay,
+		clock:        clock,
+		state:        state{MonthlyResetDay: resetDay},
+	}
 }
 
 // NewFile opens a file-backed ledger, loading an existing snapshot when present.
 func NewFile(path string, dailyLimit, monthlyLimit int, clock func() time.Time) (*File, error) {
+	return NewFileWithResetDay(path, dailyLimit, monthlyLimit, 1, clock)
+}
+
+// NewFileWithResetDay opens a file-backed ledger whose monthly billing period
+// rolls over at 00:00 UTC on resetDay.
+func NewFileWithResetDay(path string, dailyLimit, monthlyLimit, resetDay int, clock func() time.Time) (*File, error) {
 	if clock == nil {
 		clock = time.Now
 	}
-	l := &File{path: path, dailyLimit: dailyLimit, monthlyLimit: monthlyLimit, clock: clock}
+	l := &File{path: path, dailyLimit: dailyLimit, monthlyLimit: monthlyLimit, resetDay: resetDay, clock: clock}
 	contents, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
+		l.state.MonthlyResetDay = resetDay
 		return l, nil
 	}
 	if err != nil {
@@ -69,6 +91,20 @@ func NewFile(path string, dailyLimit, monthlyLimit int, clock func() time.Time) 
 	}
 	if err := json.Unmarshal(contents, &l.state); err != nil {
 		return nil, fmt.Errorf("decode budget ledger: %w", err)
+	}
+	storedResetDay := l.state.MonthlyResetDay
+	legacy := storedResetDay == 0
+	if legacy {
+		storedResetDay = 1
+	}
+	if storedResetDay != resetDay {
+		l.state.Month = monthlyPeriod(clock(), resetDay)
+	}
+	if legacy || storedResetDay != resetDay {
+		l.state.MonthlyResetDay = resetDay
+		if err := persist(path, l.state); err != nil {
+			return nil, fmt.Errorf("migrate budget ledger reset day: %w", err)
+		}
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		return nil, fmt.Errorf("secure budget ledger: %w", err)
@@ -87,7 +123,7 @@ func (l *Memory) Reserve(ctx context.Context, credits int) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	return reserve(&l.state, l.dailyLimit, l.monthlyLimit, l.clock(), credits)
+	return reserve(&l.state, l.dailyLimit, l.monthlyLimit, l.resetDay, l.clock(), credits)
 }
 
 // Reserve persists the updated counts before reporting a successful reservation.
@@ -102,7 +138,7 @@ func (l *File) Reserve(ctx context.Context, credits int) error {
 	defer l.mu.Unlock()
 
 	next := l.state
-	if err := reserve(&next, l.dailyLimit, l.monthlyLimit, l.clock(), credits); err != nil {
+	if err := reserve(&next, l.dailyLimit, l.monthlyLimit, l.resetDay, l.clock(), credits); err != nil {
 		return err
 	}
 	if err := persist(l.path, next); err != nil {
@@ -112,14 +148,17 @@ func (l *File) Reserve(ctx context.Context, credits int) error {
 	return nil
 }
 
-func reserve(current *state, dailyLimit, monthlyLimit int, now time.Time, credits int) error {
-	day, month := now.UTC().Format("2006-01-02"), now.UTC().Format("2006-01")
+func reserve(current *state, dailyLimit, monthlyLimit, resetDay int, now time.Time, credits int) error {
+	now = now.UTC()
+	day := now.Format("2006-01-02")
+	month := monthlyPeriod(now, resetDay)
 	if current.Day != day {
 		current.Day, current.DailyUsed = day, 0
 	}
 	if current.Month != month {
 		current.Month, current.MonthlyUsed = month, 0
 	}
+	current.MonthlyResetDay = resetDay
 	if dailyLimit > 0 && current.DailyUsed+credits > dailyLimit {
 		return ErrLimitExceeded
 	}
@@ -129,6 +168,14 @@ func reserve(current *state, dailyLimit, monthlyLimit int, now time.Time, credit
 	current.DailyUsed += credits
 	current.MonthlyUsed += credits
 	return nil
+}
+
+func monthlyPeriod(now time.Time, resetDay int) string {
+	now = now.UTC()
+	if now.Day() < resetDay {
+		now = now.AddDate(0, -1, 0)
+	}
+	return now.Format("2006-01")
 }
 
 func persist(path string, current state) error {

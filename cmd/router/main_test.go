@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,9 +13,29 @@ import (
 	"testing"
 	"time"
 
+	budgetpkg "web-retrieval/internal/budget"
 	"web-retrieval/internal/config"
 	metricspkg "web-retrieval/internal/metrics"
 )
+
+func TestBuildBudgetLedgerWiresMonthlyResetDay(t *testing.T) {
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		LedgerPath:          filepath.Join(t.TempDir(), "budget.json"),
+		MonthlyCloudCredits: 2, MonthlyResetDay: 3,
+	}
+	ledger, err := buildBudgetLedger(cfg, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Reserve(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	now = time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	if err := ledger.Reserve(context.Background(), 1); !errors.Is(err, budgetpkg.ErrLimitExceeded) {
+		t.Fatalf("reserve before configured reset day = %v, want ErrLimitExceeded", err)
+	}
+}
 
 func TestBuildHandlerCreatesPersistentRuntimeStorage(t *testing.T) {
 	root := t.TempDir()

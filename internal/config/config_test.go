@@ -34,6 +34,40 @@ func TestParseDefaults(t *testing.T) {
 	}
 }
 
+func TestParseMonthlyResetDay(t *testing.T) {
+	tests := []struct {
+		name, value string
+		want        int
+		wantError   bool
+	}{
+		{name: "default", want: 1},
+		{name: "configured", value: "3", want: 3},
+		{name: "below range", value: "0", wantError: true},
+		{name: "above range", value: "29", wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := map[string]string{
+				"ROUTER_LOCAL_URL":         "http://local:3000",
+				"ROUTER_MONTHLY_RESET_DAY": test.value,
+			}
+			got, err := config.Parse(func(name string) string { return values[name] })
+			if test.wantError {
+				if err == nil {
+					t.Fatal("expected validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.MonthlyResetDay != test.want {
+				t.Fatalf("monthly reset day = %d, want %d", got.MonthlyResetDay, test.want)
+			}
+		})
+	}
+}
+
 func TestParseRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name, variable, value string

@@ -18,6 +18,7 @@ type Config struct {
 	CacheMaxEntryBytes                                   int
 	MaxInflight                                          int
 	DailyCloudCredits, MonthlyCloudCredits               int
+	MonthlyResetDay                                      int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
 }
 
@@ -29,6 +30,7 @@ func Parse(getenv func(string) string) (Config, error) {
 		SearchTTL: 15 * time.Minute, ScrapeTTL: 24 * time.Hour, HTTPTimeout: 60 * time.Second, ServerReadTimeout: 30 * time.Second,
 		MaxRequestBytes: 2 << 20, MaxResponseBytes: 16 << 20, CacheMaxBytes: 1 << 30, CacheMaxEntryBytes: 16 << 20,
 		MaxInflight:            64,
+		MonthlyResetDay:        1,
 		SearchEstimatedCredits: 2, ScrapeEstimatedCredits: 1,
 	}
 	stringValues := []struct {
@@ -82,7 +84,8 @@ func Parse(getenv func(string) string) (Config, error) {
 	}{
 		{"ROUTER_CACHE_MAX_ENTRY_BYTES", &c.CacheMaxEntryBytes}, {"ROUTER_MAX_INFLIGHT", &c.MaxInflight},
 		{"ROUTER_DAILY_CLOUD_CREDITS", &c.DailyCloudCredits},
-		{"ROUTER_MONTHLY_CLOUD_CREDITS", &c.MonthlyCloudCredits}, {"ROUTER_SEARCH_ESTIMATED_CREDITS", &c.SearchEstimatedCredits},
+		{"ROUTER_MONTHLY_CLOUD_CREDITS", &c.MonthlyCloudCredits}, {"ROUTER_MONTHLY_RESET_DAY", &c.MonthlyResetDay},
+		{"ROUTER_SEARCH_ESTIMATED_CREDITS", &c.SearchEstimatedCredits},
 		{"ROUTER_SCRAPE_ESTIMATED_CREDITS", &c.ScrapeEstimatedCredits},
 	}
 	for _, value := range ints {
@@ -142,6 +145,9 @@ func validate(c Config) error {
 	}
 	if c.MonthlyCloudCredits < 0 {
 		return fmt.Errorf("ROUTER_MONTHLY_CLOUD_CREDITS must not be negative")
+	}
+	if c.MonthlyResetDay < 1 || c.MonthlyResetDay > 28 {
+		return fmt.Errorf("ROUTER_MONTHLY_RESET_DAY must be between 1 and 28")
 	}
 	if c.SearchEstimatedCredits <= 0 {
 		return fmt.Errorf("ROUTER_SEARCH_ESTIMATED_CREDITS must be positive")

@@ -5,6 +5,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "compose.yaml"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 
 class ComposeContractTest(unittest.TestCase):
@@ -66,6 +67,11 @@ class ComposeContractTest(unittest.TestCase):
             "ROUTER_SERVER_READ_TIMEOUT=${ROUTER_SERVER_READ_TIMEOUT:-30s}",
             self.service_block("router"),
         )
+
+    def test_router_receives_documented_monthly_reset_day(self):
+        setting = "ROUTER_MONTHLY_RESET_DAY"
+        self.assertIn(f"{setting}=${{{setting}:-1}}", self.service_block("router"))
+        self.assertRegex(ENV_EXAMPLE.read_text(encoding="utf-8"), rf"(?m)^{setting}=1$")
 
     def test_services_have_security_and_operational_limits(self):
         for name in ("router", "crw", "camofox", "lightpanda"):
