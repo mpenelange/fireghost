@@ -3,7 +3,7 @@ name: web-retrieval
 services:
   router:
     build:
-      context: .
+      context: ../router
       args:
         VERSION: ${ROUTER_VERSION:-dev}
         REVISION: ${ROUTER_REVISION:-unknown}
