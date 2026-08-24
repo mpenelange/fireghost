@@ -3,9 +3,9 @@ import re
 import unittest
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-COMPOSE = ROOT / "compose.yaml"
-ENV_EXAMPLE = ROOT / ".env.example"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+COMPOSE = ROOT / "deploy" / "compose.yaml"
+ENV_EXAMPLE = ROOT / "deploy" / ".env.example"
 
 
 class ComposeContractTest(unittest.TestCase):

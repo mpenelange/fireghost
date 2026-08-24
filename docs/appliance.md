@@ -7,13 +7,13 @@ CRW application source lives in the separate `michael/crw-camofox` repository. T
 ## Install and run
 
 ```sh
-git clone <this-repository-url> web-retrieval
-cd web-retrieval
-cp .env.example .env
-chmod 600 .env
+git clone <this-repository-url> hermes-web-retrieval
+cd hermes-web-retrieval
+cp deploy/.env.example deploy/.env
+chmod 600 deploy/.env
 ```
 
-Edit `.env`. Set a strong `ROUTER_API_KEY`. Leave `FIRECRAWL_CLOUD_API_KEY` empty to disable cloud fallback, or provide it with the conservative 20-credit burst guard and 200-credit monthly hard cap. Authenticate Docker to `git.firewire.cc` if the configured CRW image is private.
+Edit `deploy/.env`. Set a strong `ROUTER_API_KEY`. Leave `FIRECRAWL_CLOUD_API_KEY` empty to disable cloud fallback, or provide it with the conservative 20-credit burst guard and 200-credit monthly hard cap. Authenticate Docker to `git.firewire.cc` if the configured CRW image is private.
 
 Monthly cloud usage resets at 00:00 UTC on day 1 by default. Set `ROUTER_MONTHLY_RESET_DAY` to a day from 1 through 28 to align the ledger with the Cloud billing cycle; before that day, usage remains in the prior billing period.
 
@@ -26,9 +26,9 @@ The router executes at most 64 unique cacheable requests concurrently by default
 Inbound request headers and bodies must be read within `ROUTER_SERVER_READ_TIMEOUT`, which defaults to `30s` and must be positive. `ROUTER_HTTP_TIMEOUT` separately bounds each upstream request; the server write deadline includes additional time to return that bounded result.
 
 ```sh
-docker compose config --quiet
-docker compose up -d --build
-docker compose ps
+docker compose --project-directory deploy -f deploy/compose.yaml config --quiet
+docker compose --project-directory deploy -f deploy/compose.yaml up -d --build
+docker compose --project-directory deploy -f deploy/compose.yaml ps
 ./scripts/smoke-test.sh
 ```
 

@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
+env_file=$repo_dir/deploy/.env
+
 base_url=${1:-http://127.0.0.1:33000}
 case "$base_url" in
   http://*|https://*) ;;
@@ -8,10 +12,10 @@ case "$base_url" in
 esac
 
 # Load the local deployment key when the caller has not exported it.
-if [ -z "${ROUTER_API_KEY:-}" ] && [ -f ./.env ]; then
+if [ -z "${ROUTER_API_KEY:-}" ] && [ -f "$env_file" ]; then
   set -a
   # shellcheck disable=SC1091
-  . ./.env
+  . "$env_file"
   set +a
 fi
 
@@ -29,4 +33,3 @@ else
     --data '{"query":"Hermes Agent"}' "${base_url}/v2/search" >/dev/null
 fi
 printf '%s\n' "smoke test passed: ${base_url}"
-

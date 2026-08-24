@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
+env_file=$repo_dir/deploy/.env
+
 if ! command -v docker >/dev/null 2>&1; then
   printf '%s\n' "docker is required" >&2
   exit 1
@@ -14,12 +18,11 @@ do
   printf '%s\n' "available: $image"
 done
 
-if [ -f .env ]; then
-  crw_image=$(sed -n 's/^CRW_IMAGE=//p' .env | tail -n 1)
+if [ -f "$env_file" ]; then
+  crw_image=$(sed -n 's/^CRW_IMAGE=//p' "$env_file" | tail -n 1)
   if [ -n "$crw_image" ]; then
     docker buildx imagetools inspect "$crw_image" >/dev/null
     printf '%s\n' "available: $crw_image"
   fi
 fi
 printf '%s\n' "Pins are reachable. Review upstream release notes before changing them."
-

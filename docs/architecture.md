@@ -10,15 +10,15 @@ Successful router responses and the cloud-credit ledger live in `router-data`. B
 
 The router is independent of CRW internals and communicates only through HTTP. Replacing CRW requires preserving that contract.
 
-## Repository and release boundary
+## Component and release boundary
 
-This repository owns the deployable appliance: the Go router, Compose topology, runtime policy, and end-to-end contract tests. It consumes CRW as a container image and does not duplicate or build CRW source.
+The monorepo owns the deployable appliance: the Go router, Compose topology, runtime policy, and end-to-end contract tests. The deployment consumes CRW as a container image rather than reaching into its private implementation.
 
-The `michael/crw-camofox` repository owns the Rust application and publishes versioned images to `git.firewire.cc/michael/crw-camofox`. A release crosses into this repository only when its registry digest is recorded in `CRW_IMAGE` and the complete appliance passes validation. The immutable digest is the deployment authority; the human-readable image tag and Git tag identify the source release but are never used as mutable runtime pins.
+The `crw/` component owns the Rust application and publishes versioned images. A component release crosses into `deploy/` only when its registry digest is recorded in `CRW_IMAGE` and the complete appliance passes validation. The immutable digest is the deployment authority; the human-readable image tag and Git tag identify the source release but are never used as mutable runtime pins.
 
 The handoff is therefore one-way:
 
-1. `crw-camofox` tests and publishes a versioned image.
+1. `crw/` tests and publishes a versioned image.
 2. The registry returns the image's immutable digest.
-3. `web-retrieval` pins that digest and validates the assembled appliance.
+3. `deploy/` pins that digest and validates the assembled appliance.
 4. Production adopts the validated digest while retaining the previous digest for rollback.

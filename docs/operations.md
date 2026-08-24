@@ -1,6 +1,6 @@
 # Operations
 
-Start with `docker compose up -d --build`, then inspect `docker compose ps` and run `./scripts/smoke-test.sh`. Logs are available through `docker compose logs -f router crw camofox lightpanda`; metrics are at `http://127.0.0.1:33000/metrics`.
+Start with `docker compose --project-directory deploy -f deploy/compose.yaml up -d --build`, then inspect `docker compose --project-directory deploy -f deploy/compose.yaml ps` and run `./scripts/smoke-test.sh`. Logs are available through `docker compose --project-directory deploy -f deploy/compose.yaml logs -f router crw camofox lightpanda`; metrics are at `http://127.0.0.1:33000/metrics`.
 
 Back up both persistent volumes with `./scripts/backup.sh backups/appliance.tar.gz`. The script briefly stops only the services that were running, creates a quiescent archive, and starts those same services again. Restore is deliberately explicit: `./scripts/restore.sh --force backups/appliance.tar.gz`. Restore stops the stack and replaces both volumes' contents; validate the archive and retain the previous backup first.
 

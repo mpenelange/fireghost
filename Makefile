@@ -1,12 +1,13 @@
 .PHONY: test test-python fmt vet race compose-config build smoke live-contract backup check-updates
 
-GO_DOCKER = docker run --rm -v "$(CURDIR)/../router:/src" -w /src golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c
+GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c
+COMPOSE = docker compose --project-directory deploy -f deploy/compose.yaml
 
 test: test-python
 	$(GO_DOCKER) go test ./...
 
 test-python:
-	python3 -m unittest discover -s tests -p '*_test.py' -v
+	python3 -m unittest discover -s tests/appliance -p '*_test.py' -v
 
 fmt:
 	$(GO_DOCKER) sh -c 'test -z "$$(gofmt -l .)"'
@@ -18,10 +19,10 @@ race:
 	$(GO_DOCKER) go test -race ./...
 
 compose-config:
-	docker compose config --quiet
+	$(COMPOSE) config --quiet
 
 build:
-	docker build --pull -t web-retrieval-router:dev ../router
+	docker build --pull -t web-retrieval-router:dev router
 
 smoke:
 	./scripts/smoke-test.sh

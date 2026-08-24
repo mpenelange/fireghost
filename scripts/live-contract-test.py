@@ -16,10 +16,11 @@ import urllib.error
 import urllib.request
 
 BASE_URL = os.environ.get("ROUTER_URL", "http://127.0.0.1:33000").rstrip("/")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def env_file_value(name: str) -> str:
-    path = Path(".env")
+    path = REPO_ROOT / "deploy" / ".env"
     if not path.exists():
         return ""
     for raw in path.read_text(encoding="utf-8").splitlines():
