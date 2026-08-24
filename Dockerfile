@@ -12,6 +12,15 @@ FROM --platform=$BUILDPLATFORM rust:1.93-bookworm AS builder
 # need the target's cross toolchain (the native rustc image only ships its own).
 ARG TARGETARCH
 ARG BUILDARCH
+ARG CRW_VERSION=1.2.0-local
+ARG CRW_REVISION=unknown
+ARG CRW_BUILD_DATE=unknown
+
+# Embedded by rustc through `option_env!`; these identify the binary even when
+# it is copied out of the container or the registry metadata is unavailable.
+ENV CRW_BUILD_VERSION=$CRW_VERSION \
+    CRW_BUILD_REVISION=$CRW_REVISION \
+    CRW_BUILD_DATE=$CRW_BUILD_DATE
 
 WORKDIR /app
 
@@ -64,6 +73,10 @@ RUN set -eux; \
 
 FROM debian:bookworm-slim
 
+ARG CRW_VERSION=1.2.0-local
+ARG CRW_REVISION=unknown
+ARG CRW_BUILD_DATE=unknown
+
 # curl is included for the Compose service healthcheck; the runtime otherwise
 # remains minimal and does not expose any browser ports.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -77,8 +90,16 @@ COPY config.docker.toml /app/config.docker.toml
 
 WORKDIR /app
 
-LABEL org.opencontainers.image.source=https://github.com/adambenhassen/crw-camofox
-LABEL io.modelcontextprotocol.server.name="io.github.us/crw"
+LABEL org.opencontainers.image.source="https://git.firewire.cc/michael/crw-camofox" \
+      org.opencontainers.image.version="$CRW_VERSION" \
+      org.opencontainers.image.revision="$CRW_REVISION" \
+      org.opencontainers.image.created="$CRW_BUILD_DATE" \
+      org.opencontainers.image.description="Firecrawl-compatible CRW server with Camofox rendering" \
+      io.modelcontextprotocol.server.name="io.github.us/crw"
+
+ENV CRW_BUILD_VERSION=$CRW_VERSION \
+    CRW_BUILD_REVISION=$CRW_REVISION \
+    CRW_BUILD_DATE=$CRW_BUILD_DATE
 
 EXPOSE 3000
 

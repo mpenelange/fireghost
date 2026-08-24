@@ -21,6 +21,7 @@
 //! ```
 
 pub mod app;
+pub mod build_info;
 pub mod diagnostics;
 pub mod error;
 pub mod middleware;

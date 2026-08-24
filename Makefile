@@ -1,4 +1,4 @@
-.PHONY: hooks fmt clippy test build check sync-docs-changelog
+.PHONY: hooks fmt clippy test build check check-stack-lock live-compat sync-docs-changelog
 
 # Install git pre-commit hook
 hooks:
@@ -23,7 +23,13 @@ build:
 	cargo build --workspace --all-targets
 
 # Run all checks (same as CI)
-check: fmt-check clippy test
+check: check-stack-lock fmt-check clippy test
+
+check-stack-lock:
+	python3 scripts/check_stack_lock.py
+
+live-compat:
+	python3 scripts/live_compatibility.py --phase all --output live-compatibility.json
 
 sync-docs-changelog:
 	python3 scripts/sync-docs-changelog.py

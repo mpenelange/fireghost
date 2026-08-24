@@ -36,6 +36,11 @@ jobs:
       - name: No unguarded exit in browser-spawning code
         run: bash scripts/check-no-process-exit.sh
 
+      - name: Known-good stack manifest and immutable image pins
+        run: |
+          python3 scripts/check_stack_lock.py
+          python3 -m unittest scripts/test_live_compatibility.py
+
       - name: Internal dependency versions match workspace version
         run: bash scripts/check-internal-dep-versions.sh
 

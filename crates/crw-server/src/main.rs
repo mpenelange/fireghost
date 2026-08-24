@@ -4,7 +4,11 @@ use crw_server::state::AppState;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "crw-server", about = "CRW web scraper API server")]
+#[command(
+    name = "crw-server",
+    about = "CRW web scraper API server",
+    version = crw_server::build_info::VERSION
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -14,6 +18,8 @@ struct Cli {
 enum Commands {
     /// Download LightPanda and create a local config for JS rendering
     Setup,
+    /// Print the artifact version, source revision, and build date
+    Version,
 }
 
 #[tokio::main]
@@ -27,6 +33,9 @@ async fn main() {
     match cli.command {
         Some(Commands::Setup) => {
             crw_server::setup::run_setup().await;
+        }
+        Some(Commands::Version) => {
+            println!("{}", crw_server::build_info::display());
         }
         None => {
             run_server().await;
@@ -66,7 +75,13 @@ async fn run_server() {
     crw_crawl::extract_pool::configure_extract_limit(config.extraction.max_concurrent_extracts);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
-    tracing::info!("Starting CRW on {addr}");
+    tracing::info!(
+        version = crw_server::build_info::VERSION,
+        package_version = crw_server::build_info::PACKAGE_VERSION,
+        revision = crw_server::build_info::REVISION,
+        build_date = crw_server::build_info::BUILD_DATE,
+        "Starting CRW on {addr}"
+    );
     tracing::info!("Renderer mode: {:?}", config.renderer.mode);
     tracing::info!(
         "Renderer render_js_default: {:?}",

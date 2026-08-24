@@ -23,10 +23,17 @@ jobs:
 
       - uses: docker/setup-qemu-action@v4
 
+      - name: Set build timestamp
+        run: echo "CRW_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build multi-arch image (no push)
         uses: docker/build-push-action@v7
         with:
           context: .
           push: false
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            CRW_VERSION=ci-${{ github.sha }}
+            CRW_REVISION=${{ github.sha }}
+            CRW_BUILD_DATE=${{ env.CRW_BUILD_DATE }}
           outputs: type=cacheonly

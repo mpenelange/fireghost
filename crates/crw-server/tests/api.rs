@@ -19,6 +19,9 @@ async fn health_endpoint_returns_ok() {
     let json: serde_json::Value = resp.json();
     assert_eq!(json["status"], "ok");
     assert!(json["version"].is_string());
+    assert!(json["package_version"].is_string());
+    assert!(json["revision"].is_string());
+    assert!(json["build_date"].is_string());
     assert!(json.get("active_crawl_jobs").is_some());
 }
 
@@ -31,6 +34,7 @@ async fn ready_endpoint_returns_renderers() {
     let json: serde_json::Value = resp.json();
     assert!(json["renderers"].is_object());
     assert!(json["status"].is_string());
+    assert!(json["revision"].is_string());
 }
 
 #[tokio::test]

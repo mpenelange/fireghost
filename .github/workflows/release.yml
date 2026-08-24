@@ -124,6 +124,9 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.release_tag }}
             type=raw,value=latest
 
+      - name: Set build timestamp
+        run: echo "CRW_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -132,6 +135,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CRW_VERSION=${{ needs.release-context.outputs.version }}
+            CRW_REVISION=${{ github.sha }}
+            CRW_BUILD_DATE=${{ env.CRW_BUILD_DATE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

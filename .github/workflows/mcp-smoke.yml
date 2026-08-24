@@ -2,8 +2,8 @@ name: MCP smoke
 
 # Brings up the full Compose stack on a runner and asserts the MCP contract the
 # README/skills document: crw /mcp (6 tools, scrape, 4-engine search cap) and
-# camofox-mcp (47 tools, bearer auth). The Camofox-backed search is best-effort
-# (real Firefox, heavy on small runners) — see scripts/mcp_smoke.py.
+# camofox-mcp (47 tools, bearer auth), then runs the hard browser-engine
+# compatibility gate. Transport timeouts and HTTP 5xx fail the workflow.
 #
 # The weekly run is deliberate: it catches upstream image drift (a moved tag, a
 # new auth requirement) that unit tests never see — exactly the class of break
@@ -18,6 +18,9 @@ on:
       - "docker-compose.yml"
       - "Dockerfile"
       - "scripts/mcp_smoke.py"
+      - "scripts/live_compatibility.py"
+      - "scripts/check_stack_lock.py"
+      - "ops/hermes-production.lock.json"
       - ".github/workflows/mcp-smoke.yml"
       - "crates/crw-server/**"
       - "crates/crw-mcp/**"
@@ -33,7 +36,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set build timestamp
+        run: echo "CRW_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Bring up the stack
+        env:
+          CRW_VERSION: 1.2.0-ci
+          CRW_REVISION: ${{ github.sha }}
         run: docker compose up -d --wait --wait-timeout 300
 
       - name: Wait for crw /health
@@ -59,6 +68,20 @@ jobs:
 
       - name: Run MCP smoke test
         run: python3 scripts/mcp_smoke.py
+
+      - name: Validate immutable stack pins
+        run: python3 scripts/check_stack_lock.py
+
+      - name: Run live browser compatibility gate
+        run: python3 scripts/live_compatibility.py --phase all --output live-compatibility.json
+
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-compatibility-${{ github.sha }}
+          path: live-compatibility.json
+          if-no-files-found: ignore
 
       - name: Dump stack logs on failure
         if: failure()

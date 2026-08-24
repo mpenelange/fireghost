@@ -1,6 +1,11 @@
 services:
   crw:
-    build: .
+    build:
+      context: .
+      args:
+        CRW_VERSION: ${CRW_VERSION:-1.2.0-local}
+        CRW_REVISION: ${CRW_REVISION:-unknown}
+        CRW_BUILD_DATE: ${CRW_BUILD_DATE:-unknown}
     ports:
       - "3000:3000"
     depends_on:
@@ -43,7 +48,7 @@ services:
   camofox:
     # Pinned (never `:latest`) so upgrades are deliberate. Base image is
     # node:22-slim (ships curl, not wget).
-    image: ghcr.io/redf0x1/camofox-browser:2.4.6
+    image: ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7
     restart: unless-stopped
     environment:
       - CAMOFOX_HOST=0.0.0.0
@@ -74,7 +79,7 @@ services:
   # CAMOFOX_HTTP_API_KEY in `.env` (`openssl rand -hex 24`) before exposing it
   # anywhere beyond your own machine.
   camofox-mcp:
-    image: ghcr.io/redf0x1/camofox-mcp:1.14.5
+    image: ghcr.io/redf0x1/camofox-mcp@sha256:2c09e699d44122cee8faa14c712ba04e43f787de3b9d80b566917c2d0587bb0a
     restart: unless-stopped
     depends_on:
       camofox:
@@ -101,7 +106,7 @@ services:
   # and without auto-restart the breaker stays open forever and every JS
   # request falls through to Camofox — defeating the lightweight tier.
   lightpanda:
-    image: lightpanda/browser:latest
+    image: lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "name": "hermes-production-2026-08-23",
+  "capturedAt": "2026-08-24T02:10:58Z",
+  "architecture": "linux/amd64",
+  "components": {
+    "hermes": {
+      "version": "0.20.5",
+      "upstreamRevision": "175054c1",
+      "localRevision": "f293e720",
+      "notes": "One carried local commit; runtime reported 83 upstream commits available at capture time."
+    },
+    "webRetrieval": {
+      "version": "v0.1.4",
+      "revision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca"
+    },
+    "router": {
+      "image": "web-retrieval-router:dev",
+      "imageId": "sha256:2e663609d96f87083d9357b499fc3c7b5c16999d61e10ed6969344dc81a2eb01",
+      "sourceRevision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca",
+      "provenance": "inferred from clean v0.1.4 build context; running image has no revision label"
+    },
+    "crw": {
+      "version": "1.2.0-fw.2",
+      "image": "git.firewire.cc/michael/crw-camofox@sha256:4fad4ddaf96fce435dc612c112f2bb7efb68e7b390c83eeea8b3bf2608a6dd8b",
+      "imageId": "sha256:e70d5755e25c8b0d0c7fa6d54c71a785051fe0275a6da198c216164a3aad0fb4",
+      "expectedSourceRevision": "2ca517bd06da3731fa4f22fca7c0a8d060b1bf68",
+      "provenance": "registry digest is authoritative; legacy image has no revision label"
+    },
+    "camofox": {
+      "version": "2.4.6",
+      "image": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+      "imageId": "sha256:f37f6f7c8b57c3ddbddf4dcfbbd24575053754991fad9f83c01c592e73dbccf8",
+      "node": "22.22.3",
+      "camoufoxJs": "0.8.5",
+      "playwrightCore": "1.58.1",
+      "browserEngine": "Camoufox/Firefox 135.0.1-beta.24"
+    },
+    "lightpanda": {
+      "image": "lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+      "imageId": "sha256:8ccc412117d5b429447262218734767006e8e04ae9760ad58ed263e333b783ff",
+      "created": "2026-08-13T03:13:26.752103783Z",
+      "version": null,
+      "provenance": "image publishes no semantic version or OCI labels; digest is authoritative"
+    },
+    "camofoxMcp": {
+      "deployed": false,
+      "notes": "Development Compose includes it, but it is not part of the Hermes production retrieval path."
+    }
+  }
+}
