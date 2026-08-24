@@ -26,10 +26,10 @@ The router executes at most 64 unique cacheable requests concurrently by default
 Inbound request headers and bodies must be read within `ROUTER_SERVER_READ_TIMEOUT`, which defaults to `30s` and must be positive. `ROUTER_HTTP_TIMEOUT` separately bounds each upstream request; the server write deadline includes additional time to return that bounded result.
 
 ```sh
-docker compose --project-directory deploy -f deploy/compose.yaml config --quiet
-docker compose --project-directory deploy -f deploy/compose.yaml up -d --build
-docker compose --project-directory deploy -f deploy/compose.yaml ps
-./scripts/smoke-test.sh
+make compose-config
+make up
+make ps
+make smoke
 ```
 
 Do not publish CRW, renderer, or MCP ports. The supported host endpoint is `http://127.0.0.1:33000`.
@@ -42,9 +42,9 @@ Configure Hermes's Firecrawl base URL as `http://127.0.0.1:33000` and its API ke
 
 ```sh
 make test
-make fmt vet race
+make check
 make compose-config
-make build
+make build-images
 make live-contract
 ```
 

@@ -25,4 +25,4 @@ docker run --rm \
     find /target/source /target/profiles -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
     tar -xzf "/backup/$1" -C /target
   ' sh "$archive_name"
-printf '%s\n' "restore complete; run: docker compose --project-directory deploy -f deploy/compose.yaml up -d"
+printf '%s\n' "restore complete; run: make up"
