@@ -1,0 +1,148 @@
+{
+  "$schema": "Single source of truth for FAQ blocks injected into docs/{slug}/index.html. Visible Q/A MUST stay byte-identical to JSON-LD name/acceptedAnswer.text — see .claude/rules/geo-metadata.md rule 4. Edit this file, then run: node docs/scripts/build-faq.mjs",
+  "entries": [
+    {
+      "slug": "scraping",
+      "faqs": [
+        {
+          "q": "Why does scrape return empty HTML or markdown for JavaScript-heavy pages?",
+          "a": "By default CRW leaves renderJs at null, which keeps the request HTTP-only and skips the browser. Pages that paint their main content from JavaScript will look empty in that mode. Set renderJs:true (or pin renderer:lightpanda or renderer:chrome) to run the page through a headless browser before conversion."
+        },
+        {
+          "q": "When should I use renderer:lightpanda versus renderer:chrome?",
+          "a": "LightPanda is the fast, lightweight CDP renderer and is the right pick for static-JS sites that just need a quick paint. Chrome is heavier but handles Cloudflare-protected SPAs and pages that LightPanda cannot render correctly. Pinning a non-auto renderer hard-pins the request — there is no fallback if that renderer fails."
+        },
+        {
+          "q": "What does the waitFor parameter actually do?",
+          "a": "waitFor is the number of milliseconds CRW waits after JavaScript rendering finishes before snapshotting the DOM. It only takes effect when JS rendering is on. Use it for pages that fetch content asynchronously after first paint; leave it unset for static or HTTP-only requests."
+        },
+        {
+          "q": "Why is the actions field rejected with an error?",
+          "a": "CRW does not implement Firecrawl's actions DSL (click, scroll, type). Sending an actions payload returns a clear error rather than silently ignoring it. Use cssSelector or xpath to narrow extraction, or run JS rendering with waitFor for async content."
+        }
+      ]
+    },
+    {
+      "slug": "crawling",
+      "faqs": [
+        {
+          "q": "How do crawl job IDs work in CRW?",
+          "a": "POST /v1/crawl returns an id immediately and runs the job asynchronously. You then call GET /v1/crawl/{id} to read status (scraping, completed, or failed), totals, and the data array of completed pages. DELETE /v1/crawl/{id} cancels a running job."
+        },
+        {
+          "q": "What is the default maxPages limit on a crawl?",
+          "a": "maxPages defaults to 100 and maxDepth defaults to 2. limit and max_pages are accepted as aliases for maxPages. On first contact with a new site, drop these much lower (the docs recommend maxPages:5, maxDepth:1) so a misconfigured selector or scope does not waste credits."
+        },
+        {
+          "q": "How often should I poll a crawl job?",
+          "a": "Poll with backoff rather than hammering the same crawl id; the docs explicitly call out aggressive polling as a common mistake. Each poll only charges credits for newly materialized pages since the previous poll, so polling itself is cheap, but tight loops still load the server unnecessarily."
+        },
+        {
+          "q": "Does CRW crawl follow links across subdomains?",
+          "a": "No — CRW crawl stays within the same origin and is meant to be a bounded, respectful site job, not an open-ended spider. If you need broader discovery first, run /v1/map to enumerate URLs and then crawl the subset you actually want."
+        }
+      ]
+    },
+    {
+      "slug": "extract",
+      "faqs": [
+        {
+          "q": "Is /v1/extract a separate endpoint?",
+          "a": "No. In CRW, extraction is a mode of /v1/scrape: send formats:[\"json\"] and a jsonSchema describing the fields you want back. The response lands in data.json. This keeps one HTTP shape for both markdown and structured output."
+        },
+        {
+          "q": "How do I bring my own LLM key for extraction (BYOK)?",
+          "a": "Set llmApiKey in the request body alongside llmProvider (anthropic or openai) and optionally llmModel. The key is used only for that request and is not persisted. If you omit llmApiKey, CRW falls back to the server's [extraction.llm] config."
+        },
+        {
+          "q": "What does an extraction request cost in credits?",
+          "a": "Extraction runs through /v1/scrape, so the hosted billing rule is one credit per request (cloud only — self-hosted has no credit billing). LLM token usage for the extraction model is billed separately by your provider when you use BYOK."
+        },
+        {
+          "q": "Can I use Firecrawl's extract.schema wrapper instead of jsonSchema?",
+          "a": "Yes. CRW accepts an extract object as a Firecrawl-compatible alias and reads extract.schema as the schema. You can keep existing Firecrawl payloads unchanged when migrating."
+        }
+      ]
+    },
+    {
+      "slug": "map",
+      "faqs": [
+        {
+          "q": "How is /v1/map different from /v1/crawl?",
+          "a": "Map discovers URLs only — the response is data.links, a list of reachable URLs, with no page bodies. Crawl actually fetches and converts each page. Run map first when you want to inspect a site's shape cheaply before paying for a multi-page crawl."
+        },
+        {
+          "q": "What is the default maxDepth for map?",
+          "a": "maxDepth defaults to 2. The recommended first request keeps it at 1 with useSitemap:true so you get a cheap, focused view of the site's top-level structure before deciding what is worth crawling."
+        },
+        {
+          "q": "Does map use the site's sitemap.xml?",
+          "a": "Yes — useSitemap defaults to true, which makes the first discovery pass faster and more complete on structured sites. Set useSitemap:false if you specifically want pure link-following without sitemap hints."
+        }
+      ]
+    },
+    {
+      "slug": "search",
+      "faqs": [
+        {
+          "q": "What search backend does /v1/search use?",
+          "a": "Self-hosted CRW boots a bundled SearXNG sidecar via docker compose, so /v1/search works on http://localhost:3000 with no third-party API key. To point at an existing SearXNG instance, set CRW_SEARCH__SEARXNG_URL; to disable search entirely, set [search].enabled = false (the route then returns HTTP 503 with errorCode search_disabled)."
+        },
+        {
+          "q": "What fields come back in each search result?",
+          "a": "Each row carries title, url, description, snippet, position, score, and category. snippet is the LLM-ready summary line (Firecrawl-compatible name); the same text is also emitted under the SearXNG-native field so existing clients keep working."
+        },
+        {
+          "q": "How are search results ranked?",
+          "a": "Results are returned in SearXNG's aggregated ranking order, with position starting at 1 for the top hit and score reflecting the upstream relevance signal. Use position for stable ordering rather than score, which depends on the upstream engines SearXNG queried."
+        },
+        {
+          "q": "Can search fetch the page content for each result in one call?",
+          "a": "Yes. Add scrapeOptions (for example scrapeOptions:{formats:[\"markdown\"]}) to the search payload and CRW scrapes each result inline. On the hosted plan this costs one credit for the search plus one credit per successfully scraped result; failed scrapes are refunded."
+        }
+      ]
+    },
+    {
+      "slug": "quick-start",
+      "faqs": [
+        {
+          "q": "Should I use the hosted API or self-host CRW?",
+          "a": "The hosted API at https://api.fastcrw.com is the fastest path to a first successful response — sign up at fastcrw.com/register for an API key and 500 free credits. Self-hosting on http://localhost:3000 needs no auth header by default and is the right choice when you want full control of data flow or want to skip credit billing."
+        },
+        {
+          "q": "Where do I get an API key?",
+          "a": "Create an account at https://fastcrw.com/register and the key appears in your dashboard. Send it as Authorization: Bearer YOUR_API_KEY on every hosted request. Self-hosted instances only require this header when auth.api_keys is explicitly configured."
+        },
+        {
+          "q": "Which endpoint should I call first?",
+          "a": "Start with POST /v1/scrape against a known URL with formats:[\"markdown\"] and onlyMainContent:true. That is the smallest possible request that exercises auth, the response envelope, and content conversion in one shot — once that returns clean markdown, layer in JS rendering, schemas, or crawl jobs."
+        },
+        {
+          "q": "Do I need to install an SDK to call CRW?",
+          "a": "No. CRW is HTTP-first, so cURL, fetch, or requests is enough. There is no required dedicated SDK package — examples in the docs use raw HTTP clients so the exact wire payload stays visible."
+        }
+      ]
+    },
+    {
+      "slug": "sdk-examples",
+      "faqs": [
+        {
+          "q": "Is there an official CRW Python or TypeScript SDK?",
+          "a": "No. CRW is HTTP-first and the documented examples use raw clients — requests in Python, fetch in TypeScript, net/http in Go. A typed Python package is published at pypi.org/project/crw, but the docs intentionally stay close to raw HTTP so the exact wire payload remains visible."
+        },
+        {
+          "q": "Can I reuse my existing Firecrawl client to call CRW?",
+          "a": "Yes for the request shapes that CRW implements (scrape, crawl, map, search, and scrape-mode extract). The endpoints are Firecrawl-compatible at the HTTP level. Features Firecrawl has that CRW does not — like the actions DSL — are rejected with a clear error rather than silently ignored."
+        },
+        {
+          "q": "Which languages are shown in the SDK examples page?",
+          "a": "TypeScript, Python, and Go, covering scrape, search, search-plus-scrape, and the crawl polling pattern. Any HTTP client in any language works — the examples are deliberately thin so you can port them directly into a backend service or queue worker."
+        },
+        {
+          "q": "Why do the examples not hide retries and rate-limit handling?",
+          "a": "Operational clarity. The docs flag two common mistakes: treating response.ok as the full success signal (you still need to inspect warning and metadata.statusCode) and hardcoding retry timing instead of reading the Retry-After header. Raw HTTP keeps those signals visible; a thick SDK tends to hide them."
+        }
+      ]
+    }
+  ]
+}

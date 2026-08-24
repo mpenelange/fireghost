@@ -1,0 +1,42 @@
+[package]
+name = "crw-crawl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Async BFS web crawler with rate limiting and robots.txt support for CRW"
+
+[dependencies]
+crw-core = { workspace = true }
+crw-diff = { workspace = true }
+crw-renderer = { workspace = true }
+crw-extract = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+scraper = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+dashmap = { workspace = true }
+rand = { workspace = true }
+flate2 = "1"
+phf = { workspace = true }
+publicsuffix = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# Sandbox child rlimits (RLIMIT_AS / RLIMIT_CPU) via pre_exec.
+libc = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "map_url_filter"
+harness = false

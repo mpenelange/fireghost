@@ -1,0 +1,167 @@
+# Configuration
+
+Configuration is loaded in layers: **defaults → config file → environment variables**.
+
+## Config files
+
+crw looks for configuration in this order:
+
+1. `config.default.toml` (embedded defaults)
+2. `config.local.toml` in the working directory
+3. File specified by `CRW_CONFIG` environment variable
+
+## Full reference
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 3000
+request_timeout_secs = 120
+rate_limit_rps = 10              # Max requests/second (global). 0 = unlimited.
+
+[renderer]
+mode = "auto"               # auto | lightpanda | playwright | chrome | camofox | none
+page_timeout_ms = 30000
+pool_size = 4
+# render_js_default = true  # alias: force_js = true
+                            # forces JS rendering when a request omits `renderJs`
+
+[renderer.lightpanda]
+ws_url = "ws://127.0.0.1:9222/"
+
+# [renderer.playwright]
+# ws_url = "ws://playwright:9222"
+
+# [renderer.chrome]
+# ws_url = "ws://chrome:9222"
+
+# Residential proxy tier (opt-in 4th renderer). When base credentials are set
+# AND a chrome_proxy ws_url is configured, the engine adds a chrome_proxy tier
+# to the fallback chain (after lightpanda → chrome). Country is selected per
+# request via the `country` field on the scrape body; see JS rendering docs.
+# proxy_base_user = ""              # base username, WITHOUT __cr.<cc> suffix
+# proxy_base_pass = ""
+# proxy_default_country = "us"      # 2-letter ISO 3166-1 alpha-2, lowercase
+
+# [renderer.chrome_proxy]
+# ws_url = "ws://chrome-proxy:9222"
+
+# Camofox (camofox-browser REST) — the Firefox/Camoufox anti-detect tier. Not a
+# CDP endpoint: base_url is the camofox-browser HTTP server. In `auto` mode it
+# takes Chrome's ladder slot (after LightPanda). When set, it also backs
+# /v1/search (browser-driven Google) in preference to SearXNG.
+# [renderer.camofox]
+# base_url = "http://127.0.0.1:9377"
+# api_key = "..."                 # only if the camofox server runs with auth
+
+[search]
+enabled = true
+timeout_ms = 15000
+default_limit = 5
+max_limit = 20
+# searxng_url = "http://localhost:8080"   # opt-in backend; Camofox takes precedence when both are set
+# Personal-access token for the `github` search engine (Camofox backend). That
+# engine uses the GitHub REST Search API; a token lifts the limit to 30 req/min.
+# Prefer the CRW_SEARCH__GITHUB_TOKEN env var over committing a token here.
+# github_token = "ghp_..."
+
+[crawler]
+max_concurrency = 10
+requests_per_second = 10.0
+respect_robots_txt = true
+user_agent = "CRW/0.0.1"
+default_max_depth = 2
+default_max_pages = 100
+job_ttl_secs = 3600
+# proxy = "http://proxy:8080"                 # HTTP proxy
+# proxy = "socks5://user:pass@proxy:1080"     # SOCKS5 proxy (also supports http://, https://)
+# stealth = false               # inject browser-like headers + rotate UA globally
+
+[extraction]
+default_format = "markdown"
+only_main_content = true
+
+[extraction.llm]
+provider = "anthropic"       # "anthropic", "openai", "azure", or "openai-compatible"
+api_key = ""
+model = "claude-sonnet-4-20250514"
+max_tokens = 4096
+max_html_bytes = 100000      # content fed to LLM is truncated at this byte count
+max_concurrency = 4          # bounded fan-out for per-result summaries in /v1/search
+# base_url = ""              # for OpenAI-compatible endpoints (DeepSeek, Azure, Ollama, …)
+# require_byok_header = ""   # tenant guard: reject LLM requests missing this header AND without llmApiKey
+
+[auth]
+# api_keys = ["fc-key-1234"]
+```
+
+## Stealth mode
+
+Enable globally to make CRW look like a real browser on every HTTP request:
+
+```toml
+[crawler]
+stealth = true
+```
+
+When enabled:
+- User-Agent is rotated from a built-in pool of Chrome 131, Firefox 133, and Safari 18 strings
+- 12 browser-like headers are injected: `Accept`, `Accept-Language`, `Accept-Encoding`, `Sec-Ch-Ua`, `Sec-Ch-Ua-Mobile`, `Sec-Ch-Ua-Platform`, `Sec-Fetch-Dest`, `Sec-Fetch-Mode`, `Sec-Fetch-Site`, `Sec-Fetch-User`, `Priority`, `Upgrade-Insecure-Requests`
+
+Override per-request by setting `stealth: true/false` in the scrape payload.
+
+## Environment variables
+
+Use the `CRW_` prefix with `__` as a nesting separator:
+
+| Config | Environment Variable |
+|--------|---------------------|
+| `server.port` | `CRW_SERVER__PORT` |
+| `server.host` | `CRW_SERVER__HOST` |
+| `renderer.mode` | `CRW_RENDERER__MODE` |
+| `renderer.render_js_default` | `CRW_RENDERER__RENDER_JS_DEFAULT` (alias: `CRW_RENDERER__FORCE_JS`) |
+| `crawler.max_concurrency` | `CRW_CRAWLER__MAX_CONCURRENCY` |
+| `crawler.requests_per_second` | `CRW_CRAWLER__REQUESTS_PER_SECOND` |
+| `server.rate_limit_rps` | `CRW_SERVER__RATE_LIMIT_RPS` |
+| `crawler.stealth` | `CRW_CRAWLER__STEALTH` |
+| `crawler.proxy` | `CRW_CRAWLER__PROXY` |
+| `renderer.proxy_base_user` | `CRW_RENDERER__PROXY_BASE_USER` |
+| `renderer.proxy_base_pass` | `CRW_RENDERER__PROXY_BASE_PASS` |
+| `renderer.proxy_default_country` | `CRW_RENDERER__PROXY_DEFAULT_COUNTRY` |
+| `renderer.camofox.base_url` | `CRW_RENDERER__CAMOFOX__BASE_URL` |
+| `renderer.camofox.api_key` | `CRW_RENDERER__CAMOFOX__API_KEY` |
+| `search.searxng_url` | `CRW_SEARCH__SEARXNG_URL` |
+| `search.github_token` | `CRW_SEARCH__GITHUB_TOKEN` |
+| `extraction.llm.api_key` | `CRW_EXTRACTION__LLM__API_KEY` |
+| `extraction.llm.provider` | `CRW_EXTRACTION__LLM__PROVIDER` |
+| `extraction.llm.model` | `CRW_EXTRACTION__LLM__MODEL` |
+| `extraction.llm.base_url` | `CRW_EXTRACTION__LLM__BASE_URL` |
+| `extraction.llm.max_html_bytes` | `CRW_EXTRACTION__LLM__MAX_HTML_BYTES` |
+| `extraction.llm.max_concurrency` | `CRW_EXTRACTION__LLM__MAX_CONCURRENCY` |
+| `extraction.llm.require_byok_header` | `CRW_EXTRACTION__LLM__REQUIRE_BYOK_HEADER` |
+| _(boot guard)_ | `CRW_DISABLE_SERVER_LLM_KEY` — when set to `1`, refuses to boot if `[extraction.llm].api_key` is also configured. Use behind a SaaS BYOK proxy. |
+
+## Renderer modes
+
+| Mode | Description |
+|------|-------------|
+| `auto` | HTTP first, auto-detect SPAs, CDP fallback |
+| `lightpanda` | Always use LightPanda via CDP |
+| `playwright` | Always use Playwright via CDP |
+| `chrome` | Always use Chrome via CDP |
+| `camofox` | Always use Camofox (camofox-browser REST — the Firefox/Camoufox anti-detect tier) |
+| `none` | HTTP only, no JS rendering |
+
+The server `mode` controls **availability** of renderers in the pool. Per-request `renderer` selects from what's available — see [JS rendering](#js-rendering). A request that pins an unavailable renderer returns HTTP 400 with the configured pool listed.
+
+## Docker configuration
+
+For Docker deployments, use `config.docker.toml` or environment variables:
+
+```bash
+docker run -p 3000:3000 \
+  -e CRW_SERVER__PORT=3000 \
+  -e CRW_RENDERER__MODE=lightpanda \
+  -e CRW_EXTRACTION__LLM__API_KEY=sk-... \
+  ghcr.io/adambenhassen/crw-camofox:latest
+```

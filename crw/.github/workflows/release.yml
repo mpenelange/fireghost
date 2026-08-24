@@ -1,0 +1,173 @@
+name: Release
+
+# This fork distributes only as a multi-arch Docker image on GHCR. On a version
+# tag (or manual recovery via workflow_dispatch) it runs the pre-publish checks
+# and builds + pushes ghcr.io/<owner>/<repo>. Upstream's crates.io / npm / PyPI /
+# APT / Homebrew publishing is intentionally not part of this fork.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.6.1). Required for manual recovery runs."
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-context:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.ctx.outputs.release_tag }}
+      version: ${{ steps.ctx.outputs.version }}
+      source_ref: ${{ steps.ctx.outputs.source_ref }}
+    steps:
+      - id: ctx
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+            [ -n "$tag" ] || { echo "::error::workflow_dispatch requires tag input"; exit 1; }
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            echo "::error::release.yml only runs on tag push or workflow_dispatch with tag"
+            exit 1
+          fi
+          echo "$tag" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::tag '$tag' is not semver"; exit 1; }
+          version="${tag#v}"
+          {
+            echo "release_tag=$tag"
+            echo "version=$version"
+            echo "source_ref=$tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::release context: tag=$tag version=$version"
+
+  check:
+    needs: release-context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+  publish-docker:
+    needs: [release-context, check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-context.outputs.release_tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.release_tag }}
+            type=raw,value=latest
+
+      - name: Set build timestamp
+        run: echo "CRW_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CRW_VERSION=${{ needs.release-context.outputs.version }}
+            CRW_REVISION=${{ github.sha }}
+            CRW_BUILD_DATE=${{ env.CRW_BUILD_DATE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish-release:
+    needs: [release-context, publish-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-context.outputs.release_tag }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Notes = this version's CHANGELOG.md section + a Docker-pull footer.
+          # CHANGELOG.md is the single source of truth, so a re-run regenerates
+          # identical notes and never clobbers curated text (edit curation in
+          # CHANGELOG.md, not the release page).
+          python3 scripts/release/render_release_notes.py "$VERSION" "${{ github.repository }}" > notes.md
+          # Idempotent: create on first run, refresh notes on a re-run.
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file notes.md
+          else
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "$TAG" --notes-file notes.md
+          fi

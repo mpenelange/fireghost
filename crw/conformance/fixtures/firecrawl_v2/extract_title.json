@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "status": "completed",
+    "data": {
+      "title": "Example Domain"
+    },
+    "expiresAt": "2026-06-03T21:15:12.000Z",
+    "creditsUsed": 21,
+    "tokensUsed": 313
+  }
+}

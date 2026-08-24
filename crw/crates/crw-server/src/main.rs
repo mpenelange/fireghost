@@ -1,0 +1,240 @@
+use clap::{Parser, Subcommand};
+use crw_core::config::AppConfig;
+use crw_server::state::AppState;
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+#[command(
+    name = "crw-server",
+    about = "CRW web scraper API server",
+    version = crw_server::build_info::VERSION
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Download LightPanda and create a local config for JS rendering
+    Setup,
+    /// Print the artifact version, source revision, and build date
+    Version,
+}
+
+#[tokio::main]
+async fn main() {
+    // If spawned as a PDF sandbox worker, handle it and exit BEFORE clap parses
+    // args (the worker sentinel is not a valid subcommand).
+    crw_crawl::pdf::run_sandbox_worker_if_invoked();
+
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Setup) => {
+            crw_server::setup::run_setup().await;
+        }
+        Some(Commands::Version) => {
+            println!("{}", crw_server::build_info::display());
+        }
+        None => {
+            run_server().await;
+        }
+    }
+}
+
+async fn run_server() {
+    // Initialize tracing.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
+    // Eagerly register Prometheus metrics so alert rules see present series at boot.
+    crw_core::metrics::init();
+
+    // Load configuration.
+    let config = match AppConfig::load() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to load configuration: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Install process-wide PDF-parse limits (concurrency cap, timeout, page
+    // cap) from [document] config before any request can trigger a parse.
+    crw_crawl::pdf::configure_limits(&config.document);
+
+    // Bound concurrent HTML extraction (html5ever + htmd). Extraction is moved
+    // off the async reactor onto the blocking pool; this semaphore caps its
+    // parallelism so a burst of concurrent scrapes can't oversubscribe the
+    // cores and stall the runtime. The tokio runtime builder is left at its
+    // defaults — this is the real capacity bound.
+    crw_crawl::extract_pool::configure_extract_limit(config.extraction.max_concurrent_extracts);
+
+    let addr = format!("{}:{}", config.server.host, config.server.port);
+    tracing::info!(
+        version = crw_server::build_info::VERSION,
+        package_version = crw_server::build_info::PACKAGE_VERSION,
+        revision = crw_server::build_info::REVISION,
+        build_date = crw_server::build_info::BUILD_DATE,
+        "Starting CRW on {addr}"
+    );
+    tracing::info!("Renderer mode: {:?}", config.renderer.mode);
+    tracing::info!(
+        "Renderer render_js_default: {:?}",
+        config.renderer.render_js_default
+    );
+    if let Some(lp) = &config.renderer.lightpanda {
+        tracing::info!("Lightpanda CDP: {}", lp.ws_url);
+    }
+    if let Some(ch) = &config.renderer.chrome {
+        tracing::info!("Chrome CDP: {}", ch.ws_url);
+    }
+    if std::env::var("CRW_CDP_URL").is_ok() {
+        tracing::warn!(
+            "CRW_CDP_URL is set but is only honored by `crw` (CLI). \
+             In server/MCP mode use [renderer.lightpanda.ws_url] / [renderer.chrome.ws_url] \
+             or CRW_RENDERER__LIGHTPANDA__WS_URL / CRW_RENDERER__CHROME__WS_URL."
+        );
+    }
+
+    if config.extraction.llm.is_some() {
+        tracing::info!("LLM structured extraction: enabled");
+    }
+
+    // Issue #90: make the search subsystem's configured state visible at boot.
+    // Three states (disabled / enabled-but-unconfigured / enabled) otherwise
+    // collapse to a single request-time error. The host is origin-sanitized so
+    // a credentialed camofox endpoint never reaches the logs.
+    let (search_level, search_msg) = crw_server::diagnostics::search_startup_status(
+        &config.search,
+        config
+            .renderer
+            .camofox
+            .as_ref()
+            .map(|c| c.base_url.as_str()),
+    );
+    match search_level {
+        tracing::Level::WARN => tracing::warn!("{search_msg}"),
+        _ => tracing::info!("{search_msg}"),
+    }
+
+    // Boot guard: when SaaS fronts opencore it sets `CRW_DISABLE_SERVER_LLM_KEY=1`
+    // to prevent the most common ops mistake — leaving a server-wide key
+    // configured behind the SaaS, which would leak the org's key to every
+    // user. Refuse to boot if both are set.
+    let disable_server_key = std::env::var("CRW_DISABLE_SERVER_LLM_KEY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if disable_server_key
+        && config
+            .extraction
+            .llm
+            .as_ref()
+            .is_some_and(|c| !c.api_key.is_empty())
+    {
+        tracing::error!(
+            "CRW_DISABLE_SERVER_LLM_KEY=1 but [extraction.llm].api_key is also configured. \
+             This is forbidden in SaaS-fronted deploys (refusing to boot)."
+        );
+        std::process::exit(1);
+    }
+
+    let state = match AppState::new(config) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to build application state: {e}");
+            std::process::exit(1);
+        }
+    };
+    tracing::info!(
+        "JS renderers in fallback order: {:?}",
+        state.renderer.js_renderer_names()
+    );
+    if state.renderer.js_renderer_names().is_empty() {
+        tracing::warn!("No CDP renderer active — JS rendering disabled");
+    }
+
+    // Issue #35 transparency: when auto-extension widens the implicit deadline
+    // beyond the operator's `deadline_ms_default`, log the effective values so
+    // operators can correlate "request took longer than my SLO" against the
+    // ladder budget instead of suspecting a bug.
+    let baseline_default_ms = state.config.request.deadline_ms_default;
+    let ladder_min_ms = state.config.renderer.min_deadline_for_full_ladder_ms();
+    let effective_default_ms = state.config.effective_deadline_ms(None, None);
+    let baseline_outer_secs = state.config.server.request_timeout_secs;
+    let effective_outer_secs = state.config.effective_request_timeout_secs();
+    if state.config.request.auto_extend_deadline_for_ladder
+        && effective_default_ms > baseline_default_ms
+    {
+        tracing::info!(
+            deadline_ms_default = baseline_default_ms,
+            ladder_min_ms,
+            effective_default_ms,
+            outer_timeout_secs_baseline = baseline_outer_secs,
+            outer_timeout_secs_effective = effective_outer_secs,
+            "request.auto_extend_deadline_for_ladder is on; default request \
+             deadline auto-raised so the configured renderer ladder \
+             (http+lightpanda+chrome+overhead) can run uncrushed. Set \
+             request.auto_extend_deadline_for_ladder = false to enforce the \
+             baseline cap."
+        );
+    }
+
+    // Capture handles before `state` is consumed by `create_app` so we can
+    // drain the chrome browser-context pool after the HTTP server quiesces.
+    let renderer = std::sync::Arc::clone(&state.renderer);
+    let pool_drain =
+        std::time::Duration::from_secs(state.config.renderer.chrome_pool.shutdown_drain_secs);
+
+    let app = crw_server::app::create_app(state);
+
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to bind to {addr}: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    tracing::info!("CRW ready at http://{addr}");
+
+    let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+
+    if let Err(e) = server.await {
+        tracing::error!("Server error: {e}");
+        std::process::exit(1);
+    }
+
+    // HTTP layer is quiesced; now drain the chrome pool (no-op when disabled).
+    renderer.shutdown_chrome_pool(pool_drain).await;
+
+    tracing::info!("Server shut down gracefully");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Received Ctrl+C, shutting down..."),
+        _ = terminate => tracing::info!("Received SIGTERM, shutting down..."),
+    }
+}

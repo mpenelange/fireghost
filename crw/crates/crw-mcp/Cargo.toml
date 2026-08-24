@@ -1,0 +1,35 @@
+[package]
+name = "crw-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "MCP (Model Context Protocol) server for the CRW web scraper"
+
+[[bin]]
+name = "crw-mcp"
+path = "src/main.rs"
+
+[features]
+default = ["embedded"]
+# Embedded mode pulls in the full scraping engine AND the headless-browser
+# auto-spawn (crw-renderer). A `--no-default-features` build is a lean proxy-only
+# binary that excludes both — much smaller and lower-RAM (no Chromium/CDP code).
+embedded = ["dep:crw-server", "dep:crw-renderer", "crw-renderer/auto-browser"]
+
+[dependencies]
+crw-core = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+base64 = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+
+# Embedded mode: pulls in the full scraping engine + headless-browser auto-spawn.
+crw-renderer = { workspace = true, optional = true, features = ["auto-browser"] }
+crw-server = { workspace = true, optional = true, features = ["cdp"] }

@@ -1,0 +1,18 @@
+/target
+.claude
+PROGRESS.md
+.gstack/
+bench/server-runs/
+bench/results.json
+**/__pycache__/
+.DS_Store
+node_modules/
+package-lock.json
+docker-compose.override.yml
+config.local.toml
+.env
+core.*
+
+# Service-account / API-key files (never commit)
+bench/secrets/
+*-service-account*.json

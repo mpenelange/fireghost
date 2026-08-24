@@ -1,0 +1,77 @@
+[package]
+name = "crw-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "crw — Unified CLI for web scraping, crawling, search, and serving"
+
+[[bin]]
+name = "crw"
+path = "src/main.rs"
+
+[features]
+default = ["serve", "mcp-embedded"]
+
+# Enable serve subcommand (REST API server)
+serve = ["dep:axum", "dep:tower", "dep:tower-http"]
+
+# Enable embedded MCP mode (self-contained, no server needed)
+mcp-embedded = ["dep:crw-server"]
+
+[dependencies]
+# Core crates
+crw-core = { workspace = true }
+crw-renderer = { workspace = true, features = ["auto-browser", "cdp"] }
+crw-extract = { workspace = true }
+crw-crawl = { workspace = true }
+crw-search = { workspace = true }
+
+# Server (for serve + mcp-embedded + setup commands)
+crw-server = { workspace = true, optional = true, features = ["cdp"] }
+
+# Web framework (for serve command)
+axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+
+# Async runtime
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+# Base64 decode for crw_parse_file proxy forwarding (multipart upload)
+base64 = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# UUID (for crawl job IDs)
+uuid = { workspace = true }
+
+# Interactive setup wizard
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+console = "0.15"
+indicatif = "0.17"
+
+# Crypto (for checksum verification)
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+# SearXNG settings file (random secret_key)
+rand = { workspace = true }
+
+# User config (~/.config/crw/config.toml) written by setup wizard
+toml = { workspace = true }

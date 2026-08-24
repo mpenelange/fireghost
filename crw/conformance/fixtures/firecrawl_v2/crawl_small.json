@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "status": "completed",
+    "total": 3,
+    "completed": 3,
+    "creditsUsed": 3,
+    "expiresAt": "2026-06-04T15:15:34.000Z",
+    "next": null,
+    "data": [
+      {
+        "markdown": "# Example Domain",
+        "metadata": {
+          "title": "Example Domain",
+          "sourceURL": "https://example.com",
+          "url": "https://example.com",
+          "statusCode": 200,
+          "contentType": "text/html",
+          "proxyUsed": "basic",
+          "cacheState": "miss",
+          "creditsUsed": 1,
+          "scrapeId": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    ]
+  }
+}

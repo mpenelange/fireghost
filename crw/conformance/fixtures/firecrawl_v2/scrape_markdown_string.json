@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "data": {
+      "markdown": "# Example Domain\n\nThis domain is for use in documentation examples.",
+      "metadata": {
+        "title": "Example Domain",
+        "sourceURL": "https://example.com",
+        "url": "https://example.com",
+        "statusCode": 200,
+        "contentType": "text/html",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "creditsUsed": 1,
+        "scrapeId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}

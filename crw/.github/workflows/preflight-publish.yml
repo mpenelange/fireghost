@@ -1,0 +1,62 @@
+name: Preflight Publish
+
+# PR-time guard: catches publish-breaking changes (workspace classification
+# drift, version-surface mismatches, default-feature graph pulling unpublished
+# crates, stale release-please-config jsonpath entries) BEFORE a tag is cut.
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/*/Cargo.toml"
+      - "release-please-config.json"
+      - ".release-please-manifest.json"
+      - "scripts/release/release_manifest.toml"
+      - "scripts/release/preflight.py"
+      - "scripts/release/audit_release_please_config.py"
+      - "scripts/release/test_guards.py"
+      - "scripts/check-internal-dep-versions.sh"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache-proof internal-pin invariant. Runs here too (not just ci.yml) so
+      # that once the release-please bump PR triggers this workflow (via the
+      # elevated token in release-please.yml) the full guard set gates the merge.
+      - name: Internal dependency versions match workspace version
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check-internal-dep-versions.sh
+
+      - name: Run preflight (workspace + version surfaces)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/preflight.py
+
+      - name: Audit release-please-config extra-files
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/audit_release_please_config.py
+
+      - name: Guard regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/test_guards.py

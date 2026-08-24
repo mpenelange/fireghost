@@ -1,0 +1,116 @@
+services:
+  crw:
+    build:
+      context: .
+      args:
+        CRW_VERSION: ${CRW_VERSION:-1.2.0-local}
+        CRW_REVISION: ${CRW_REVISION:-unknown}
+        CRW_BUILD_DATE: ${CRW_BUILD_DATE:-unknown}
+    ports:
+      - "3000:3000"
+    depends_on:
+      lightpanda:
+        condition: service_started
+      # Camofox (Firefox/Camoufox via camofox-browser REST) — the heavy/stealth
+      # JS tier and the `/v1/search` backend. Wait for healthy so the first
+      # render/search after `compose up` doesn't race the browser cold start.
+      camofox:
+        condition: service_healthy
+    environment:
+      - RUST_LOG=info
+      - CRW_CONFIG=config.docker
+    volumes:
+      - ./config.docker.toml:/app/config.docker.toml:ro
+    # Host protection for untrusted PDF/scrape input.
+    # With config.docker.toml `[document] sandbox = true`, each parse runs in a
+    # child with its own RLIMIT_AS.
+    pids_limit: 512            # bound fork-bombs / runaway worker spawning
+    read_only: true            # immutable root FS; nothing the parser can drop survives
+    tmpfs:
+      - /tmp                   # the only writable scratch (sandbox children, if any)
+    cap_drop:
+      - ALL                    # engine needs no Linux capabilities
+    security_opt:
+      - no-new-privileges:true # a child can never gain privileges via setuid
+
+  # Heavy/stealth JS renderer + `/v1/search` backend. Camofox wraps the
+  # Camoufox (Firefox) anti-detect browser behind a REST API on :9377. It is
+  # the heavy tier in the default ladder — LightPanda handles the light cases,
+  # Camoufox the heavy SPA / anti-bot ones. Firefox is heavier than LightPanda.
+  #
+  # CAMOFOX_HOST=0.0.0.0 is required so the server is reachable over the docker
+  # bridge as `camofox:9377` (it binds loopback otherwise). The port is NOT
+  # published to the host, so the server is only reachable from other compose
+  # services — hence AUTH_MODE=disabled by default (a non-loopback bind under
+  # the `auto` policy would otherwise refuse to start without an API key). To
+  # expose camofox beyond the bridge, set CAMOFOX_API_KEY + CAMOFOX_AUTH_MODE=
+  # required in `.env` AND set `[renderer.camofox] api_key` in your CRW config.
+  camofox:
+    # Pinned (never `:latest`) so upgrades are deliberate. Base image is
+    # node:22-slim (ships curl, not wget).
+    image: ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7
+    restart: unless-stopped
+    environment:
+      - CAMOFOX_HOST=0.0.0.0
+      - CAMOFOX_PORT=9377
+      - CAMOFOX_API_KEY=${CAMOFOX_API_KEY:-}
+      - CAMOFOX_AUTH_MODE=${CAMOFOX_AUTH_MODE:-disabled}
+    shm_size: "1g"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9377/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Interactive browser MCP for AI agents (e.g. Hermes), bridging the camofox
+  # browser REST API to MCP over Streamable HTTP. This is the upstream companion
+  # to camofox-browser — we run it unmodified rather than maintaining our own
+  # bridge. Reachable on the compose network as `camofox-mcp:8080`; agents
+  # connect to http://camofox-mcp:8080/mcp. Pinned (never `:latest`) to match
+  # the camofox pinning rationale above.
+  #
+  # Published on loopback (127.0.0.1:9378) so a host-based MCP agent can reach it
+  # at http://localhost:9378/mcp. camofox-mcp REFUSES to start with HTTP transport
+  # on 0.0.0.0 (required so the published port reaches it) unless a bearer key is
+  # set (and ≥32 chars), so we ship a default dev key
+  # (`crw-local-dev-insecure-default-key`) for out-of-the-box local use — the
+  # port is loopback-only. These tools drive a real browser: override
+  # CAMOFOX_HTTP_API_KEY in `.env` (`openssl rand -hex 24`) before exposing it
+  # anywhere beyond your own machine.
+  camofox-mcp:
+    image: ghcr.io/redf0x1/camofox-mcp@sha256:2c09e699d44122cee8faa14c712ba04e43f787de3b9d80b566917c2d0587bb0a
+    restart: unless-stopped
+    depends_on:
+      camofox:
+        condition: service_healthy
+    command: ["node", "dist/http.js"]
+    environment:
+      - CAMOFOX_TRANSPORT=http
+      - CAMOFOX_HTTP_HOST=0.0.0.0
+      # localhost won't resolve to the browser from here — use the service name.
+      - CAMOFOX_URL=http://camofox:9377
+      # Bearer token for inbound MCP requests. Required when CAMOFOX_HTTP_HOST is
+      # 0.0.0.0 (above) — camofox-mcp won't start without it. Defaults to a known
+      # dev key for local use; override in `.env` before exposing the port.
+      - CAMOFOX_HTTP_API_KEY=${CAMOFOX_HTTP_API_KEY:-crw-local-dev-insecure-default-key}
+    ports:
+      - "127.0.0.1:9378:8080"
+    pids_limit: 256
+
+  # Primary JS renderer — lightweight (~64 MB), fast startup.
+  # Handles most static-JS sites. Falls back to Camofox for complex SPAs.
+  #
+  # `restart: unless-stopped` is load-bearing: LightPanda is known to OOM
+  # or segfault on adversarial pages (heavy SPA bundles, Cloudflare turnstile),
+  # and without auto-restart the breaker stays open forever and every JS
+  # request falls through to Camofox — defeating the lightweight tier.
+  lightpanda:
+    image: lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

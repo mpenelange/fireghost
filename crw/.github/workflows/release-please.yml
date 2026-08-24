@@ -1,0 +1,115 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # Author the release PR with an elevated token (NOT the default
+      # GITHUB_TOKEN). A PR opened by GITHUB_TOKEN cannot trigger other
+      # workflows, so the version-surface checks (preflight-publish.yml,
+      # ci.yml — both `on: pull_request`) never ran on the bump PR and a stale
+      # surface only surfaced post-tag. With this token the bump PR triggers
+      # those checks on its OWN head SHA, so — once `preflight-publish` is a
+      # Required status check in branch protection — a stale internal pin / npm
+      # surface BLOCKS the merge (and therefore the tag) instead of shipping a
+      # red, already-tagged release.
+      #
+      # GH_DISPATCH_PAT is the existing dispatch PAT; prefer migrating to a
+      # GitHub App installation token (actions/create-github-app-token) so the
+      # author is a bot identity with no human seat and a scoped, rotating key.
+      #
+      # This token also creates the git tag, so the tag push triggers
+      # release.yml directly (`on: push: tags: v*`). There is deliberately NO
+      # separate dispatch job — when the tag was created by the default
+      # GITHUB_TOKEN it couldn't trigger workflows and a dispatch was needed,
+      # but a PAT-created tag triggers normally. A dispatch on top would
+      # double-run the entire publish pipeline (two concurrent crates.io/npm
+      # publishes racing). Manual recovery still uses release.yml's
+      # workflow_dispatch input.
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.GH_DISPATCH_PAT }}
+
+  docs-sync:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Sync docs changelog
+        run: python3 scripts/sync-docs-changelog.py
+
+      - name: Update README What's New
+        run: |
+          set -euo pipefail
+          # Render only the LATEST release section, cap bullets per
+          # subsection (Features, Bug Fixes, ...) to MAX_BULLETS. Anything
+          # beyond becomes a single "...and N more" line pointing at the
+          # full changelog. Older releases live only in CHANGELOG.md.
+          python3 - <<'PYEOF'
+          import re
+
+          MAX_BULLETS = 5
+
+          with open("CHANGELOG.md", "r") as f:
+              changelog = f.read()
+
+          sections = re.split(r"(?m)^## ", changelog)
+          latest = "## " + sections[1].rstrip()
+
+          out_lines = []
+          current_bullets = []
+
+          def flush(buf):
+              if not buf:
+                  return []
+              if len(buf) <= MAX_BULLETS:
+                  return buf
+              kept = buf[:MAX_BULLETS]
+              extra = len(buf) - MAX_BULLETS
+              kept.append(f"* …and {extra} more — see [full changelog](CHANGELOG.md)")
+              return kept
+
+          for line in latest.splitlines():
+              if line.startswith("* "):
+                  current_bullets.append(line)
+              else:
+                  out_lines.extend(flush(current_bullets))
+                  current_bullets = []
+                  out_lines.append(line)
+          out_lines.extend(flush(current_bullets))
+
+          changes = "\n".join(out_lines).strip()
+          changes = re.sub(r"^## ", "### ", changes, flags=re.MULTILINE)
+
+          with open("README.md", "r") as f:
+              readme = f.read()
+
+          pattern = r"(## What's New\n\n).*?(\n\[Full changelog)"
+          replacement = rf"\1{changes}\n\2"
+          readme = re.sub(pattern, replacement, readme, flags=re.DOTALL)
+
+          with open("README.md", "w") as f:
+              f.write(readme)
+          PYEOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md docs/docs/changelog.md
+          git diff --cached --quiet || git commit -m "docs: sync changelog and update README What's New section"
+          git push

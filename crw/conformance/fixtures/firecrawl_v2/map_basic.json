@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "links": [
+      { "url": "https://firecrawl.dev/" }
+    ]
+  }
+}

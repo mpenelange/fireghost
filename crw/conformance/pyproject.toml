@@ -1,0 +1,9 @@
+[project]
+name = "crw-conformance"
+version = "0.1.0"
+description = "Firecrawl v2 API conformance + golden-fixture diff for crw (issue #62)"
+requires-python = ">=3.11"
+dependencies = ["firecrawl-py>=4.0"]
+
+[tool.uv]
+package = false

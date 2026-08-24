@@ -1,0 +1,101 @@
+# Docker-specific overrides (layered on top of config.default.toml).
+# Renderer failover order: HTTP → LightPanda → Camofox.
+
+[request]
+# Bench analysis (May 2026): 12 of 14 zero-byte misses on the 150-URL diagnose
+# bench were hitting the default 8s deadline cap (latency ~8000ms,
+# structural_failure: 0 bytes with HTTP 200) — chrome had loaded but
+# post-navigate snapshot was killed mid-flight. clover.com confirms a 30s
+# deadline yields a 264kb response. 15s is the budget that recovers the
+# stragglers without ballooning p50 on healthy pages.
+deadline_ms_default = 15000
+# Issue #35: when an implicit request omits `deadlineMs`, auto-extend the
+# effective deadline to `max(deadline_ms_default, ladder_min)` where
+# ladder_min = sum(per-tier timeouts) + N_cdp_tiers * 28s. Prevents
+# `chrome_timeout_ms = 30000` from appearing inert when this default is
+# small. Set to false to enforce the strict 15s SLO regardless of tier
+# sizing — explicit per-request `deadlineMs` always wins either way.
+auto_extend_deadline_for_ladder = true
+
+[server]
+# Disable global rps cap for benchmark + production load — the bench fires
+# 8-concurrency for 5-10s and gets rate-limited at the default 10 rps.
+# Per-host rps (eTLD+1) is still enforced via the crawler limiter.
+rate_limit_rps = 0
+
+
+[renderer]
+# Per-tier nav timeouts, tuned to fit the 8s end-to-end deadline (the SLO
+# target). HTTP fails fast (~200ms) into LightPanda (≤4s budget, bounded by
+# deadline.remaining), then escalates to the Camofox heavy tier with the
+# residual budget. chrome_timeout_ms is the absolute ceiling for that heavy
+# tier (see below).
+http_timeout_ms = 4000
+# LightPanda bounded tight so the Camofox tier always has residual budget under
+# the 8s deadline. LP is flaky on heavy SPAs (segfaults, CDP closes mid-eval);
+# the escalation loss from skipping marginal LP renders is dominated by Camofox
+# winning more often inside its budget. Bench analysis (May 2026):
+# 12/30 failures were `Timeout after Xms` where LP burned the whole deadline.
+lightpanda_timeout_ms = 2500
+# Absolute ceiling for the heavy JS tier (Camofox). Named chrome_timeout_ms
+# for backward compatibility; it governs the Camofox tier's nav budget.
+chrome_timeout_ms = 30000
+
+[renderer.lightpanda]
+ws_url = "ws://lightpanda:9222/"
+
+# Camofox (camofox-browser REST) — the heavy/stealth JS tier, tried after
+# LightPanda. Reachable on the compose bridge as `camofox:9377`. When the
+# camofox server runs with auth, set the key here or via
+# `CRW_RENDERER__CAMOFOX__API_KEY`.
+[renderer.camofox]
+base_url = "http://camofox:9377"
+
+# /v1/search flows through Camofox (Firefox) — it drives Google directly via the
+# camofox-browser tier configured above.
+[search]
+# Keep four warm Firefox tabs available for concurrent appliance searches.
+camofox_pool_size = 4
+# Multi-query expansion (cycle-2 of the answer-quality loop): the proven win.
+# On a 50-q SimpleQA+FRAMES sample it lifted overall 64%->76% and FRAMES
+# 56%->80% by unioning an entity-rewrite's results with the original. Baked on
+# here (code default is false/gated) so it survives container/compose churn.
+# passage_select stays OFF — cycle-3 over-filtered multi-hop (FRAMES 80%->8%).
+query_expand = true
+# Multi-variant query expansion (recall lever). A/B on a 25-q SimpleQA sample at
+# answerTemperature=0: n=1 -> n=3 lifted accuracy 80%->88% and truthfulness
+# (correct-incorrect) 18->20, fixing retrieval-misses where the answer page only
+# surfaces under an acronym-expanded / keyword-focused rewrite (e.g. a full name
+# completed, an abstain->correct). Fetched concurrently so N rewrites cost ~one
+# extra fetch of wall-clock. Watch hallucination on larger evals — extra recall
+# can occasionally surface a misleading page (1 abstain->wrong observed).
+query_expand_variants = 3
+# Calibrated answer path (the proven over-abstention fix). On a 152-q
+# SimpleQA+NQ+TriviaQA+PopQA+TruthfulQA set it lifted overall 81.6%->~85% with
+# INCORRECT FLAT (the moat held — inverse of cycle-1), abstentions converting
+# 1:1 to correct. SimpleQA 76->92, TruthfulQA 72->80. Confirmed across two runs.
+# Baked on (code default false/gated) so it survives container/compose churn.
+answer_calibrated = true
+
+# /map URL filter — defaults on. Set `drop_action_urls = false` to revert
+# to legacy behaviour (action URLs surface in results).
+[map.url_filter]
+strip_tracking_params = true
+drop_action_urls = true
+gov_tld_drop_actions = false
+
+# Document (PDF) parsing — see config.default.toml for field docs.
+[document]
+enabled = true
+max_pages = 0
+attempt_scanned = false
+max_upload_bytes = 52428800
+upload_concurrency = 2
+# Sized so concurrent sandbox children fit the container mem_limit (2g):
+# 2 × sandbox_memory_bytes (512 MiB) + engine base ≈ 1.3 GiB < 2 GiB.
+max_concurrent_parses = 2
+parse_timeout_ms = 30000
+max_decompressed_bytes = 104857600
+# Docker images accept untrusted uploads → isolate parses by default.
+sandbox = true
+sandbox_memory_bytes = 536870912

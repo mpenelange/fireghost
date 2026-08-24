@@ -1,0 +1,234 @@
+[server]
+host = "0.0.0.0"
+port = 3000
+# Tower outer timeout. Issue #35: when
+# `request.auto_extend_deadline_for_ladder = true` (default), this baseline is
+# auto-widened at startup to cover the longest legitimate handler runtime
+# (auto-extended scrape, search enrichment fan-out, map's 300s ceiling). Set
+# this above 305s only if you also raised request.deadline_ms_default beyond
+# the default ladder_min.
+request_timeout_secs = 120
+rate_limit_rps = 10              # Max requests/second (global). 0 = unlimited.
+
+# [request]
+# deadline_ms_default = 8000
+# auto_extend_deadline_for_ladder = true
+#   Issue #35: when an implicit request omits `deadlineMs`, auto-extend the
+#   effective deadline to max(deadline_ms_default, ladder_min). Prevents
+#   chrome_timeout_ms = 30000 from appearing inert when deadline_ms_default
+#   is small. Set to false to enforce a strict SLO regardless of tier sizing.
+
+[renderer]
+mode = "auto"                     # auto | lightpanda | camofox | none
+page_timeout_ms = 30000
+pool_size = 4
+# render_js_default = true        # alias: force_js = true
+                                  # Forces JS rendering when a request omits `renderJs`.
+                                  # Per-request `renderJs` always wins over this default.
+
+# Failover order: LightPanda → Camofox. Configure one or both.
+# In auto mode, CRW tries each renderer in order. LightPanda is fast and
+# light, but its JS engine can crash on complex SPAs (Next.js App Router
+# hydration, modern React 18+, etc.). When that happens — or when the
+# rendered output contains framework error boundaries — the chain falls
+# through to Camofox (Firefox/Camoufox), the anti-detect heavy tier that
+# also handles bot challenges.
+#
+# Strongly recommended for production: configure both. LightPanda alone
+# will return broken HTML for sites that crash during hydration.
+
+[renderer.lightpanda]
+ws_url = "ws://127.0.0.1:9222/"
+
+# Camofox (camofox-browser REST) — the Firefox/Camoufox anti-detect tier. Not a
+# CDP endpoint: `base_url` is the camofox-browser HTTP server. In `auto` mode it
+# is tried after LightPanda. When set, it also backs `/v1/search`
+# (browser-driven Google).
+# [renderer.camofox]
+# base_url = "http://127.0.0.1:9377"
+# api_key = "..."                 # only if the camofox server runs with auth
+
+[crawler]
+max_concurrency = 10
+requests_per_second = 10.0
+respect_robots_txt = true
+user_agent = "CRW/0.0.1"
+default_max_depth = 2
+default_max_pages = 100
+job_ttl_secs = 3600
+# Proxy support — route crawler requests through an HTTP or SOCKS5 proxy.
+# Useful for bypassing IP-based rate limiting on sites like Reddit, LinkedIn, etc.
+#
+# Examples:
+#   proxy = "http://user:pass@proxy:8080"                      # HTTP proxy
+#   proxy = "socks5://user:pass@proxy:1080"                    # SOCKS5 proxy
+#   proxy = "http://user:pass@geo.iproyal.com:12321"           # Residential (IPRoyal)
+#   proxy = "http://user:pass@pr.oxylabs.io:7777"              # Residential (Oxylabs)
+#   proxy = "http://user:pass@gate.smartproxy.com:7000"        # Residential (Smartproxy)
+#
+# Residential proxies use real ISP IPs and are much harder for sites to detect.
+# Most providers give you a single gateway URL that auto-rotates IPs per request.
+# proxy = "http://proxy:8080"
+
+[extraction]
+default_format = "markdown"
+only_main_content = true
+
+# Per-domain CSS selector overrides applied before readability narrowing.
+# User-supplied request `selector` still wins over these defaults. Map key is
+# exact host (no wildcards). Useful for sites where readability misidentifies
+# the article container.
+[extraction.domain_selectors]
+"www.smartcompany.com.au" = ".post-content, .entry-content, article"
+"www.simplyhired.com" = "main, [data-testid='viewJobBodyContainer']"
+"scanpy.readthedocs.io" = ".body, .main-content, article"
+"www.service-public.fr" = "#main-content, .panel-body, article"
+"www.raspberrypi.com" = "article.entry-content, main"
+"news.mingpao.com" = ".article-content, [itemprop=articleBody], .news-content"
+"acpr.banque-france.fr" = "main, .search-results, .content"
+"www.w3schools.com" = "#main, .w3-main"
+"www.xt.com" = "main, [role=main], .article-content"
+"carole-vercheyre-grard.fr" = "article, .entry-content, .post-content"
+"www.floorandecor.com" = "main, [data-testid='product-content']"
+# NOTE: quora.com and niche.com selectors were tried but regressed on the
+# 150-URL diagnose set — readability+heuristics already does better there.
+# Add per-domain overrides only after verifying on representative URLs.
+
+# Optional LLM-assisted extraction fallback. When the top markdown candidate
+# scores below `quality_threshold`, the raw HTML (truncated to `max_html_bytes`)
+# is sent to the configured `[extraction.llm]` provider for re-extraction.
+# Disabled by default — requires an API key in [extraction.llm].
+[extraction.llm_fallback]
+enable = false
+quality_threshold = 0.3
+max_html_bytes = 100000
+# When true (and `enable` true), the LLM is invoked on every page rather
+# than only when the DOM-based score is below `quality_threshold`. This is
+# the "LLM as primary extractor" pattern (Reader-LM, Firecrawl, etc.):
+# higher cost per page, but materially higher recall on JS-heavy pages,
+# paywalls, and sites where readability picks the wrong container.
+always_run = false
+
+[auth]
+# api_keys = ["fc-key-1234"]
+
+# LLM configuration — powers both:
+#   1. structured JSON extraction (formats: ["json"] with jsonSchema)
+#   2. summary generation (formats: ["summary"])  ← user-facing AI feature
+#   3. search answer synthesis (/v1/search with answer: true)
+#
+# Uncomment a block below and set api_key (or CRW_EXTRACTION__LLM__API_KEY env)
+# to enable. Without this, `formats: ["summary"]` and answer/summarizeResults
+# return HTTP 400 with a clear error pointing back here.
+#
+# [extraction.llm]
+# provider = "anthropic"        # "anthropic" | "openai" | "deepseek" | "azure"
+# api_key = "sk-..."            # or use CRW_EXTRACTION__LLM__API_KEY env var
+# model = "claude-sonnet-4-20250514"
+# max_tokens = 4096
+# base_url = "https://custom-endpoint.example.com"  # optional, for OpenAI-compatible APIs
+# max_concurrency = 4           # bound for per-result search-summary fan-out
+# max_html_bytes = 100000       # truncate content past this before sending
+# require_byok_header = ""      # SaaS-only: header name that must be set on LLM-touching requests
+#
+# DeepSeek example (OpenAI-compatible):
+#   provider = "deepseek"                     # or "openai" — dispatched the same way
+#   api_key = "..."
+#   model = "deepseek-chat"
+#   base_url = "https://api.deepseek.com/v1"
+#
+# Azure OpenAI example:
+#   provider = "azure"
+#   api_key = "..."                                     # or CRW_EXTRACTION__LLM__API_KEY
+#   model = "gpt-4o-mini"                               # Azure deployment name
+#   base_url = "https://<resource>.openai.azure.com"    # endpoint, no trailing path
+#   azure_api_version = "2024-05-01-preview"
+#   max_tokens = 4096
+
+# /v1/search endpoint — browser-driven Google via Camofox (requires
+# [renderer.camofox]). When unconfigured the endpoint returns a clear 400
+# (`search_disabled`).
+[search]
+enabled = true
+timeout_ms = 15000
+default_limit = 5
+max_limit = 20
+# Independent warm Camofox tabs available to concurrent searches (1..=8).
+camofox_pool_size = 1
+# W0 (gated, default false): pin search infoboxes[]/answers[] (Wikidata/Wikipedia
+# structured facts the results[] path discards) at the front of the answer pool.
+# Still UNTRUSTED-wrapped. Flip with CRW_SEARCH__USE_STRUCTURED_SOURCES=true after
+# the diag500 re-baseline. See crates/crw-search/src/structured.rs.
+# use_structured_sources = false
+# W3 (gated, default false): deterministic Wikidata lookup for "<relation> of
+# <entity>" questions (obscure entity tail). CRW_SEARCH__WIKIDATA_LOOKUP=true.
+# use_structured_sources should also be on (W3 pins via the same mechanism).
+# wikidata_lookup = false
+# Engines invoked when the request includes `categories: ["research"]`.
+research_engines = ["arxiv", "crossref", "google scholar", "semantic scholar"]
+# Engines invoked when the request includes `categories: ["github"]`.
+github_engines = ["github"]
+# Personal-access token for the `github` search engine (Camofox backend). That
+# engine uses the GitHub REST Search API (GitHub web search rate-limits
+# unauthenticated scraping); a token lifts the limit to 30 req/min. Prefer the
+# CRW_SEARCH__GITHUB_TOKEN env var over committing a token here.
+# github_token = "ghp_..."
+
+# ── /v1/map URL filter ──────────────────────────────────────────────────
+# Strips tracking params and drops transactional action URLs from /map
+# results. See `crates/crw-crawl/src/url_filter_data.rs` for the built-in
+# deny-lists. Per-request overrides are documented on `MapRequest` —
+# pass `{"ignoreQueryParameters": false}` for raw-URL output.
+[map.url_filter]
+strip_tracking_params = true
+drop_action_urls = true
+gov_tld_drop_actions = false
+# Additive on top of built-ins (max 64 keys each). Keys are normalized to
+# canonical form (lowercase, hyphens folded to underscores), so "add-to-cart"
+# and "add_to_cart" are equivalent.
+extra_tracking_params = []
+extra_action_params = []
+extra_preserve_params = []
+
+# ── Document (PDF) parsing ──────────────────────────────────────────────────
+# Controls conversion of binary documents (currently PDF) to markdown. A URL
+# that returns application/pdf is auto-converted; files can also be uploaded to
+# POST /v2/parse. PDF support is also a compile-time cargo feature (`pdf`,
+# default ON) — this section only governs runtime behaviour. All keys honor
+# CRW_DOCUMENT__* env overrides.
+[document]
+# Master runtime switch. When false, PDFs are left unparsed (raw bytes).
+enabled = true
+# Cap pages converted per document. 0 = no limit.
+max_pages = 0
+# Best-effort text from scanned/image PDFs. pdf-inspector has NO OCR, so this
+# is usually empty — left off by default.
+attempt_scanned = false
+# Maximum upload size (bytes) for POST /v2/parse. Default 50 MiB, matching the
+# HTTP renderer's response cap.
+max_upload_bytes = 52428800
+# Max concurrent uploads being parsed (bounds peak memory: each in-flight
+# upload buffers up to max_upload_bytes).
+upload_concurrency = 4
+# Process-wide cap on concurrent PDF parses across ALL surfaces (URL scrape,
+# crawl, batch, upload). Primary memory/CPU-DoS guard — a malicious PDF can
+# decompress far beyond its wire size, so bound how many parse at once.
+max_concurrent_parses = 4
+# Wall-clock timeout (ms) per PDF parse. A document exceeding this returns a
+# pdf_timeout error instead of pinning a worker. 0 disables.
+parse_timeout_ms = 30000
+# Decompression-bomb guard: max total DECOMPRESSED bytes a PDF's FlateDecode
+# streams may inflate to. Checked in bounded memory BEFORE parsing, so a small
+# file that explodes to many GB is rejected (pdf_too_large) having allocated
+# only kilobytes — the primary OOM-crash guard. Default 100 MiB (huge for text;
+# raise only for image-heavy PDFs). 0 disables.
+max_decompressed_bytes = 104857600
+# Run each PDF parse in an ISOLATED child process (Unix only). The child gets a
+# hard OS memory ceiling + CPU limit, inherits no secrets, and is killed on
+# timeout — a crash/OOM/parser-exploit is contained to the child, the server
+# (scrape/crawl) keeps running. ~1-3ms spawn overhead per parse. Turn ON for
+# hosts that accept untrusted uploads.
+sandbox = false
+# Hard address-space limit (bytes) for a sandbox child (RLIMIT_AS). Aborted by
+# the OS if exceeded — the ultimate memory-DoS backstop. Default 512 MiB.
+sandbox_memory_bytes = 536870912

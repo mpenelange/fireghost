@@ -1,0 +1,62 @@
+[package]
+name = "crw-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Firecrawl-compatible API server for the CRW web scraper"
+
+[features]
+default = []
+cdp = ["crw-renderer/cdp"]
+# Camofox (camofox-browser REST) renderer tier. The runtime wiring lives in the
+# cdp-gated renderer ladder, so enable it together with `cdp`.
+camofox = ["crw-renderer/camofox", "cdp"]
+test-utils = []
+# Optional self-host monitor mode. Default OFF. Activating it links the
+# `crw-monitor` crate (and only then its SQLite/HMAC stack). The open-core
+# boundary gate asserts the DEFAULT build pulls no rusqlite/hmac/cron.
+monitor = ["dep:crw-monitor"]
+
+[dependencies]
+crw-core = { workspace = true }
+crw-diff = { workspace = true }
+crw-renderer = { workspace = true }
+crw-extract = { workspace = true }
+crw-crawl = { workspace = true }
+crw-search = { workspace = true }
+# Optional self-host monitor mode (default OFF — see the `monitor` feature).
+crw-monitor = { workspace = true, optional = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+clap = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+axum-test = { workspace = true }
+wiremock = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+crw-server = { path = ".", features = ["test-utils"] }
+# Validates emitted structuredContent against crw_search's declared outputSchema
+# using the REAL SearchResponse serializer (issue #89). Same 0.28 line as crw-extract.
+jsonschema = "0.28"
+# Parses docker-compose.yml service names in the issue #90 host guard so the test
+# derives the allowed hosts from the real compose file instead of a hardcoded list.
+yaml-rust2 = "0.10"

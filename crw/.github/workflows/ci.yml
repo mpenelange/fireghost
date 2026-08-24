@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: No unguarded exit in browser-spawning code
+        run: bash scripts/check-no-process-exit.sh
+
+      - name: Known-good stack manifest and immutable image pins
+        run: |
+          python3 scripts/check_stack_lock.py
+          python3 -m unittest scripts/test_live_compatibility.py
+          python3 -m unittest scripts/test_scrape_compatibility.py
+
+      - name: Internal dependency versions match workspace version
+        run: bash scripts/check-internal-dep-versions.sh
+
+      # Catches the config GAP at feature-PR time, independent of version state:
+      # a new internal dep pin that isn't tracked in release-please-config.json
+      # fails here long before it can go stale on a release bump. Since
+      # release-please now authors its bump PR with an elevated token (see
+      # release-please.yml), that PR ALSO triggers this CI on its own head SHA,
+      # so a stale pin is caught pre-merge instead of post-tag.
+      - name: Audit release-please config completeness
+        run: python3 scripts/release/audit_release_please_config.py
+
+      # The guards above are load-bearing; this regression suite fails red if a
+      # future change weakens them (drift/missing-entry/anti-vacuity/invalid
+      # jsonpath), instead of letting them pass vacuously.
+      - name: Guard regression tests
+        run: python3 scripts/release/test_guards.py
+
+      # No standalone `cargo build --workspace --all-targets`: clippy above runs
+      # with `--all-targets -D warnings` (compile-checks every target, incl. the
+      # criterion bench + example) and `cargo test` builds & runs all test
+      # targets. A separate dev-profile build only recompiles the workspace for
+      # artifacts CI never runs. (Kept in release.yml as a pre-publish gate.)
+      - name: Test
+        run: cargo test --workspace
