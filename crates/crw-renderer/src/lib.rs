@@ -222,6 +222,25 @@ fn is_origin_navigation_failure(e: &CrwError) -> bool {
     }
 }
 
+/// Camofox 2.4.6 does not expose the browser navigation response status or
+/// final URL, so its fetcher necessarily reports a synthetic HTTP 200. When
+/// the direct origin request already proved that the resource is 404/410,
+/// preserve that status after Camofox hydrates the body. Other JS renderers
+/// observe their own status and are left untouched.
+fn preserve_unobserved_origin_status(origin: &FetchResult, rendered: &mut FetchResult) {
+    if matches!(origin.status_code, 404 | 410)
+        && rendered.status_code == 200
+        && rendered.final_url.is_none()
+        && rendered.rendered_with.as_deref() == Some("camofox")
+    {
+        rendered.status_code = origin.status_code;
+        rendered.warnings.push(format!(
+            "origin_status_preserved_from_http: {}",
+            origin.status_code
+        ));
+    }
+}
+
 /// Minimum remaining request budget for a network attempt to be worth making.
 /// Below this a CDP tier cannot complete its handshake and returns a fabricated
 /// `Timeout after Nms` (single-digit N) while still consuming a pool slot.
@@ -561,8 +580,11 @@ impl FallbackRenderer {
                     stamp_http_decision(&mut result, requested_renderer);
                     Ok(result)
                 } else {
-                    self.fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
-                        .await
+                    let mut rendered = self
+                        .fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
+                        .await?;
+                    preserve_unobserved_origin_status(&http_result, &mut rendered);
+                    Ok(rendered)
                 }
             }
             None => {
@@ -686,7 +708,10 @@ impl FallbackRenderer {
                         .fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
                         .await
                     {
-                        Ok(js_result) => Ok(js_result),
+                        Ok(mut js_result) => {
+                            preserve_unobserved_origin_status(&result, &mut js_result);
+                            Ok(js_result)
+                        }
                         Err(e) if is_hard_pinned => {
                             // User explicitly pinned a renderer — surface the error
                             // instead of silently returning the (likely useless) HTTP body.
@@ -2223,6 +2248,72 @@ mod tests {
             "expected chrome output after lightpanda 403"
         );
         assert_eq!(result.status_code, 200);
+    }
+
+    #[tokio::test]
+    async fn auto_mode_preserves_origin_404_when_camofox_status_is_synthetic() {
+        let origin = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::OkStatus(404, rich_html("NOT-FOUND-")),
+        }) as Arc<dyn PageFetcher>;
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(rich_html("HYDRATED-NOT-FOUND-")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![camofox]);
+        r.http = origin;
+        r.render_js_default = None;
+
+        let result = r
+            .fetch(
+                "https://example.com/does-not-exist",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.status_code, 404);
+        assert_eq!(result.rendered_with.as_deref(), Some("camofox"));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning == "origin_status_preserved_from_http: 404")
+        );
+    }
+
+    #[tokio::test]
+    async fn observed_chrome_status_is_not_overwritten_by_origin_404() {
+        let origin = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::OkStatus(404, rich_html("NOT-FOUND-")),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("RECOVERED-SPA-")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![chrome]);
+        r.http = origin;
+        r.render_js_default = None;
+
+        let result = r
+            .fetch(
+                "https://example.com/client-route",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(result.rendered_with.as_deref(), Some("chrome"));
     }
 
     #[tokio::test]

@@ -19,12 +19,14 @@ on:
       - "Dockerfile"
       - "scripts/mcp_smoke.py"
       - "scripts/live_compatibility.py"
+      - "scripts/scrape_compatibility.py"
       - "scripts/check_stack_lock.py"
       - "ops/hermes-production.lock.json"
       - ".github/workflows/mcp-smoke.yml"
       - "crates/crw-server/**"
       - "crates/crw-mcp/**"
       - "crates/crw-search/**"
+      - "crates/crw-renderer/**"
 
 permissions:
   contents: read
@@ -75,12 +77,17 @@ jobs:
       - name: Run live browser compatibility gate
         run: python3 scripts/live_compatibility.py --phase all --output live-compatibility.json
 
+      - name: Run live scrape compatibility gate
+        run: python3 scripts/scrape_compatibility.py --output scrape-compatibility.json
+
       - name: Upload compatibility report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: live-compatibility-${{ github.sha }}
-          path: live-compatibility.json
+          name: compatibility-${{ github.sha }}
+          path: |
+            live-compatibility.json
+            scrape-compatibility.json
           if-no-files-found: ignore
 
       - name: Dump stack logs on failure

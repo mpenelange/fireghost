@@ -160,17 +160,19 @@ def print_result(result: Result) -> None:
     )
 
 
-def run_serial(client: Client, phase: str) -> list[Result]:
+def run_serial(client: Client, phase: str, cases: tuple[Case, ...] = CASES) -> list[Result]:
     results = []
-    for case in CASES:
+    for case in cases:
         result = client.search(case, phase)
         results.append(result)
         print_result(result)
     return results
 
 
-def run_concurrent(client: Client) -> list[Result]:
-    cases = [case for case in CASES if case.engine in CONCURRENT_ENGINES]
+def run_concurrent(client: Client, selected: tuple[Case, ...] = CASES) -> list[Result]:
+    cases = [case for case in selected if case.engine in CONCURRENT_ENGINES]
+    if not cases:
+        return []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(cases)) as pool:
         futures = [pool.submit(client.search, case, "concurrent") for case in cases]
         results = [future.result() for future in futures]
@@ -196,12 +198,25 @@ def parse_args() -> argparse.Namespace:
         choices=("cold", "warm", "concurrent", "all"),
         default="all",
     )
+    parser.add_argument(
+        "--engines",
+        help="comma-separated engine subset for focused retries (default: all)",
+    )
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    selected = CASES
+    if args.engines:
+        requested = {item.strip().lower() for item in args.engines.split(",") if item.strip()}
+        known = {case.engine for case in CASES}
+        unknown = sorted(requested - known)
+        if unknown:
+            print(f"FAIL: unknown engines: {', '.join(unknown)}", file=sys.stderr)
+            return 2
+        selected = tuple(case for case in CASES if case.engine in requested)
     client = Client(args.api_url, args.api_key, args.timeout)
     started_at = dt.datetime.now(dt.timezone.utc).isoformat()
     try:
@@ -213,11 +228,11 @@ def main() -> int:
 
     results: list[Result] = []
     if args.phase in ("cold", "all"):
-        results.extend(run_serial(client, "cold"))
+        results.extend(run_serial(client, "cold", selected))
     if args.phase in ("warm", "all"):
-        results.extend(run_serial(client, "warm"))
+        results.extend(run_serial(client, "warm", selected))
     if args.phase in ("concurrent", "all"):
-        results.extend(run_concurrent(client))
+        results.extend(run_concurrent(client, selected))
 
     failures = [result for result in results if not result.ok]
     report = {
@@ -227,6 +242,7 @@ def main() -> int:
         "apiUrl": args.api_url,
         "health": health,
         "phase": args.phase,
+        "engines": [case.engine for case in selected],
         "results": [asdict(result) for result in results],
         "passed": not failures,
         "failureCount": len(failures),

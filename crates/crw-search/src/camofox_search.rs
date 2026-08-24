@@ -2,12 +2,13 @@
 //!
 //! Search SERPs trip anti-bot / consent walls immediately, so search does NOT
 //! use the renderer failover ladder — it drives the camofox-browser (Firefox)
-//! tier directly: navigate a tab to the engine's SERP, wait, then scrape the
-//! result rows via `/evaluate`. Google uses the browser's built-in
-//! `@google_search` macro; Bing/DuckDuckGo/GitHub have no working macro in
-//! camofox-browser, so we navigate their search URL directly (see
-//! [`navigate_body`]). Multiple engines requested in one call run sequentially
-//! on the warm tab and their rows are merged (see [`merge_results`]).
+//! tier directly: schedule a tab navigation, observe the destination through
+//! `/tabs`, then scrape result rows via `/evaluate`. Navigation is deliberately
+//! scheduled from the evaluator instead of calling Camofox's blocking
+//! `/navigate` route: that route can keep running for 30 seconds after CRW's
+//! shorter timeout, poisoning the shared warm tab for the next engine. Multiple
+//! engines requested in one call run sequentially on the warm tab and their
+//! rows are merged (see [`merge_results`]).
 //!
 //! Concurrency: camofox-browser keys one persistent context per `userId` and
 //! eagerly tears that context down when its tab count hits zero, leaving a
@@ -26,7 +27,7 @@
 //! reused unchanged — this client is a drop-in alternative upstream source, not
 //! a new result format.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde_json::json;
@@ -49,6 +50,13 @@ const SESSION_KEY: &str = "search";
 /// relaunch a moment to settle before we retry. Only hit on the rare
 /// stale-tab path (idle eviction / camofox restart), not the steady state.
 const RETRY_BACKOFF: Duration = Duration::from_millis(750);
+
+/// Polling is intentionally cheap and bounded. Camofox's tab-list route does
+/// not wait for browser lifecycle events, so it remains responsive while a
+/// destination is loading or redirecting through a challenge page.
+const URL_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const NAV_START_GRACE: Duration = Duration::from_millis(500);
+const RENDER_SETTLE: Duration = Duration::from_millis(500);
 
 /// JS evaluated in the Google SERP to extract result rows. Returns a JSON
 /// *string* (via `JSON.stringify`) so the camofox `/evaluate` `result` field
@@ -104,38 +112,23 @@ fn scrape_js(engine: SearchEngine) -> &'static str {
     }
 }
 
-/// The camofox `navigate` request body for a browser-driven engine + query.
-/// Google uses the browser's built-in `@google_search` macro (it handles the
-/// consent/redirect dance). Bing/DuckDuckGo have no working macro in
-/// camofox-browser, so we navigate their search URL directly — the macro is
-/// only URL shorthand anyway. `query` is form-url-encoded into the `q`
-/// parameter. GitHub is handled via the REST Search API and never reaches here.
-fn navigate_body(engine: SearchEngine, query: &str, user_id: &str) -> serde_json::Value {
+/// Direct SERP URL for a browser-driven engine. We intentionally do not use the
+/// blocking Camofox navigation API (or its Google macro): navigation is
+/// scheduled through `/evaluate`, then observed via `/tabs`.
+fn search_target_url(engine: SearchEngine, query: &str) -> String {
     let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
     match engine {
-        SearchEngine::Google => {
-            json!({ "userId": user_id, "macro": "@google_search", "query": query })
-        }
-        SearchEngine::Bing => {
-            json!({ "userId": user_id, "url": format!("https://www.bing.com/search?q={q}") })
-        }
-        SearchEngine::DuckDuckGo => {
-            json!({ "userId": user_id, "url": format!("https://duckduckgo.com/?q={q}") })
-        }
+        SearchEngine::Google => format!("https://www.google.com/search?q={q}"),
+        SearchEngine::Bing => format!("https://www.bing.com/search?q={q}"),
+        SearchEngine::DuckDuckGo => format!("https://duckduckgo.com/?q={q}"),
         SearchEngine::Wikipedia => {
             // `fulltext=1` forces the search-results page; without it Wikipedia
             // redirects an exact title match straight to the article.
-            json!({ "userId": user_id, "url": format!("https://en.wikipedia.org/wiki/Special:Search?search={q}&fulltext=1") })
+            format!("https://en.wikipedia.org/wiki/Special:Search?search={q}&fulltext=1")
         }
-        SearchEngine::Youtube => {
-            json!({ "userId": user_id, "url": format!("https://www.youtube.com/results?search_query={q}") })
-        }
-        SearchEngine::Reddit => {
-            json!({ "userId": user_id, "url": format!("https://www.reddit.com/search/?q={q}") })
-        }
-        SearchEngine::Amazon => {
-            json!({ "userId": user_id, "url": format!("https://www.amazon.com/s?k={q}") })
-        }
+        SearchEngine::Youtube => format!("https://www.youtube.com/results?search_query={q}"),
+        SearchEngine::Reddit => format!("https://www.reddit.com/search/?q={q}"),
+        SearchEngine::Amazon => format!("https://www.amazon.com/s?k={q}"),
         SearchEngine::Github => {
             unreachable!("github uses the REST Search API, not the browser")
         }
@@ -158,8 +151,35 @@ struct CreateTabResponse {
 }
 
 #[derive(Deserialize)]
-struct EvaluateResponse {
-    result: Option<String>,
+struct CamofoxApiResponse {
+    #[serde(default = "default_true")]
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    result: Option<serde_json::Value>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+struct ListTabsResponse {
+    #[serde(default = "default_true")]
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    tabs: Vec<ListedTab>,
+}
+
+#[derive(Deserialize)]
+struct ListedTab {
+    #[serde(rename = "tabId")]
+    tab_id: String,
+    #[serde(default)]
+    url: String,
 }
 
 /// GitHub REST Search API (`/search/repositories`) response — only the fields
@@ -299,6 +319,77 @@ impl CamofoxSearchClient {
             })
     }
 
+    async fn api_response(
+        response: reqwest::Response,
+        operation: &str,
+    ) -> Result<CamofoxApiResponse, SearchError> {
+        let status = response.status();
+        if !status.is_success() {
+            return Err(SearchError::Upstream {
+                status: status.as_u16(),
+                body: format!("camofox: {operation} failed"),
+            });
+        }
+        let body = response.json::<CamofoxApiResponse>().await.map_err(|e| {
+            SearchError::InvalidResponse(format!("camofox: bad {operation} response: {e}"))
+        })?;
+        if !body.ok {
+            return Err(SearchError::Upstream {
+                status: 502,
+                body: format!(
+                    "camofox: {operation} rejected: {}",
+                    body.error.as_deref().unwrap_or("unknown upstream error")
+                ),
+            });
+        }
+        Ok(body)
+    }
+
+    async fn current_tab_url(
+        &self,
+        worker: &CamofoxSearchWorker,
+        tab_id: &str,
+    ) -> Result<Option<String>, SearchError> {
+        let mut url = url::Url::parse(&format!("{}/tabs", self.base_url))
+            .map_err(|e| SearchError::Transport(format!("camofox: invalid tabs URL: {e}")))?;
+        url.query_pairs_mut().append_pair("userId", &worker.user_id);
+        let response =
+            self.auth(self.http.get(url))
+                .send()
+                .await
+                .map_err(|e: reqwest::Error| {
+                    if e.is_timeout() {
+                        SearchError::Timeout
+                    } else {
+                        SearchError::Transport(e.without_url().to_string())
+                    }
+                })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(SearchError::Upstream {
+                status: status.as_u16(),
+                body: "camofox: list tabs failed".to_string(),
+            });
+        }
+        let body = response.json::<ListTabsResponse>().await.map_err(|e| {
+            SearchError::InvalidResponse(format!("camofox: bad list tabs response: {e}"))
+        })?;
+        if !body.ok {
+            return Err(SearchError::Upstream {
+                status: 502,
+                body: format!(
+                    "camofox: list tabs rejected: {}",
+                    body.error.as_deref().unwrap_or("unknown upstream error")
+                ),
+            });
+        }
+        Ok(body
+            .tabs
+            .into_iter()
+            .find(|tab| tab.tab_id == tab_id)
+            .map(|tab| tab.url))
+    }
+
     /// Run the requested engines via Camofox and map the merged rows into a
     /// [`SearxngResponse`]. Typed [`SearchError`]s match the SearXNG client so
     /// the route layer's existing error mapping applies unchanged.
@@ -395,8 +486,17 @@ impl CamofoxSearchClient {
         engine: SearchEngine,
         params: &SearxngParams,
     ) -> Result<Vec<SearxngResult>, SearchError> {
-        let tab_id = self.ensure_tab(worker, tab).await?;
-        self.run_search(worker, &tab_id, engine, params).await
+        let deadline = Instant::now() + self.timeout;
+        match tokio::time::timeout(self.timeout + Duration::from_millis(50), async {
+            let tab_id = self.ensure_tab(worker, tab).await?;
+            self.run_search(worker, &tab_id, engine, params, deadline)
+                .await
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(SearchError::Timeout),
+        }
     }
 
     /// Return the warm tab id, creating one if we don't have it cached. The id
@@ -442,41 +542,93 @@ impl CamofoxSearchClient {
         tab_id: &str,
         engine: SearchEngine,
         params: &SearxngParams,
+        deadline: Instant,
     ) -> Result<Vec<SearxngResult>, SearchError> {
-        let nav = self
+        let target_url = search_target_url(engine, &params.q);
+        let encoded_url = serde_json::to_string(&target_url).map_err(|e| {
+            SearchError::InvalidResponse(format!("camofox: encode navigation URL: {e}"))
+        })?;
+        let expression =
+            format!("(()=>{{setTimeout(()=>location.assign({encoded_url}),0);return true}})()");
+        let scheduled = self
             .post(
-                &format!("/tabs/{tab_id}/navigate"),
-                navigate_body(engine, &params.q, &worker.user_id),
+                &format!("/tabs/{tab_id}/evaluate"),
+                json!({
+                    "userId": worker.user_id,
+                    "expression": expression,
+                    "timeout": 3_000,
+                }),
             )
             .await?;
-        if !nav.status().is_success() {
-            return Err(SearchError::Upstream {
-                status: nav.status().as_u16(),
-                body: "camofox: navigate failed".to_string(),
-            });
+        Self::api_response(scheduled, "schedule navigation").await?;
+
+        // The scheduled callback runs after the evaluator returns. Give the
+        // browser event loop a moment before checking a warm tab that still
+        // contains the previous query's URL.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(Vec::new());
+        }
+        tokio::time::sleep(NAV_START_GRACE.min(remaining)).await;
+        loop {
+            if Instant::now() >= deadline {
+                return Ok(Vec::new());
+            }
+            match self.current_tab_url(worker, tab_id).await? {
+                None => {
+                    return Err(SearchError::Upstream {
+                        status: 404,
+                        body: "camofox: warm search tab disappeared".to_string(),
+                    });
+                }
+                Some(url) if is_challenge_url(engine, &url) => return Ok(Vec::new()),
+                Some(url) if url_matches_search(engine, &url, &params.q) => break,
+                Some(_) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
+                }
+            }
         }
 
-        let _ = self
-            .post(
-                &format!("/tabs/{tab_id}/wait"),
-                json!({ "userId": worker.user_id, "timeout": self.timeout.as_millis() as u64 }),
-            )
-            .await;
+        // Do not call `/wait`: Camofox 2.4.6 can keep that route alive beyond
+        // the caller's budget. Extraction polling stays on non-blocking API
+        // calls and treats a slow/challenged engine as an explicit empty result.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        tokio::time::sleep(RENDER_SETTLE.min(remaining)).await;
+        while Instant::now() < deadline {
+            match self.evaluate_rows(worker, tab_id, engine).await {
+                Ok(rows) if !rows.is_empty() => return Ok(rows),
+                Ok(_) | Err(_) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
+                }
+            }
+        }
+        Ok(Vec::new())
+    }
 
+    async fn evaluate_rows(
+        &self,
+        worker: &CamofoxSearchWorker,
+        tab_id: &str,
+        engine: SearchEngine,
+    ) -> Result<Vec<SearxngResult>, SearchError> {
         let eval = self
             .post(
                 &format!("/tabs/{tab_id}/evaluate"),
                 json!({ "userId": worker.user_id, "expression": scrape_js(engine) }),
             )
             .await?;
-        let raw = eval
-            .json::<EvaluateResponse>()
-            .await
-            .map_err(|e| {
-                SearchError::InvalidResponse(format!("camofox: bad evaluate response: {e}"))
-            })?
-            .result
-            .unwrap_or_default();
+        let body = Self::api_response(eval, "evaluate results").await?;
+        let raw = match body.result {
+            Some(serde_json::Value::String(value)) => value,
+            None | Some(serde_json::Value::Null) => String::new(),
+            Some(other) => {
+                return Err(SearchError::InvalidResponse(format!(
+                    "camofox: evaluate result was not a string: {other}"
+                )));
+            }
+        };
 
         let rows: Vec<ScrapedRow> = if raw.trim().is_empty() {
             Vec::new()
@@ -588,6 +740,74 @@ fn engine_failure_reason(e: &SearchError) -> String {
     }
 }
 
+fn query_value(url: &url::Url, key: &str) -> Option<String> {
+    url.query_pairs()
+        .find_map(|(name, value)| (name == key).then(|| value.into_owned()))
+}
+
+/// A warm tab can still report the previous query while the scheduled timer is
+/// waiting to run. Require both the expected engine route and the current query
+/// before extraction so stale rows cannot be returned for a new request.
+fn url_matches_search(engine: SearchEngine, observed: &str, query: &str) -> bool {
+    let Ok(url) = url::Url::parse(observed) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    match engine {
+        SearchEngine::Google => {
+            (host == "google.com" || host.ends_with(".google.com"))
+                && url.path().starts_with("/search")
+                && query_value(&url, "q").as_deref() == Some(query)
+        }
+        SearchEngine::Bing => {
+            (host == "bing.com" || host.ends_with(".bing.com"))
+                && url.path().starts_with("/search")
+                && query_value(&url, "q").as_deref() == Some(query)
+        }
+        SearchEngine::DuckDuckGo => {
+            (host == "duckduckgo.com" || host.ends_with(".duckduckgo.com"))
+                && query_value(&url, "q").as_deref() == Some(query)
+        }
+        SearchEngine::Wikipedia => {
+            host == "en.wikipedia.org"
+                && url.path().contains("Special:Search")
+                && query_value(&url, "search").as_deref() == Some(query)
+        }
+        SearchEngine::Youtube => {
+            (host == "youtube.com" || host.ends_with(".youtube.com"))
+                && url.path().starts_with("/results")
+                && query_value(&url, "search_query").as_deref() == Some(query)
+        }
+        SearchEngine::Reddit => {
+            (host == "reddit.com" || host.ends_with(".reddit.com"))
+                && url.path().starts_with("/search")
+                && query_value(&url, "q").as_deref() == Some(query)
+        }
+        SearchEngine::Amazon => {
+            (host == "amazon.com" || host.ends_with(".amazon.com"))
+                && url.path().starts_with("/s")
+                && query_value(&url, "k").as_deref() == Some(query)
+        }
+        SearchEngine::Github => false,
+    }
+}
+
+fn is_challenge_url(engine: SearchEngine, observed: &str) -> bool {
+    let Ok(url) = url::Url::parse(observed) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    match engine {
+        SearchEngine::Google => {
+            (host == "google.com" || host.ends_with(".google.com"))
+                && (url.path().starts_with("/sorry/")
+                    || host.starts_with("consent.")
+                    || url.path().starts_with("/consent"))
+        }
+        _ => false,
+    }
+}
+
 fn merge_results(
     query: String,
     rows: Vec<SearxngResult>,
@@ -651,30 +871,47 @@ mod extractor_tests {
     }
 
     #[test]
-    fn google_navigates_by_macro_others_by_url() {
-        let g = navigate_body(SearchEngine::Google, "rust lang", USER_ID);
-        assert_eq!(g["macro"], "@google_search");
-        assert_eq!(g["query"], "rust lang");
+    fn browser_engines_have_query_specific_target_urls() {
+        let cases = [
+            (
+                SearchEngine::Google,
+                "https://www.google.com/search?q=rust+lang",
+            ),
+            (
+                SearchEngine::Bing,
+                "https://www.bing.com/search?q=rust+lang",
+            ),
+            (
+                SearchEngine::DuckDuckGo,
+                "https://duckduckgo.com/?q=rust+lang",
+            ),
+            (
+                SearchEngine::Wikipedia,
+                "https://en.wikipedia.org/wiki/Special:Search?search=rust+lang&fulltext=1",
+            ),
+            (
+                SearchEngine::Youtube,
+                "https://www.youtube.com/results?search_query=rust+lang",
+            ),
+            (
+                SearchEngine::Reddit,
+                "https://www.reddit.com/search/?q=rust+lang",
+            ),
+            (SearchEngine::Amazon, "https://www.amazon.com/s?k=rust+lang"),
+        ];
+        for (engine, expected) in cases {
+            let target = search_target_url(engine, "rust lang");
+            assert_eq!(target, expected);
+            assert!(url_matches_search(engine, &target, "rust lang"));
+            assert!(!url_matches_search(engine, &target, "old query"));
+        }
+    }
 
-        // Non-macro browser engines navigate a search URL, query url-encoded.
-        let b = navigate_body(SearchEngine::Bing, "rust lang", USER_ID);
-        assert_eq!(b["url"], "https://www.bing.com/search?q=rust+lang");
-        let d = navigate_body(SearchEngine::DuckDuckGo, "rust lang", USER_ID);
-        assert_eq!(d["url"], "https://duckduckgo.com/?q=rust+lang");
-        let w = navigate_body(SearchEngine::Wikipedia, "rust lang", USER_ID);
-        assert_eq!(
-            w["url"],
-            "https://en.wikipedia.org/wiki/Special:Search?search=rust+lang&fulltext=1"
-        );
-        let y = navigate_body(SearchEngine::Youtube, "rust lang", USER_ID);
-        assert_eq!(
-            y["url"],
-            "https://www.youtube.com/results?search_query=rust+lang"
-        );
-        let rd = navigate_body(SearchEngine::Reddit, "rust lang", USER_ID);
-        assert_eq!(rd["url"], "https://www.reddit.com/search/?q=rust+lang");
-        let am = navigate_body(SearchEngine::Amazon, "rust lang", USER_ID);
-        assert_eq!(am["url"], "https://www.amazon.com/s?k=rust+lang");
+    #[test]
+    fn google_challenge_is_not_a_matching_result_page() {
+        let challenge = "https://www.google.com/sorry/index?continue=x";
+        assert!(is_challenge_url(SearchEngine::Google, challenge));
+        assert!(!url_matches_search(SearchEngine::Google, challenge, "rust"));
     }
 
     #[test]
@@ -716,7 +953,7 @@ mod extractor_tests {
 #[cfg(test)]
 mod github_api_tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// `github_search` hits the REST Search API and maps `items[]` into result
@@ -798,18 +1035,28 @@ mod github_api_tests {
             .mount(&server)
             .await;
         Mock::given(method("POST"))
-            .and(path("/tabs/t1/navigate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+            .and(path("/tabs/t1/evaluate"))
+            .and(body_partial_json(json!({ "timeout": 3000 })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "result": true })),
+            )
+            .with_priority(1)
             .mount(&server)
             .await;
-        Mock::given(method("POST"))
-            .and(path("/tabs/t1/wait"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "tabs": [{ "tabId": "t1", "url": "https://www.google.com/search?q=rust" }]
+            })))
             .mount(&server)
             .await;
         Mock::given(method("POST"))
             .and(path("/tabs/t1/evaluate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "result": rows })),
+            )
+            .with_priority(10)
             .mount(&server)
             .await;
         // GitHub API fails.

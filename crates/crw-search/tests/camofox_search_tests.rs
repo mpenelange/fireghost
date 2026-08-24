@@ -1,10 +1,10 @@
-//! Behavioural tests for the Camofox-backed Google search client. A wiremock
-//! server emulates the camofox-browser REST flow (create tab → navigate with
-//! the `@google_search` macro → wait → evaluate the result-scrape JS → close)
-//! and we assert the rows map into the existing `SearxngResponse` shape so the
-//! downstream transform/rerank pipeline is reused unchanged.
+//! Behavioural tests for the Camofox-backed browser search client. A wiremock
+//! server emulates the nonblocking REST flow (create warm tab → schedule a
+//! navigation through evaluate → observe `/tabs` → evaluate result rows).
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -27,7 +27,6 @@ struct ConcurrencyProbe {
 #[derive(Clone, Copy)]
 enum ProbeResponse {
     CreateTab,
-    Ok,
 }
 
 impl ConcurrencyProbe {
@@ -70,10 +69,113 @@ impl Respond for ConcurrencyProbe {
                 ResponseTemplate::new(200)
                     .set_body_json(json!({ "tabId": format!("tab-{session_key}") }))
             }
-            ProbeResponse::Ok => ResponseTemplate::new(200).set_body_json(json!({ "ok": true })),
         };
         response.set_delay(delay)
     }
+}
+
+#[derive(Clone)]
+struct BrowserHarness {
+    urls: Arc<Mutex<HashMap<String, String>>>,
+    rows: String,
+    schedule_delay: Duration,
+    active: Arc<AtomicUsize>,
+    max_active: Arc<AtomicUsize>,
+    schedule_calls: Arc<AtomicUsize>,
+}
+
+impl BrowserHarness {
+    fn new(rows: serde_json::Value) -> Self {
+        Self::with_delay(rows, Duration::ZERO)
+    }
+
+    fn with_delay(rows: serde_json::Value, schedule_delay: Duration) -> Self {
+        Self {
+            urls: Arc::new(Mutex::new(HashMap::new())),
+            rows: serde_json::to_string(&rows).unwrap(),
+            schedule_delay,
+            active: Arc::new(AtomicUsize::new(0)),
+            max_active: Arc::new(AtomicUsize::new(0)),
+            schedule_calls: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    fn max_active(&self) -> usize {
+        self.max_active.load(Ordering::SeqCst)
+    }
+
+    fn schedule_calls(&self) -> usize {
+        self.schedule_calls.load(Ordering::SeqCst)
+    }
+}
+
+fn scheduled_target(expression: &str) -> String {
+    let rest = expression
+        .split_once("location.assign(")
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
+    let encoded = rest.split_once("),0").map(|(url, _)| url).unwrap_or("");
+    serde_json::from_str(encoded).unwrap_or_default()
+}
+
+impl Respond for BrowserHarness {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let body: serde_json::Value = request.body_json().unwrap();
+        if body.get("timeout").is_some() {
+            let tab_id = request.url.path().split('/').nth(2).unwrap().to_string();
+            let target = scheduled_target(body["expression"].as_str().unwrap());
+            self.urls.lock().unwrap().insert(tab_id, target);
+            self.schedule_calls.fetch_add(1, Ordering::SeqCst);
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_active.fetch_max(active, Ordering::SeqCst);
+            let active_counter = Arc::clone(&self.active);
+            let delay = self.schedule_delay;
+            tokio::spawn(async move {
+                tokio::time::sleep(delay).await;
+                active_counter.fetch_sub(1, Ordering::SeqCst);
+            });
+            ResponseTemplate::new(200)
+                .set_delay(delay)
+                .set_body_json(json!({ "ok": true, "result": true }))
+        } else {
+            ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "result": self.rows.clone(),
+                "resultType": "string",
+                "truncated": false
+            }))
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TabsResponder(Arc<Mutex<HashMap<String, String>>>);
+
+impl Respond for TabsResponder {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        let tabs: Vec<_> = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(tab_id, url)| json!({ "tabId": tab_id, "url": url }))
+            .collect();
+        ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "tabs": tabs }))
+    }
+}
+
+async fn mount_browser_harness(server: &MockServer, harness: &BrowserHarness) {
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/tabs/[^/]+/evaluate$"))
+        .respond_with(harness.clone())
+        .with_priority(10)
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/tabs"))
+        .respond_with(TabsResponder(Arc::clone(&harness.urls)))
+        .mount(server)
+        .await;
 }
 
 fn params(q: &str) -> SearxngParams {
@@ -96,8 +198,7 @@ fn params_with_engines(q: &str, engines: Vec<SearchEngine>) -> SearxngParams {
 /// Stand up a camofox-browser mock that returns two Google rows.
 async fn mock_with_rows(rows: serde_json::Value) -> MockServer {
     let server = MockServer::start().await;
-    // The scrape JS returns a JSON *string* (the client `JSON.parse`s it).
-    let result_string = serde_json::to_string(&rows).unwrap();
+    let harness = BrowserHarness::new(rows);
 
     // The real camofox-browser requires both userId and sessionKey — guard it.
     Mock::given(method("POST"))
@@ -108,23 +209,7 @@ async fn mock_with_rows(rows: serde_json::Value) -> MockServer {
         })))
         .mount(&server)
         .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/wait"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/evaluate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "ok": true, "result": result_string, "resultType": "string", "truncated": false
-        })))
-        .mount(&server)
-        .await;
+    mount_browser_harness(&server, &harness).await;
     Mock::given(method("DELETE"))
         .and(path("/tabs/tab-1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
@@ -201,9 +286,102 @@ async fn two_engines_merge_and_dedupe_by_url() {
 #[tokio::test]
 async fn fetch_tolerates_empty_results() {
     let server = mock_with_rows(json!([])).await;
-    let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(10));
+    let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(1));
     let resp = client.fetch(&params("nothing here")).await.unwrap();
     assert_eq!(resp.results.len(), 0);
+}
+
+#[tokio::test]
+async fn browser_search_never_calls_blocking_navigate_or_wait_routes() {
+    let server = mock_with_rows(json!([
+        { "url": "https://a.example", "title": "A", "content": "" },
+    ]))
+    .await;
+    let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(3));
+    client.fetch(&params("bounded")).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(requests.iter().all(|request| {
+        let path = request.url.path();
+        !path.ends_with("/navigate") && !path.ends_with("/wait")
+    }));
+}
+
+#[tokio::test]
+async fn rejects_http_200_navigation_response_with_ok_false() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/tabs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "tab-1" })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(body_partial_json(json!({ "timeout": 3000 })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": false,
+            "error": "window is null"
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(2));
+    let error = client.fetch(&params("rejected")).await.unwrap_err();
+    assert!(error.to_string().contains("502"));
+}
+
+#[derive(Clone)]
+struct StaleThenCurrentTabs {
+    calls: Arc<AtomicUsize>,
+    urls: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl Respond for StaleThenCurrentTabs {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let url = if call == 0 {
+            "https://www.google.com/search?q=old-query".to_string()
+        } else {
+            self.urls.lock().unwrap()["tab-1"].clone()
+        };
+        ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "tabs": [{ "tabId": "tab-1", "url": url }]
+        }))
+    }
+}
+
+#[tokio::test]
+async fn stale_warm_url_is_not_accepted_for_a_new_query() {
+    let server = MockServer::start().await;
+    let harness = BrowserHarness::new(json!([
+        { "url": "https://a.example", "title": "A", "content": "" },
+    ]));
+    Mock::given(method("POST"))
+        .and(path("/tabs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "tab-1" })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/tabs/[^/]+/evaluate$"))
+        .respond_with(harness.clone())
+        .mount(&server)
+        .await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    Mock::given(method("GET"))
+        .and(path("/tabs"))
+        .respond_with(StaleThenCurrentTabs {
+            calls: Arc::clone(&calls),
+            urls: Arc::clone(&harness.urls),
+        })
+        .mount(&server)
+        .await;
+
+    let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(3));
+    let response = client.fetch(&params("new query")).await.unwrap();
+    assert_eq!(response.results.len(), 1);
+    assert!(calls.load(Ordering::SeqCst) >= 2);
 }
 
 /// Two back-to-back searches must drive ONE warm tab — not create+delete a tab
@@ -213,10 +391,9 @@ async fn fetch_tolerates_empty_results() {
 #[tokio::test]
 async fn reuses_one_warm_tab_across_sequential_searches() {
     let server = MockServer::start().await;
-    let rows = serde_json::to_string(&json!([
+    let harness = BrowserHarness::new(json!([
         { "url": "https://a.example", "title": "A", "content": "" },
-    ]))
-    .unwrap();
+    ]));
 
     // Exactly one tab is ever created, regardless of how many searches run.
     Mock::given(method("POST"))
@@ -225,22 +402,7 @@ async fn reuses_one_warm_tab_across_sequential_searches() {
         .expect(1)
         .mount(&server)
         .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .expect(2)
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/wait"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/evaluate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
-        .mount(&server)
-        .await;
+    mount_browser_harness(&server, &harness).await;
     // The warm tab must never be deleted — fail loudly if it is.
     Mock::given(method("DELETE"))
         .and(path("/tabs/tab-1"))
@@ -258,19 +420,19 @@ async fn reuses_one_warm_tab_across_sequential_searches() {
         .fetch(&params("second"))
         .await
         .expect("second search ok");
+    assert_eq!(harness.schedule_calls(), 2);
     // wiremock verifies `.expect(..)` counts on drop.
 }
 
 /// If the warm tab went stale (context idle-evicted or camofox restarted), the
-/// first navigate fails; the client must drop the dead tab, create a fresh one,
+/// first navigation schedule fails; the client must drop the dead tab, create a fresh one,
 /// and retry the search — recovering transparently.
 #[tokio::test]
 async fn recreates_tab_and_retries_after_stale_failure() {
     let server = MockServer::start().await;
-    let rows = serde_json::to_string(&json!([
+    let harness = BrowserHarness::new(json!([
         { "url": "https://a.example", "title": "A", "content": "" },
-    ]))
-    .unwrap();
+    ]));
 
     // First create hands out the (soon-stale) tab-1; the next create hands out
     // tab-2. up_to_n_times + priority makes tab-1 serve once, then tab-2.
@@ -287,28 +449,16 @@ async fn recreates_tab_and_retries_after_stale_failure() {
         .with_priority(2)
         .mount(&server)
         .await;
-    // tab-1 is dead: navigate returns 500 (the upstream "window is null" shape).
+    // tab-1 is dead: evaluated navigation returns 500 (the upstream
+    // "window is null" shape).
     Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(body_partial_json(json!({ "timeout": 3000 })))
         .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
         .mount(&server)
         .await;
-    // tab-2 is healthy.
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-2/navigate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-2/wait"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/tabs/tab-2/evaluate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
-        .mount(&server)
-        .await;
+    mount_browser_harness(&server, &harness).await;
 
     let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(10));
     let resp = client
@@ -324,10 +474,12 @@ async fn recreates_tab_and_retries_after_stale_failure() {
 #[tokio::test]
 async fn pool_size_two_overlaps_searches_on_independent_warm_tabs() {
     let server = MockServer::start().await;
-    let rows = serde_json::to_string(&json!([
-        { "url": "https://a.example", "title": "A", "content": "" },
-    ]))
-    .unwrap();
+    let harness = BrowserHarness::with_delay(
+        json!([
+            { "url": "https://a.example", "title": "A", "content": "" },
+        ]),
+        Duration::from_millis(200),
+    );
 
     // Keeps the test runnable against the pre-pool implementation so its RED
     // is behavioral (serialized elapsed time), not a mock/setup failure.
@@ -352,27 +504,8 @@ async fn pool_size_two_overlaps_searches_on_independent_warm_tabs() {
             .expect(1)
             .mount(&server)
             .await;
-        Mock::given(method("POST"))
-            .and(path(format!("/tabs/{tab_id}/navigate")))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_delay(Duration::from_millis(400))
-                    .set_body_json(json!({ "ok": true })),
-            )
-            .expect(2)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path(format!("/tabs/{tab_id}/wait")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path(format!("/tabs/{tab_id}/evaluate")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
-            .mount(&server)
-            .await;
     }
+    mount_browser_harness(&server, &harness).await;
 
     let client = Arc::new(CamofoxSearchClient::new_with_pool_size(
         server.uri(),
@@ -390,8 +523,8 @@ async fn pool_size_two_overlaps_searches_on_independent_warm_tabs() {
     first.expect("first concurrent search should succeed");
     second.expect("second concurrent search should succeed");
     assert!(
-        elapsed < Duration::from_millis(700),
-        "two 400ms navigations should overlap, but took {elapsed:?}"
+        elapsed < Duration::from_millis(1700),
+        "two scheduled navigations should overlap, but took {elapsed:?}"
     );
 
     let third_params = params("third");
@@ -407,12 +540,13 @@ async fn pool_size_two_overlaps_searches_on_independent_warm_tabs() {
 #[tokio::test]
 async fn pool_size_four_serializes_cold_tabs_but_overlaps_warm_navigation() {
     let server = MockServer::start().await;
-    let rows = serde_json::to_string(&json!([
-        { "url": "https://a.example", "title": "A", "content": "" },
-    ]))
-    .unwrap();
+    let harness = BrowserHarness::with_delay(
+        json!([
+            { "url": "https://a.example", "title": "A", "content": "" },
+        ]),
+        Duration::from_millis(250),
+    );
     let creates = ConcurrencyProbe::new(Duration::from_millis(100), ProbeResponse::CreateTab);
-    let navigates = ConcurrencyProbe::new(Duration::from_millis(250), ProbeResponse::Ok);
 
     Mock::given(method("POST"))
         .and(path("/tabs"))
@@ -420,22 +554,7 @@ async fn pool_size_four_serializes_cold_tabs_but_overlaps_warm_navigation() {
         .expect(4)
         .mount(&server)
         .await;
-    Mock::given(method("POST"))
-        .and(path_regex(r"^/tabs/tab-search-[0-3]/navigate$"))
-        .respond_with(navigates.clone())
-        .expect(8)
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path_regex(r"^/tabs/tab-search-[0-3]/wait$"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path_regex(r"^/tabs/tab-search-[0-3]/evaluate$"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "result": rows })))
-        .mount(&server)
-        .await;
+    mount_browser_harness(&server, &harness).await;
 
     let client = Arc::new(CamofoxSearchClient::new_with_pool_size(
         server.uri(),
@@ -486,11 +605,11 @@ async fn pool_size_four_serializes_cold_tabs_but_overlaps_warm_navigation() {
     }
 
     assert!(
-        navigates.max_active() >= 2,
+        harness.max_active() >= 2,
         "independent warm navigations should overlap"
     );
     assert!(
-        elapsed < Duration::from_millis(700),
-        "four 250ms warm navigations should overlap, but took {elapsed:?}"
+        elapsed < Duration::from_millis(1700),
+        "four 250ms warm navigation schedules should overlap, but took {elapsed:?}"
     );
 }
