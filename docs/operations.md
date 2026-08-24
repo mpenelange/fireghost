@@ -2,6 +2,10 @@
 
 Start with `make up`, then inspect `make ps` and run `make smoke`. Logs are available through `make logs SERVICES="router crw camofox lightpanda"`; metrics are at `http://127.0.0.1:33000/metrics`.
 
+## Isolated candidate
+
+Run `make staging-up` to create a separate Compose project, network, cache, and browser-profile volume. Its router binds only to `127.0.0.1:33010`, and its router image uses the distinct `monorepo-staging` tag so it cannot replace the production router tag. Validate with `make staging-smoke staging-live-contract`, inspect with `make staging-ps`, and remove its containers and network with `make staging-down`. Production remains on port `33000` throughout.
+
 Back up both persistent volumes with `./scripts/backup.sh backups/appliance.tar.gz`. The script briefly stops only the services that were running, creates a quiescent archive, and starts those same services again. Restore is deliberately explicit: `./scripts/restore.sh --force backups/appliance.tar.gz`. Restore stops the stack and replaces both volumes' contents; validate the archive and retain the previous backup first.
 
 Budget limits are enforced before cloud calls. An empty `FIRECRAWL_CLOUD_API_KEY` disables cloud fallback. `ROUTER_MONTHLY_RESET_DAY` defaults to `1` and accepts `1` through `28`; the monthly ledger rolls at 00:00 UTC on that day, with earlier days assigned to the prior billing period. For example, reset day `3` keeps September 1 and 2 in the August period and starts September at September 3 00:00 UTC.

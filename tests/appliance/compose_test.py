@@ -6,6 +6,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "deploy" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "deploy" / ".env.example"
+STAGING_COMPOSE = ROOT / "deploy" / "compose.staging.yaml"
 
 
 class ComposeContractTest(unittest.TestCase):
@@ -103,6 +104,11 @@ class ComposeContractTest(unittest.TestCase):
         self.assertRegex(camofox, r"camofox-profiles:/home/node/\.camofox")
         self.assertIn("CAMOFOX_PROFILES_DIR=/home/node/.camofox/profiles", camofox)
         self.assertRegex(self.text, r"(?m)^volumes:\n  router-data:\n  camofox-profiles:")
+
+    def test_staging_override_replaces_the_router_port(self):
+        staging = STAGING_COMPOSE.read_text(encoding="utf-8")
+        self.assertIn("ports: !override", staging)
+        self.assertIn('127.0.0.1:${ROUTER_HOST_PORT:-33010}:8080', staging)
 
 
 if __name__ == "__main__":

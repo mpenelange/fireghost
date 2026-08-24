@@ -1,0 +1,4 @@
+services:
+  router:
+    ports: !override
+      - "127.0.0.1:${ROUTER_HOST_PORT:-33010}:8080"
