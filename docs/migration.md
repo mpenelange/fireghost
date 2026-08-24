@@ -40,7 +40,7 @@ scripts/              Root developer and release commands
 docs/                 Architecture, operations, and migration records
 ```
 
-`appliance/` is temporary. Its contents will move to `router/`, `deploy/`, and the root test/documentation locations in small, behavior-neutral commits.
+The temporary `appliance/` import has been eliminated. Its contents moved to `router/`, `deploy/`, and the root test/documentation locations in small, behavior-neutral commits.
 
 ## Release ownership
 

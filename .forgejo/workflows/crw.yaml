@@ -1,0 +1,44 @@
+name: crw
+
+on:
+  push:
+    paths:
+      - crw/**
+      - Makefile
+      - .forgejo/workflows/crw.yaml
+  pull_request:
+    branches: [main]
+    paths:
+      - crw/**
+      - Makefile
+      - .forgejo/workflows/crw.yaml
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: clippy, rustfmt
+      - name: Cache Cargo inputs and artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crw/target
+          key: ${{ runner.os }}-crw-${{ hashFiles('crw/Cargo.lock') }}
+      - name: Workspace gate
+        run: make check-crw
+      - name: Process and version guards
+        working-directory: crw
+        run: |
+          bash scripts/check-no-process-exit.sh
+          bash scripts/check-internal-dep-versions.sh
+          python3 -m unittest scripts/test_live_compatibility.py
+          python3 -m unittest scripts/test_scrape_compatibility.py
+          python3 scripts/release/audit_release_please_config.py
+          python3 scripts/release/test_guards.py

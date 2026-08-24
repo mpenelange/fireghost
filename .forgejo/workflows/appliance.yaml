@@ -1,0 +1,28 @@
+name: appliance
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure non-secret deployment inputs
+        run: cp deploy/.env.example deploy/.env
+      - name: Packaging and Compose contracts
+        run: make test-appliance compose-config
+      - name: Build router
+        run: make build-router ROUTER_IMAGE=hermes-web-retrieval-router:ci
+      - name: Deterministic router smoke
+        run: |
+          docker network create hermes-web-retrieval-ci
+          docker run -d --rm --name fake-cloud --network hermes-web-retrieval-ci python:3.13.5-alpine3.22@sha256:37b14db89f587f9eaa890e4a442a3fe55db452b69cca1403cc730bd0fbdc8aaf python -c 'from http.server import BaseHTTPRequestHandler,HTTPServer; H=type("H",(BaseHTTPRequestHandler,),{"do_POST":lambda s:(s.send_response(200),s.send_header("Content-Type","application/json"),s.end_headers(),s.wfile.write(b"{\"success\":true,\"data\":{\"web\":[{\"url\":\"https://example.invalid\"}]}}")),"log_message":lambda *a:None}); HTTPServer(("0.0.0.0",8000),H).serve_forever()'
+          docker run -d --rm --name router-ci --network hermes-web-retrieval-ci -p 127.0.0.1:33000:8080 -e ROUTER_LOCAL_URL=http://fake-cloud:8000 -e ROUTER_CLOUD_URL=http://fake-cloud:8000 -e FIRECRAWL_CLOUD_API_KEY=fake-ci-key -e ROUTER_DAILY_CLOUD_CREDITS=20 -e ROUTER_MONTHLY_CLOUD_CREDITS=200 hermes-web-retrieval-router:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:33000/health && break; sleep 1; done
+          make smoke
+      - name: Cleanup
+        if: always()
+        run: docker rm -f router-ci fake-cloud 2>/dev/null || true; docker network rm hermes-web-retrieval-ci 2>/dev/null || true

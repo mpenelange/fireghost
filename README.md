@@ -16,4 +16,4 @@ See [the migration plan](docs/migration.md) for the frozen baseline, target stru
 - `tests/appliance/`: packaging and operational contracts.
 - `scripts/`: appliance smoke, live compatibility, backup, and update tooling.
 
-Run `make help` for the root verification, build, and appliance commands. Rust and Go retain independent dependency graphs and component-local tests; `make check` is the combined repository gate.
+Run `make help` for the root verification, build, and appliance commands. Rust and Go retain independent dependency graphs and component-local tests; `make check` is the combined repository gate. See [continuous integration](docs/ci.md) for the path-aware workflows and current Firewire runner status.

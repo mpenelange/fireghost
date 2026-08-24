@@ -1,0 +1,22 @@
+name: router
+
+on:
+  push:
+    paths:
+      - router/**
+      - Makefile
+      - .forgejo/workflows/router.yaml
+  pull_request:
+    branches: [main]
+    paths:
+      - router/**
+      - Makefile
+      - .forgejo/workflows/router.yaml
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format, vet, unit, and race checks
+        run: make check-router
