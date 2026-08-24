@@ -1,0 +1,9 @@
+.git
+.env
+router-data
+backups
+docs
+tests
+scripts
+.forgejo
+

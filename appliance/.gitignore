@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+runtime/
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+*.pyc
+coverage.out
+bin/
+.DS_Store
