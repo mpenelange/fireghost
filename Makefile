@@ -9,6 +9,9 @@ GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
 COMPOSE = docker compose --project-directory deploy -f deploy/compose.yaml
 ROUTER_IMAGE ?= hermes-web-retrieval-router:dev
 CRW_BUILD_IMAGE ?= hermes-web-retrieval-crw:dev
+# The combined monorepo gate favors bounded artifacts over debugger symbols.
+# Component developers can still run the native crw/Makefile directly.
+CRW_CARGO_ENV = CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 
 help:
 	@printf '%s\n' \
@@ -30,7 +33,7 @@ check: check-router check-crw test-appliance compose-config
 check-router: router-fmt-check router-vet test-router router-race
 
 check-crw:
-	$(MAKE) -C crw check
+	$(CRW_CARGO_ENV) $(MAKE) -C crw check
 
 test: test-router test-crw test-appliance
 
@@ -38,7 +41,7 @@ test-router:
 	$(GO_DOCKER) go test ./...
 
 test-crw:
-	$(MAKE) -C crw test
+	$(CRW_CARGO_ENV) $(MAKE) -C crw test
 
 test-appliance:
 	python3 -m unittest discover -s tests/appliance -p '*_test.py' -v
