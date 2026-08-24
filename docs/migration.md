@@ -44,7 +44,7 @@ The temporary `appliance/` import has been eliminated. Its contents moved to `ro
 
 ## Release ownership
 
-One monorepo commit describes the tested appliance. Components keep their own versions, tests, and images, but a single release manifest records the exact container digests assembled by Compose. Production consumes only immutable digests.
+One monorepo commit describes the tested appliance. Components keep their own versions, tests, and images, while `deploy/stack.lock.json` records the source provenance and exact external container digests assembled by Compose. The imported router baseline remains a documented legacy local build; the first monorepo release will replace it with a published immutable router digest. Production consumes only immutable registry digests once that transition is complete.
 
 ## Migration gates
 

@@ -13,7 +13,7 @@ jobs:
       - name: Configure non-secret deployment inputs
         run: cp deploy/.env.example deploy/.env
       - name: Packaging and Compose contracts
-        run: make test-appliance compose-config
+        run: make test-appliance compose-config check-stack-lock
       - name: Build router
         run: make build-router ROUTER_IMAGE=hermes-web-retrieval-router:ci
       - name: Deterministic router smoke

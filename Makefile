@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help check check-router check-crw test test-router test-crw test-appliance \
-	router-fmt-check router-vet router-race compose-config build-router build-crw-image \
+	router-fmt-check router-vet router-race compose-config check-stack-lock build-router build-crw-image \
 	build-images up down ps logs pull smoke live-contract backup restore check-updates
 
 GO_IMAGE = golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c
@@ -28,7 +28,7 @@ help:
 	  '  make smoke             Run the bounded production smoke test' \
 	  '  make live-contract     Run search, scrape, cache, and concurrency gates'
 
-check: check-router check-crw test-appliance compose-config
+check: check-router check-crw test-appliance compose-config check-stack-lock
 
 check-router: router-fmt-check router-vet test-router router-race
 
@@ -57,6 +57,9 @@ router-race:
 
 compose-config:
 	$(COMPOSE) config --quiet
+
+check-stack-lock:
+	python3 scripts/check_stack_lock.py
 
 build-router:
 	docker build --pull -t $(ROUTER_IMAGE) router

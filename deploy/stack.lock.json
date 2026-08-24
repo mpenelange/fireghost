@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "hermes-production-fw3",
+  "capturedAt": "2026-08-24T05:56:08Z",
+  "architecture": "linux/amd64",
+  "source": {
+    "monorepoImportRevision": "89812afa985ddcc8cef73e2d35d3f1068f198447",
+    "crwRevision": "94f792a197433ce722ab78c2182b7fb988175502",
+    "applianceRevision": "9f142ce549d58ee50a6f7a8320c84f5404c09a74",
+    "routerRevision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca"
+  },
+  "components": {
+    "hermes": {
+      "version": "0.20.5",
+      "provenance": "Version observed on the production host; Hermes is managed outside this repository."
+    },
+    "router": {
+      "version": "dev",
+      "image": "web-retrieval-router:dev",
+      "imageId": "sha256:2e663609d96f87083d9357b499fc3c7b5c16999d61e10ed6969344dc81a2eb01",
+      "sourceRevision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca",
+      "delivery": "local-build",
+      "provenance": "Built from the clean v0.1.4 router tree; no registry digest exists for this legacy local image."
+    },
+    "crw": {
+      "version": "1.2.0-fw.3",
+      "image": "git.firewire.cc/michael/crw-camofox@sha256:3898cae0970787b095d4348578c0219c9b2ff2461bd8b419e67ef2b47d701115",
+      "imageId": "sha256:d64036edba088f7581863a3f3914fa89d14958e83257f7ca2d2c0dbfe1534e85",
+      "sourceRevision": "94f792a197433ce722ab78c2182b7fb988175502"
+    },
+    "camofox": {
+      "version": "2.4.6",
+      "image": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+      "imageId": "sha256:f37f6f7c8b57c3ddbddf4dcfbbd24575053754991fad9f83c01c592e73dbccf8",
+      "node": "22.22.3",
+      "camoufoxJs": "0.8.5",
+      "playwrightCore": "1.58.1",
+      "browserEngine": "Camoufox/Firefox 135.0.1-beta.24"
+    },
+    "lightpanda": {
+      "version": null,
+      "image": "lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+      "imageId": "sha256:8ccc412117d5b429447262218734767006e8e04ae9760ad58ed263e333b783ff",
+      "provenance": "The image publishes no semantic version or OCI labels; its registry digest is authoritative."
+    }
+  }
+}

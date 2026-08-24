@@ -1,9 +1,8 @@
-# Operations and compatibility
+# Historical fw.2 operations and compatibility
 
-`hermes-production.lock.json` is the captured, known-good Hermes retrieval
-stack. Image digests are authoritative; tags and reported semantic versions are
-descriptive only. Update one component at a time and retain the previous lock
-file until the candidate passes the live compatibility gate.
+`hermes-production-fw2.lock.json` is the superseded, known-good Hermes retrieval
+stack from before the `1.2.0-fw.3` rollout. It is retained only as migration and
+rollback evidence. The current deployment authority is `deploy/stack.lock.json`.
 
 ## Build an identifiable CRW candidate
 
@@ -31,11 +30,11 @@ project. Then run:
 
 ```bash
 CRW_API_URL=http://127.0.0.1:3000 \
-  python3 scripts/live_compatibility.py --phase all \
+  python3 crw/scripts/live_compatibility.py --phase all \
   --output live-compatibility.json
 
 CRW_API_URL=http://127.0.0.1:3000 \
-  python3 scripts/scrape_compatibility.py \
+  python3 crw/scripts/scrape_compatibility.py \
   --output scrape-compatibility.json
 ```
 
@@ -50,7 +49,7 @@ After a full failure, isolate the affected search engines without rerunning the
 whole matrix:
 
 ```bash
-python3 scripts/live_compatibility.py \
+python3 crw/scripts/live_compatibility.py \
   --phase cold --engines youtube,reddit,amazon \
   --output live-compatibility-focused.json
 ```
