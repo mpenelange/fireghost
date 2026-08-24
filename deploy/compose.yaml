@@ -8,6 +8,7 @@ services:
         VERSION: ${ROUTER_VERSION:-dev}
         REVISION: ${ROUTER_REVISION:-unknown}
         BUILD_DATE: ${ROUTER_BUILD_DATE:-unknown}
+        SOURCE: ${MONOREPO_SOURCE:-https://git.firewire.cc/michael/hermes-web-retrieval}
     image: web-retrieval-router:${ROUTER_VERSION:-dev}
     restart: unless-stopped
     depends_on:

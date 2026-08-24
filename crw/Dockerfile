@@ -15,6 +15,7 @@ ARG BUILDARCH
 ARG CRW_VERSION=1.2.0-local
 ARG CRW_REVISION=unknown
 ARG CRW_BUILD_DATE=unknown
+ARG CRW_SOURCE=https://git.firewire.cc/michael/hermes-web-retrieval
 
 # Embedded by rustc through `option_env!`; these identify the binary even when
 # it is copied out of the container or the registry metadata is unavailable.
@@ -90,7 +91,7 @@ COPY config.docker.toml /app/config.docker.toml
 
 WORKDIR /app
 
-LABEL org.opencontainers.image.source="https://git.firewire.cc/michael/crw-camofox" \
+LABEL org.opencontainers.image.source="$CRW_SOURCE" \
       org.opencontainers.image.version="$CRW_VERSION" \
       org.opencontainers.image.revision="$CRW_REVISION" \
       org.opencontainers.image.created="$CRW_BUILD_DATE" \

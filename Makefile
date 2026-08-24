@@ -12,7 +12,12 @@ STAGING_PROJECT ?= hermes-web-retrieval-staging
 STAGING_ROUTER_VERSION ?= monorepo-staging
 STAGING_COMPOSE = $(COMPOSE) -f deploy/compose.staging.yaml -p $(STAGING_PROJECT)
 ROUTER_IMAGE ?= hermes-web-retrieval-router:dev
-CRW_BUILD_IMAGE ?= hermes-web-retrieval-crw:dev
+MONOREPO_SOURCE ?= https://git.firewire.cc/michael/hermes-web-retrieval
+MONOREPO_REVISION ?= $(shell git rev-parse HEAD)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+ROUTER_VERSION ?= dev
+CRW_CANDIDATE_VERSION ?= 1.2.0-monorepo.$(shell git rev-parse --short=7 HEAD)
+CRW_BUILD_IMAGE ?= hermes-web-retrieval-crw:$(CRW_CANDIDATE_VERSION)
 # The combined monorepo gate favors bounded artifacts over debugger symbols.
 # Component developers can still run the native crw/Makefile directly.
 CRW_CARGO_ENV = CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
@@ -68,15 +73,25 @@ check-stack-lock:
 	python3 scripts/check_stack_lock.py
 
 build-router:
-	docker build --pull -t $(ROUTER_IMAGE) router
+	docker build --pull \
+		--build-arg VERSION=$(ROUTER_VERSION) \
+		--build-arg REVISION=$(MONOREPO_REVISION) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg SOURCE=$(MONOREPO_SOURCE) \
+		-t $(ROUTER_IMAGE) router
 
 build-crw-image:
-	docker build --pull -t $(CRW_BUILD_IMAGE) crw
+	docker build --pull \
+		--build-arg CRW_VERSION=$(CRW_CANDIDATE_VERSION) \
+		--build-arg CRW_REVISION=$(MONOREPO_REVISION) \
+		--build-arg CRW_BUILD_DATE=$(BUILD_DATE) \
+		--build-arg CRW_SOURCE=$(MONOREPO_SOURCE) \
+		-t $(CRW_BUILD_IMAGE) crw
 
 build-images: build-router build-crw-image
 
 up:
-	$(COMPOSE) up -d --build
+	ROUTER_REVISION=$(MONOREPO_REVISION) ROUTER_BUILD_DATE=$(BUILD_DATE) MONOREPO_SOURCE=$(MONOREPO_SOURCE) $(COMPOSE) up -d --build
 
 down:
 	$(COMPOSE) down
@@ -97,7 +112,7 @@ live-contract:
 	./scripts/live-contract-test.py
 
 staging-up:
-	ROUTER_VERSION=$(STAGING_ROUTER_VERSION) $(STAGING_COMPOSE) up -d --build
+	ROUTER_VERSION=$(STAGING_ROUTER_VERSION) ROUTER_REVISION=$(MONOREPO_REVISION) ROUTER_BUILD_DATE=$(BUILD_DATE) MONOREPO_SOURCE=$(MONOREPO_SOURCE) $(STAGING_COMPOSE) up -d --build
 
 staging-down:
 	$(STAGING_COMPOSE) down
