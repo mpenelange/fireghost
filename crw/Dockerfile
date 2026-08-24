@@ -77,6 +77,7 @@ FROM debian:bookworm-slim
 ARG CRW_VERSION=1.2.0-local
 ARG CRW_REVISION=unknown
 ARG CRW_BUILD_DATE=unknown
+ARG CRW_SOURCE=https://git.firewire.cc/michael/hermes-web-retrieval
 
 # curl is included for the Compose service healthcheck; the runtime otherwise
 # remains minimal and does not expose any browser ports.
