@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "crwVendor": {
+      "url": "https://github.com/adambenhassen/crw-camofox.git",
+      "ref": "refs/heads/main",
+      "reviewedCommit": "ca65413060fc3daaf621c0a81cd3d0368160402e",
+      "importPath": "crw"
+    },
+    "crwFoundation": {
+      "url": "https://github.com/us/crw",
+      "ref": "refs/heads/main",
+      "reviewedCommit": "aac7999b9379fd8b6ef818ce37f78634416f79c1"
+    }
+  },
+  "images": {
+    "camofoxBrowser": {
+      "source": "https://github.com/redf0x1/camofox-browser",
+      "image": "ghcr.io/redf0x1/camofox-browser:latest",
+      "reviewedDigest": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7"
+    },
+    "lightpandaBrowser": {
+      "source": "https://github.com/lightpanda-io/browser",
+      "image": "lightpanda/browser:latest",
+      "reviewedDigest": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887"
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 This repository packages a local-first, Firecrawl-compatible search and scrape router for Hermes Agent. Only the router is exposed, on host loopback; CRW, Camofox, and LightPanda remain private to the Compose network.
 
-CRW application source lives in the separate `michael/crw-camofox` repository. That repository produces an immutable container image; this repository pins its digest, integrates it with the browsers and router, and owns appliance-level validation. The exact [release boundary and handoff](docs/architecture.md#repository-and-release-boundary) are documented explicitly.
+CRW application source is imported under `crw/` with its original history preserved. The former `michael/crw-camofox` repository remains the deployed-baseline source during migration, but it is no longer the only location of CRW source. The `crw/` component produces an immutable container image; `deploy/` pins its digest, integrates it with the browsers and router, and owns appliance-level validation. The exact [component and release boundary](architecture.md#component-and-release-boundary) is documented explicitly.
 
 ## Install and run
 

@@ -30,6 +30,7 @@ help:
 	  '  make check-router      Format, vet, test, and race-check the Go router' \
 	  '  make check-crw         Run the CRW workspace checks' \
 	  '  make test-appliance    Run Compose and backup/restore contracts' \
+	  '  make check-updates     Compare reviewed refs with mutable upstreams' \
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
@@ -133,4 +134,4 @@ restore:
 	./scripts/restore.sh --force "$(BACKUP)"
 
 check-updates:
-	./scripts/check-updates.sh
+	./scripts/check-updates.sh check
