@@ -8,5 +8,6 @@ runtime/
 __pycache__/
 *.pyc
 coverage.out
+artifacts/
 bin/
 .DS_Store

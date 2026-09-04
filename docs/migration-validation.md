@@ -46,9 +46,66 @@ recur silently.
 Forgejo Actions is disabled on the current Firewire server. The checked-in
 workflows describe the intended gates but are not counted as executed evidence.
 
-## Remaining gate
+## Durable Hermes regression gate
 
-Run the Hermes regression suite against `http://127.0.0.1:33010` and compare it
-with the frozen `1.2.0-fw.3` production baseline. Do not merge, publish, update
-`deploy/stack.lock.json`, or cut production over until that comparison passes.
-The production stack and its immutable CRW digest remain the rollback authority.
+Keep the frozen production router on `http://127.0.0.1:33000` and the isolated
+candidate on `http://127.0.0.1:33010`. Run the deterministic offline tests first,
+then choose a new explicit timestamped artifact path for the live comparison.
+The gate creates artifacts exclusively and refuses to overwrite an existing file
+or follow an existing symlink:
+
+```sh
+make check
+mkdir -p artifacts
+make hermes-regression \
+  OUTPUT="artifacts/hermes-regression-$(date -u +%Y%m%dT%H%M%SZ).json"
+```
+
+`FIRECRAWL_API_KEY` may be supplied in the parent shell when the routers require
+authentication. For the installed production profile, source it only in that
+shell (`set -a; . /root/.hermes/.env; set +a`); the gate never reads or edits that
+profile. Each probe gets a separate temporary `HOME` and `HERMES_HOME` containing
+an ephemeral direct-Firecrawl selection. Managed-gateway and provider-selection
+environment variables and unrelated parent credentials are excluded by a minimal
+allowlist; only basic process values, isolated homes, query, direct key, and endpoint
+are passed to the installed provider subprocess. The key is never printed or written
+to the artifact. Override the interpreter reproducibly with
+`HERMES_PYTHON=/path/to/python make hermes-regression ...` or the script's
+`--hermes-python` option.
+
+The default query can be replaced with `--search-query` (or
+`HERMES_REGRESSION_SEARCH_QUERY=... make hermes-regression`) to perform a
+fresh-query comparison; choose a query not already present in either router
+cache when cold-path evidence is required. A bounded, secret-redacted query and
+cache/local/cloud deltas are retained in the artifact.
+
+The gate searches for `Python programming language official documentation` with
+Hermes's normal `query` plus `limit` call (without custom engines) and makes a
+markdown extraction call for `https://example.com/`. It compares
+provider availability, success, bounded nonempty result counts, required result
+fields, the representative extraction title and content size, and a 120-second
+absolute candidate latency ceiling. Candidate search titles must overlap at least
+half of the production titles, and candidate extracted content must retain at least
+90% of the production content size. Production and candidate latency are recorded
+but are not treated as statistically comparable because their persistent caches
+may differ and the search engine is live. Google redirect-token URL identity is
+intentionally not compared.
+
+For both routers, the gate records request, cache-hit, local-attempt, and
+cloud-attempt counter snapshots and deltas, bracketed immediately around each probe.
+A successful search and scrape must each produce exactly one 2xx request-counter
+increase on the intended router; extra concurrent traffic fails closed rather than
+being mistaken for probe evidence. The CLI rejects swapped, duplicate, or noncanonical
+production/candidate endpoints. Cache hits are
+allowed; both sides need not be cache misses. Production cloud activity is recorded
+as the behavioral baseline; any candidate cloud search or scrape increase fails.
+Every required metric family and label is fail-closed when absent.
+
+The ignored JSON artifact contains UTC time, repo HEAD, endpoint and installed
+Python/provider identities, bounded and secret-redacted probe inputs and summaries
+(never full extracted page bodies), metrics snapshots and deltas, thresholds, and
+all pass/fail reasons. Timeouts and subprocess, JSON, HTTP, or metric failures also
+write a sanitized failing artifact without stderr, secrets, tokens, or config
+content. Do not merge, publish, update `deploy/stack.lock.json`, or
+cut production over until it passes. Production and its immutable CRW digest remain
+the rollback authority.

@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help check check-router check-crw test test-router test-crw test-appliance \
+	test-hermes-regression hermes-regression \
 	router-fmt-check router-vet router-race compose-config check-stack-lock build-router build-crw-image \
 	build-images up down ps logs pull smoke live-contract staging-up staging-down staging-ps \
 	staging-smoke staging-live-contract backup restore check-updates
@@ -21,6 +22,8 @@ CRW_BUILD_IMAGE ?= hermes-web-retrieval-crw:$(CRW_CANDIDATE_VERSION)
 # The combined monorepo gate favors bounded artifacts over debugger symbols.
 # Component developers can still run the native crw/Makefile directly.
 CRW_CARGO_ENV = CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+HERMES_PYTHON ?= /usr/local/lib/hermes-agent/venv/bin/python
+HERMES_REGRESSION_SEARCH_QUERY ?= Python programming language official documentation
 
 help:
 	@printf '%s\n' \
@@ -31,6 +34,7 @@ help:
 	  '  make check-crw         Run the CRW workspace checks' \
 	  '  make test-appliance    Run Compose and backup/restore contracts' \
 	  '  make check-updates     Compare reviewed refs with mutable upstreams' \
+	  '  make test-hermes-regression  Run deterministic Hermes gate tests' \
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
@@ -40,14 +44,14 @@ help:
 	  '  make smoke             Run the bounded production smoke test' \
 	  '  make live-contract     Run search, scrape, cache, and concurrency gates'
 
-check: check-router check-crw test-appliance compose-config check-stack-lock
+check: check-router check-crw test-appliance test-hermes-regression compose-config check-stack-lock
 
 check-router: router-fmt-check router-vet test-router router-race
 
 check-crw:
 	$(CRW_CARGO_ENV) $(MAKE) -C crw check
 
-test: test-router test-crw test-appliance
+test: test-router test-crw test-appliance test-hermes-regression
 
 test-router:
 	$(GO_DOCKER) go test ./...
@@ -57,6 +61,13 @@ test-crw:
 
 test-appliance:
 	python3 -m unittest discover -s tests/appliance -p '*_test.py' -v
+
+test-hermes-regression:
+	python3 -m unittest discover -s tests/live -p '*_test.py' -v
+
+hermes-regression:
+	@test -n "$(OUTPUT)" || { printf '%s\n' 'OUTPUT is required (for example: artifacts/hermes-regression-$$(date -u +%Y%m%dT%H%M%SZ).json)'; exit 2; }
+	$(HERMES_PYTHON) scripts/hermes-regression-gate.py --hermes-python "$(HERMES_PYTHON)" --search-query "$(HERMES_REGRESSION_SEARCH_QUERY)" --output "$(OUTPUT)"
 
 router-fmt-check:
 	$(GO_DOCKER) sh -c 'test -z "$$(gofmt -l .)"'
