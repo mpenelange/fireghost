@@ -89,6 +89,10 @@ fn default_v2_formats() -> Vec<FormatSpec> {
     vec![FormatSpec::String("markdown".to_string())]
 }
 
+fn is_target_http_error(status_code: u16, body_len: usize) -> bool {
+    matches!(status_code, 401 | 404 | 410) || (status_code >= 400 && body_len < 200)
+}
+
 /// `{ success, data, warning? }` envelope.
 #[derive(Debug, Serialize)]
 pub struct V2ScrapeResponse {
@@ -219,7 +223,7 @@ pub async fn scrape(
         .filter_map(|opt| opt.map(|t| t.len()))
         .max()
         .unwrap_or(0);
-        (body_len < 200).then(|| {
+        is_target_http_error(status_code, body_len).then(|| {
             data.warning
                 .clone()
                 .unwrap_or_else(|| format!("Target returned HTTP {status_code}"))
@@ -333,5 +337,10 @@ mod tests {
         let v = serde_json::to_value(&resp).unwrap();
         assert_eq!(v["success"], true);
         assert!(v.get("error").is_none(), "error omitted on success");
+    }
+
+    #[test]
+    fn rich_not_found_page_is_still_a_truthful_http_error() {
+        assert!(is_target_http_error(404, 10_000));
     }
 }

@@ -203,8 +203,24 @@ func normalizedAttemptTimeout(configuredTimeout time.Duration) time.Duration {
 
 func postWithAttemptTimeout(ctx context.Context, configuredTimeout time.Duration, client *upstream.Client, path, contentType string, body io.Reader) (*http.Response, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, normalizedAttemptTimeout(configuredTimeout))
-	defer cancel()
-	return client.Post(attemptCtx, path, contentType, body)
+	response, err := client.Post(attemptCtx, path, contentType, body)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	response.Body = &cancelOnClose{ReadCloser: response.Body, cancel: cancel}
+	return response, nil
+}
+
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (body *cancelOnClose) Close() error {
+	err := body.ReadCloser.Close()
+	body.cancel()
+	return err
 }
 
 type statusWriter struct {

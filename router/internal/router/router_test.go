@@ -1837,6 +1837,28 @@ func TestScrapeLocalTransportErrorRejectsInvalidCloudResponse(t *testing.T) {
 	}
 }
 
+func TestScrapeKeepsAttemptContextAliveWhileReadingStreamingResponse(t *testing.T) {
+	localBody := []byte(`{"success":true,"data":{"markdown":"# streamed Wikipedia article"}}`)
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		time.Sleep(25 * time.Millisecond)
+		_, _ = w.Write(localBody)
+	}))
+	defer local.Close()
+
+	recorder := httptest.NewRecorder()
+	router.NewHandler(
+		router.Config{LocalBaseURL: local.URL, HTTPTimeout: time.Second, MaxResponseBytes: 1 << 20},
+		router.Dependencies{HTTPClient: local.Client()},
+	).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v2/scrape", strings.NewReader(`{"url":"https://en.wikipedia.org/wiki/Test","formats":["markdown"]}`)))
+
+	if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), localBody) {
+		t.Fatalf("response = (%d, %q), want (200, %q)", recorder.Code, recorder.Body.Bytes(), localBody)
+	}
+}
+
 func TestScrapeNon2xxFallbackExcludesTerminalStatusesAndErrors(t *testing.T) {
 	tests := []struct {
 		name          string
