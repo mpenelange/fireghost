@@ -57,3 +57,16 @@ Docker Compose configuration validation passed. A structural check confirmed fou
 Set `ROUTER_MAX_INFLIGHT=8` (for example) in `.env`, then run `docker compose up -d --no-deps router` to apply it. Default: **64**, matching the currently deployed router. It must be a positive integer. This is a router-wide cap on distinct in-flight retrieval operations across clients, not requests per second or a per-client quota. Identical concurrent requests coalesce; cache hits do not consume a retrieval slot. Excess operations wait for capacity and can time out/cancel while waiting. It does not cap all open HTTP connections.
 
 Browser-driven search has a separate `camofox_pool_size = 4` in `config/crw.toml`; the router limit does not create more browser contexts. Increasing limits can increase memory usage and upstream throttling. Start with 4–8 on a modest host and tune from real workloads.
+
+## Firecrawl Cloud switch
+
+Keep `router-entrypoint.sh` alongside Compose (it is a required read-only mount). The wrapper enforces `FIRECRAWL_ENABLED=false` by removing the cloud key before starting the router, even if a key is saved in `.env`. Only literal `true` or `false` are accepted; invalid values or enabling with an empty key stop startup. No image rebuild is needed.
+
+```dotenv
+FIRECRAWL_ENABLED=false
+FIRECRAWL_CLOUD_API_KEY=
+```
+
+To permit fallback, set the flag to `true`, supply your cloud key, and configure nonzero cloud budgets. The template deliberately retains zero budgets, so changing the flag alone does not authorize spending. For example, after completing accounting migration you could choose burst/refill 20 and monthly 1200; these are explicit spending choices, not automatically enabled defaults. Preserve the old budget ledger before enabling the new host. Apply changes with `docker compose up -d --no-deps router`.
+
+`ROUTER_API_KEY` authenticates your clients. `FIRECRAWL_CLOUD_API_KEY` authenticates the backend to Firecrawl; they are separate secrets. The cloud key is never committed.
