@@ -11,4 +11,4 @@ The root `make check` command is the local equivalent of the component and packa
 
 ## Firewire status
 
-Forgejo Actions is not currently enabled on `git.firewire.cc`. These workflow files define and review the intended automation, but their presence must not be interpreted as an executed gate. `release.yaml` also requires repository secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. Do not push an appliance release tag until Actions and those secrets are configured. Until then, release evidence and registry publication remain manual operations backed by `make check`, isolated appliance validation, and recorded regression artifacts.
+Forgejo Actions is enabled on `git.firewire.cc`; pushes and pull requests now run the component and appliance workflows above. `release.yaml` additionally requires repository secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. Confirm an ordinary push completes on the runner and configure those secrets before pushing the first appliance release tag.
