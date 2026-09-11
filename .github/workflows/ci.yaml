@@ -73,6 +73,11 @@ jobs:
           docker run -d --rm --name fake-cloud --network hermes-web-retrieval-ci \
             python:3.13.5-alpine3.22@sha256:37b14db89f587f9eaa890e4a442a3fe55db452b69cca1403cc730bd0fbdc8aaf \
             python -c 'from http.server import BaseHTTPRequestHandler,HTTPServer; H=type("H",(BaseHTTPRequestHandler,),{"do_POST":lambda s:(s.send_response(200),s.send_header("Content-Type","application/json"),s.end_headers(),s.wfile.write(b"{\"success\":true,\"data\":{\"web\":[{\"url\":\"https://example.invalid\"}]}}")),"log_message":lambda *a:None}); HTTPServer(("0.0.0.0",8000),H).serve_forever()'
+          for i in $(seq 1 30); do
+            docker exec fake-cloud python -c 'import socket; socket.create_connection(("127.0.0.1", 8000), 1)' && break
+            sleep 1
+          done
+          docker exec fake-cloud python -c 'import socket; socket.create_connection(("127.0.0.1", 8000), 1)'
           docker run -d --rm --name router-ci --network hermes-web-retrieval-ci \
             -p 127.0.0.1:33000:8080 \
             -e ROUTER_LOCAL_URL=http://fake-cloud:8000 \

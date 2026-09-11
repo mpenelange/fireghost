@@ -89,6 +89,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_forgejo_smoke_uses_the_sibling_router_address(self):
         text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
         self.assertIn('docker network connect hermes-web-retrieval-ci "$job_container"', text)
+        self.assertIn("docker exec fake-cloud python -c 'import socket", text)
         self.assertIn("router_ip=$(docker inspect", text)
         self.assertIn('./scripts/smoke-test.sh "http://$router_ip:8080"', text)
 
@@ -99,6 +100,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("make check-crw", text)
         self.assertIn("make test-appliance compose-config check-stack-lock test-hermes-regression", text)
         self.assertIn("make build-router", text)
+        self.assertIn("docker exec fake-cloud python -c 'import socket", text)
         self.assertNotIn("REGISTRY_TOKEN", text)
         self.assertNotIn("docker buildx build", text)
 
