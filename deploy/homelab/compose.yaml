@@ -1,0 +1,186 @@
+name: web-retrieval
+
+services:
+  router:
+    image: git.firewire.cc/michael/hermes-web-retrieval-router@sha256:905fb5df88c3fc65fc6f8509628e7fc56ded02eb7a6b92b019f164bc39988c46
+    restart: unless-stopped
+    depends_on:
+      crw:
+        condition: service_healthy
+    environment:
+      - ROUTER_LISTEN_ADDR=:8080
+      - ROUTER_LOCAL_URL=http://crw:3000
+      - ROUTER_CLOUD_URL=${ROUTER_CLOUD_URL:-https://api.firecrawl.dev}
+      - FIRECRAWL_CLOUD_API_KEY=${FIRECRAWL_CLOUD_API_KEY:-}
+      - ROUTER_API_KEY=${ROUTER_API_KEY:?set ROUTER_API_KEY in .env}
+      - ROUTER_CACHE_DIR=/data/cache
+      - ROUTER_LEDGER_PATH=/data/budget.json
+      - ROUTER_SEARCH_TTL=${ROUTER_SEARCH_TTL:-15m}
+      - ROUTER_SCRAPE_TTL=${ROUTER_SCRAPE_TTL:-24h}
+      - ROUTER_HTTP_TIMEOUT=${ROUTER_HTTP_TIMEOUT:-90s}
+      - ROUTER_SERVER_READ_TIMEOUT=${ROUTER_SERVER_READ_TIMEOUT:-30s}
+      - ROUTER_MAX_REQUEST_BYTES=${ROUTER_MAX_REQUEST_BYTES:-2097152}
+      - ROUTER_MAX_RESPONSE_BYTES=${ROUTER_MAX_RESPONSE_BYTES:-16777216}
+      - ROUTER_CACHE_MAX_ENTRY_BYTES=${ROUTER_CACHE_MAX_ENTRY_BYTES:-16777216}
+      - ROUTER_CACHE_MAX_BYTES=${ROUTER_CACHE_MAX_BYTES:-1073741824}
+      - ROUTER_MAX_INFLIGHT=${ROUTER_MAX_INFLIGHT:-64}
+      - ROUTER_DAILY_CLOUD_CREDITS=${ROUTER_DAILY_CLOUD_CREDITS:-0}
+      - ROUTER_CLOUD_BURST_CREDITS=${ROUTER_CLOUD_BURST_CREDITS:-20}
+      - ROUTER_CLOUD_REFILL_CREDITS_PER_DAY=${ROUTER_CLOUD_REFILL_CREDITS_PER_DAY:-20}
+      - ROUTER_MONTHLY_CLOUD_CREDITS=${ROUTER_MONTHLY_CLOUD_CREDITS:-200}
+      - ROUTER_MONTHLY_RESET_DAY=${ROUTER_MONTHLY_RESET_DAY:-1}
+      - ROUTER_SEARCH_ESTIMATED_CREDITS=${ROUTER_SEARCH_ESTIMATED_CREDITS:-2}
+      - ROUTER_SCRAPE_ESTIMATED_CREDITS=${ROUTER_SCRAPE_ESTIMATED_CREDITS:-1}
+    volumes:
+      - router-data:/data
+    networks:
+      - appliance
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
+      traefik.http.routers.web-retrieval.rule: "Host(`api.firewire.cc`) && (Path(`/web/api/v2/search`) || Path(`/web/api/v2/scrape`))"
+      traefik.http.routers.web-retrieval.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.web-retrieval.tls: "true"
+      traefik.http.routers.web-retrieval.tls.certresolver: "${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}"
+      traefik.http.routers.web-retrieval.priority: "100"
+      traefik.http.routers.web-retrieval.middlewares: "web-retrieval-private,web-retrieval-strip"
+      traefik.http.routers.web-retrieval.service: "web-retrieval"
+      traefik.http.middlewares.web-retrieval-strip.stripprefix.prefixes: "/web/api"
+      traefik.http.middlewares.web-retrieval-private.ipallowlist.sourcerange: "${ALLOWED_CIDRS:?set ALLOWED_CIDRS}"
+      traefik.http.services.web-retrieval.loadbalancer.server.port: "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+          pids: 128
+
+  crw:
+    labels:
+      traefik.enable: "false"
+    image: ${CRW_IMAGE:?set CRW_IMAGE in .env}
+    restart: unless-stopped
+    depends_on:
+      camofox:
+        condition: service_healthy
+      lightpanda:
+        condition: service_healthy
+    environment:
+      RUST_LOG: ${CRW_LOG_LEVEL:-info}
+      CRW_CONFIG: config/crw
+    volumes:
+      - ./config/crw.toml:/app/config/crw.toml:ro
+    networks:
+      - appliance
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+          pids: 512
+
+  camofox:
+    labels:
+      traefik.enable: "false"
+    image: ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7
+    restart: unless-stopped
+    environment:
+      - CAMOFOX_HOST=0.0.0.0
+      - CAMOFOX_PORT=9377
+      - CAMOFOX_AUTH_MODE=disabled
+      - CAMOFOX_PROFILES_DIR=/home/node/.camofox/profiles
+    volumes:
+      # Mount the image's native state directory so Docker copies its `node`
+      # ownership into a newly created named volume.
+      - camofox-profiles:/home/node/.camofox
+    networks:
+      - appliance
+    # camofox creates its Firefox helper (`glxtest`) and font caches under
+    # /home/node/.cache at runtime; its root filesystem cannot be read-only.
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    shm_size: 1g
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9377/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 4G
+          # Four persistent Firefox contexts use roughly 400 PIDs in steady
+          # state and burst above 512 during cold launch.
+          pids: 1024
+
+  lightpanda:
+    labels:
+      traefik.enable: "false"
+    image: lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887
+    restart: unless-stopped
+    networks:
+      - appliance
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /usr/local/share/lightpanda:size=64m,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 256
+
+networks:
+  proxy:
+    external: true
+    name: "${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
+  appliance:
+    driver: bridge
+
+volumes:
+  router-data:
+  camofox-profiles:
