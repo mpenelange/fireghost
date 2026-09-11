@@ -11,4 +11,4 @@ The root `make check` command is the local equivalent of the component and packa
 
 ## Firewire status
 
-Forgejo Actions is enabled on `git.firewire.cc`; pushes and pull requests now run the component and appliance workflows above. `release.yaml` additionally requires repository secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. Confirm an ordinary push completes on the runner and configure those secrets before pushing the first appliance release tag.
+Forgejo Actions is enabled on `git.firewire.cc`; pushes and pull requests run on dedicated Ubuntu host-runner VMs using the `ubuntu-latest` label. Each runner has 4 vCPUs, 16 GB RAM, and a separate 14 GB filesystem shared by its workspace, caches, Rust toolchains, and Docker/containerd data. `release.yaml` additionally requires repository secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. Confirm an ordinary push completes on a runner and configure those secrets before pushing the first appliance release tag.

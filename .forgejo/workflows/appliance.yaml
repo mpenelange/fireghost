@@ -8,6 +8,7 @@ on:
 jobs:
   contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Configure non-secret deployment inputs
