@@ -44,7 +44,7 @@ Only the two API routes are exposed. Health and metrics remain private; CRW and 
 
 ## Migration safety
 
-Cloud fallback is disabled: key blank and all budgets zero. This permits testing while the old deployment still runs without creating a second paid allowance. Supply your service credential locally; the repository includes no real keys.
+Cloud fallback is disabled by FIRECRAWL_ENABLED=false and a blank key. This permits testing while the old deployment still runs without creating a second paid allowance. Supply your service credential locally; the repository includes no real keys.
 
 This starts fresh volumes; it does NOT transfer old accounting, cache or browser profiles. Before enabling paid fallback, stop the old stack and perform a controlled transfer of its router data and browser profiles, preserving ownership. Do not copy live browser profile files or overwrite a live ledger. Restore the intended budget configuration only after transferring the ledger and disabling the old paid path. Keep old images/volumes for rollback. Do not use `docker compose down -v` on valuable state.
 
@@ -67,6 +67,22 @@ FIRECRAWL_ENABLED=false
 FIRECRAWL_CLOUD_API_KEY=
 ```
 
-To permit fallback, set the flag to `true`, supply your cloud key, and configure nonzero cloud budgets. The template deliberately retains zero budgets, so changing the flag alone does not authorize spending. For example, after completing accounting migration you could choose burst/refill 20 and monthly 1200; these are explicit spending choices, not automatically enabled defaults. Preserve the old budget ledger before enabling the new host. Apply changes with `docker compose up -d --no-deps router`.
+To permit fallback, set the flag to `true` and supply your cloud key. The template now preconfigures a buffered monthly allowance and token-bucket pacing as described below. Preserve the old budget ledger before enabling the new host. Apply changes with `docker compose up -d --no-deps router`.
 
 `ROUTER_API_KEY` authenticates your clients. `FIRECRAWL_CLOUD_API_KEY` authenticates the backend to Firecrawl; they are separate secrets. The cloud key is never committed.
+
+## Buffered monthly allowance
+
+```dotenv
+FIRECRAWL_MONTHLY_ALLOWANCE=1500
+FIRECRAWL_BUFFER_PERCENT=20
+ROUTER_MONTHLY_RESET_DAY=3
+ROUTER_CLOUD_BURST_CREDITS=20
+ROUTER_CLOUD_REFILL_CREDITS_PER_DAY=20
+```
+
+The startup wrapper computes `floor(monthly allowance × (100 − buffer percent) / 100)`: these defaults yield **1200 credits**, reserving **300 credits** for accounting drift. These are Firecrawl credits, not LLM tokens. The wrapper owns the effective monthly cap; do not set ROUTER_MONTHLY_CLOUD_CREDITS directly. Invalid/nonpositive resulting caps fail startup. The reset boundary is the 3rd at 00:00 UTC, following the existing ledger implementation.
+
+There is no hard daily quota. The existing persistent token bucket holds up to 20 credits and replenishes continuously at 20 credits per day; unused capacity accumulates only to the burst ceiling. This allows short bursts without a midnight reset. Pacing may prevent spending the full monthly maximum; the cap is a ceiling, not a target. Advanced users can tune burst/refill separately.
+
+Restarting does not reset usage when router-data is preserved. The ledger is local, not synchronized with Firecrawl: preserve/seed already consumed credits during migration and account for any usage outside this router. Never run two paid instances with separate ledgers against the same allowance. FIRECRAWL_ENABLED=false remains the default and blocks paid requests despite nonzero configured allowances. Existing .env files must adopt the new fields and replace old zero burst/refill settings before enabling.

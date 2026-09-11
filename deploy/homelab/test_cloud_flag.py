@@ -9,6 +9,19 @@ class CloudFlagTest(unittest.TestCase):
             env['FIRECRAWL_ENABLED'] = flag
         env['FIRECRAWL_CLOUD_API_KEY'] = key
         return subprocess.run(['sh', str(Path(__file__).with_name('router-entrypoint.sh')), 'sh', '-c', 'printf "%s" "$FIRECRAWL_CLOUD_API_KEY"'], env=env, capture_output=True, text=True)
+    def test_monthly_budget_math(self):
+        script = str(Path(__file__).with_name('router-entrypoint.sh'))
+        for allowance, buffer, expected in [('1500', '20', '1200'), ('1001', '20', '800'), ('500', '10', '450')]:
+            env = dict(os.environ, FIRECRAWL_ENABLED='false', FIRECRAWL_MONTHLY_ALLOWANCE=allowance, FIRECRAWL_BUFFER_PERCENT=buffer)
+            r = subprocess.run(['sh', script, 'sh', '-c', 'printf "%s" "$ROUTER_MONTHLY_CLOUD_CREDITS"'], env=env, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(r.stdout, expected)
+    def test_bad_budget_rejected(self):
+        script = str(Path(__file__).with_name('router-entrypoint.sh'))
+        for allowance, buffer in [('0', '20'), ('1500', '100'), ('oops', '20'), ('-1', '20')]:
+            env = dict(os.environ, FIRECRAWL_ENABLED='false', FIRECRAWL_MONTHLY_ALLOWANCE=allowance, FIRECRAWL_BUFFER_PERCENT=buffer)
+            r = subprocess.run(['sh', script, 'true'], env=env, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0)
     def test_disabled_removes_key(self):
         for flag in (None, 'false'):
             r = self.run_flag(flag)
