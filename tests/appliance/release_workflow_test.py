@@ -9,6 +9,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_tags.py"
 WORKFLOW = ROOT / ".forgejo" / "workflows" / "release.yaml"
+FORGEJO_APPLIANCE = ROOT / ".forgejo" / "workflows" / "appliance.yaml"
 GITHUB_CI = ROOT / ".github" / "workflows" / "ci.yaml"
 COMPOSE = ROOT / "docker-compose.yml"
 ENV_EXAMPLE = ROOT / ".env.example"
@@ -85,6 +86,12 @@ class ReleaseTagContractTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_forgejo_smoke_uses_the_sibling_router_address(self):
+        text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
+        self.assertIn('docker network connect hermes-web-retrieval-ci "$job_container"', text)
+        self.assertIn("router_ip=$(docker inspect", text)
+        self.assertIn('./scripts/smoke-test.sh "http://$router_ip:8080"', text)
+
     def test_github_ci_splits_checks_across_standard_hosted_runners(self):
         text = GITHUB_CI.read_text(encoding="utf-8")
         self.assertEqual(text.count("runs-on: ubuntu-latest"), 3)
