@@ -86,12 +86,12 @@ class ReleaseTagContractTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
-    def test_forgejo_smoke_uses_the_sibling_router_address(self):
+    def test_forgejo_smoke_uses_host_runner_localhost(self):
         text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
-        self.assertIn('docker network connect hermes-web-retrieval-ci "$job_container"', text)
         self.assertIn("docker exec fake-cloud python -c 'import socket", text)
-        self.assertIn("router_ip=$(docker inspect", text)
-        self.assertIn('./scripts/smoke-test.sh "http://$router_ip:8080"', text)
+        self.assertIn("curl -fsS http://127.0.0.1:33000/health", text)
+        self.assertIn("make smoke", text)
+        self.assertNotIn("docker network connect", text)
 
     def test_github_ci_splits_checks_across_standard_hosted_runners(self):
         text = GITHUB_CI.read_text(encoding="utf-8")

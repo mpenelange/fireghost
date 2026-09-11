@@ -19,19 +19,15 @@ jobs:
       - name: Deterministic router smoke
         run: |
           set -euo pipefail
-          job_container=$(hostname)
           cleanup() {
             docker rm -f router-ci fake-cloud >/dev/null 2>&1 || true
-            docker network disconnect hermes-web-retrieval-ci "$job_container" >/dev/null 2>&1 || true
             docker network rm hermes-web-retrieval-ci >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
           docker network create hermes-web-retrieval-ci
-          docker network connect hermes-web-retrieval-ci "$job_container"
           docker run -d --rm --name fake-cloud --network hermes-web-retrieval-ci python:3.13.5-alpine3.22@sha256:37b14db89f587f9eaa890e4a442a3fe55db452b69cca1403cc730bd0fbdc8aaf python -c 'from http.server import BaseHTTPRequestHandler,HTTPServer; H=type("H",(BaseHTTPRequestHandler,),{"do_POST":lambda s:(s.send_response(200),s.send_header("Content-Type","application/json"),s.end_headers(),s.wfile.write(b"{\"success\":true,\"data\":{\"web\":[{\"url\":\"https://example.invalid\"}]}}")),"log_message":lambda *a:None}); HTTPServer(("0.0.0.0",8000),H).serve_forever()'
           for i in $(seq 1 30); do docker exec fake-cloud python -c 'import socket; socket.create_connection(("127.0.0.1", 8000), 1)' && break; sleep 1; done
           docker exec fake-cloud python -c 'import socket; socket.create_connection(("127.0.0.1", 8000), 1)'
           docker run -d --rm --name router-ci --network hermes-web-retrieval-ci -p 127.0.0.1:33000:8080 -e ROUTER_LOCAL_URL=http://fake-cloud:8000 -e ROUTER_CLOUD_URL=http://fake-cloud:8000 -e FIRECRAWL_CLOUD_API_KEY=fake-ci-key -e ROUTER_DAILY_CLOUD_CREDITS=20 -e ROUTER_MONTHLY_CLOUD_CREDITS=200 hermes-web-retrieval-router:ci
-          router_ip=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' router-ci)
-          for i in $(seq 1 30); do curl -fsS "http://$router_ip:8080/health" && break; sleep 1; done
-          ./scripts/smoke-test.sh "http://$router_ip:8080"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:33000/health && break; sleep 1; done
+          make smoke
