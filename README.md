@@ -2,8 +2,9 @@
 
 A self-hosted, local-first Firecrawl-compatible search and scrape appliance. The
 public deployment runs a Go router, CRW, Camofox, and LightPanda behind an
-existing private Traefik installation. Runtime images are pinned by digest and
-the public Compose path performs no builds or host-port publishing.
+existing private Traefik installation. Owned router and CRW images default to
+the newest tested stable release; third-party browser images remain pinned by
+digest. The public Compose path performs no builds or host-port publishing.
 
 ## Quickstart
 
@@ -20,6 +21,18 @@ cp .env.example .env
 docker compose pull
 docker compose up -d --wait
 ```
+
+To upgrade to the newest tested stable appliance images:
+
+```sh
+git pull --ff-only
+docker compose up -d --pull always --wait
+```
+
+`latest` is a mutable convenience tag and does not update a running container
+by itself. For a reproducible deployment or rollback, set `ROUTER_IMAGE` and
+`CRW_IMAGE` in `.env` to the same immutable release version, such as `0.1.0`,
+then run the command above. Camofox and LightPanda stay digest-pinned.
 
 This is the single end-user deployment route. Docker Compose automatically finds
 [`docker-compose.yml`](docker-compose.yml) and `.env` at the repository root.
@@ -84,6 +97,33 @@ Run `make help` for development commands and `make check` for the complete local
 gate. Architecture, migration, updater, rollback, and regression details remain
 under [`docs/`](docs/). Upstream CRW source, history, and licensing are preserved
 under [`crw/`](crw/); bundled images and dependencies retain their own licenses.
+
+## Publishing a stable appliance release
+
+When Forgejo Actions is enabled, Forgejo publishes the owned router and CRW
+images when a stable appliance tag is pushed. Configure repository Actions
+secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, where the token can write
+packages, then create a tag using the separate appliance namespace so imported
+component tags are never reused. The workflow remains dormant while Actions is
+disabled; see [`docs/ci.md`](docs/ci.md).
+
+```sh
+git tag -a appliance-v0.1.0 -m "Appliance 0.1.0"
+git push origin appliance-v0.1.0
+```
+
+The release workflow validates the exact `appliance-vMAJOR.MINOR.PATCH` shape,
+runs `make check`, builds run-unique image candidates, exercises the isolated
+candidate appliance with cloud fallback disabled, and only then promotes both
+owned images to `0.1.0`, `0.1`, and `latest`. Full-version tags are
+workflow-enforced immutable rollback references. Serialized releases move minor
+and `latest` aliases only forward. The CRW image retains its own component
+version in OCI metadata while also recording the appliance version.
+
+Forgejo's registry cannot update two package aliases in one transaction. The
+workflow retries paired alias updates and restores prior aliases when possible,
+but operators requiring atomic reproducibility should deploy matching exact
+version tags rather than mutable aliases.
 
 This repository does not claim that Git secret history has been publicly audited
 or that DNS, certificates, registry access, routing, and retrieval have been

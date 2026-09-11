@@ -44,18 +44,21 @@ class RootDeploymentContractTest(unittest.TestCase):
         ):
             self.assertRegex(env, rf"(?m)^{setting}={re.escape(default)}$")
 
-    def test_public_compose_is_pull_only_private_and_pinned(self):
+    def test_public_compose_is_pull_only_private_and_versioned(self):
         text = COMPOSE.read_text(encoding="utf-8")
         self.assertNotRegex(text, r"(?m)^\s+build:")
         self.assertNotRegex(text, r"(?m)^\s+ports:")
         images = re.findall(r"(?m)^\s+image:\s*(.+)$", text)
         self.assertEqual(len(images), 4)
-        for image in (value for value in images if not value.startswith("${")):
+        for image in (
+            value
+            for value in images
+            if "camofox-browser" in value or "lightpanda/browser" in value
+        ):
             self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
-        self.assertRegex(
-            ENV_EXAMPLE.read_text(encoding="utf-8"),
-            r"(?m)^CRW_IMAGE=\S+@sha256:[0-9a-f]{64}$",
-        )
+        env = ENV_EXAMPLE.read_text(encoding="utf-8")
+        self.assertRegex(env, r"(?m)^ROUTER_IMAGE=\S+/hermes-web-retrieval-router:latest$")
+        self.assertRegex(env, r"(?m)^CRW_IMAGE=\S+/hermes-web-retrieval-crw:latest$")
 
     def test_templates_contain_no_embedded_secrets(self):
         compose = COMPOSE.read_text(encoding="utf-8")

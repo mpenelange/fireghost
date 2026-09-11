@@ -1,0 +1,6 @@
+# Release-workflow-only override: expose the isolated candidate router on a
+# random loopback port. The workflow discovers the assigned port before probing.
+services:
+  router:
+    ports:
+      - "127.0.0.1::8080"

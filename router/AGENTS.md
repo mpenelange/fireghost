@@ -31,5 +31,5 @@ Build a self-hosted Firecrawl-compatible router for Hermes Agent. It proxies `/v
 
 ## Maintainability
 - Keep router code independent of CRW private internals; HTTP contracts only.
-- Pin all container versions/digests; never deploy `latest`.
+- Keep developer baselines, release evidence, and third-party images pinned by digest. The public root installer may track the tested stable owned-image `latest` aliases; use matching appliance-version tags when reproducibility or rollback is required.
 - Include a Firecrawl SDK conformance test and deterministic integration smoke tests.
