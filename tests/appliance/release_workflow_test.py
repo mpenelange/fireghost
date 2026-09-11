@@ -9,6 +9,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_tags.py"
 WORKFLOW = ROOT / ".forgejo" / "workflows" / "release.yaml"
+GITHUB_CI = ROOT / ".github" / "workflows" / "ci.yaml"
 COMPOSE = ROOT / "docker-compose.yml"
 ENV_EXAMPLE = ROOT / ".env.example"
 
@@ -84,6 +85,16 @@ class ReleaseTagContractTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_github_ci_splits_checks_across_standard_hosted_runners(self):
+        text = GITHUB_CI.read_text(encoding="utf-8")
+        self.assertEqual(text.count("runs-on: ubuntu-latest"), 3)
+        self.assertIn("make check-router", text)
+        self.assertIn("make check-crw", text)
+        self.assertIn("make test-appliance compose-config check-stack-lock test-hermes-regression", text)
+        self.assertIn("make build-router", text)
+        self.assertNotIn("REGISTRY_TOKEN", text)
+        self.assertNotIn("docker buildx build", text)
+
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertRegex(text, r"(?m)^\s+tags:\s*$")

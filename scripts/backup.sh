@@ -39,8 +39,7 @@ fi
 docker run --rm \
   --mount "type=volume,src=${project}_router-data,dst=/source,readonly" \
   --mount "type=volume,src=${project}_camofox-profiles,dst=/profiles,readonly" \
-  --mount "type=bind,src=${archive_dir},dst=/backup" \
-  "$image" tar -czf "/backup/${archive_name}" -C / source profiles
+  "$image" tar -czf - -C / source profiles >"${archive_dir}/${archive_name}"
 restart_services
 trap - EXIT HUP INT TERM
 printf '%s\n' "backup written to ${archive_dir}/${archive_name}"
