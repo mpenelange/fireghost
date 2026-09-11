@@ -256,12 +256,10 @@ pub fn print_summary(title: &str, items: &[SummaryItem]) {
             } else {
                 "[+]".to_string()
             }
+        } else if colors_enabled() {
+            style("○").dim().to_string()
         } else {
-            if colors_enabled() {
-                style("○").dim().to_string()
-            } else {
-                "[-]".to_string()
-            }
+            "[-]".to_string()
         };
 
         let value = if item.enabled {
@@ -270,12 +268,10 @@ pub fn print_summary(title: &str, items: &[SummaryItem]) {
             } else {
                 item.value.clone()
             }
+        } else if colors_enabled() {
+            style(&item.value).dim().to_string()
         } else {
-            if colors_enabled() {
-                style(&item.value).dim().to_string()
-            } else {
-                format!("({})", item.value)
-            }
+            format!("({})", item.value)
         };
 
         println!("    {} {}: {}", status, item.label, value);
