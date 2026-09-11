@@ -38,7 +38,7 @@ help:
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
-	  '  make up|down|ps        Manage the appliance in deploy/' \
+	  '  make up|down|ps        Manage the legacy developer appliance in deploy/' \
 	  '  make staging-up        Start an isolated candidate on port 33010' \
 	  '  make staging-down      Remove isolated candidate containers' \
 	  '  make smoke             Run the bounded production smoke test' \

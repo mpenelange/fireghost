@@ -34,7 +34,7 @@ services:
       - ROUTER_SCRAPE_ESTIMATED_CREDITS=${ROUTER_SCRAPE_ESTIMATED_CREDITS:-1}
     entrypoint: ["/bin/sh", "/etc/web-retrieval/router-entrypoint.sh"]
     volumes:
-      - ./router-entrypoint.sh:/etc/web-retrieval/router-entrypoint.sh:ro
+      - ./deployment/router-entrypoint.sh:/etc/web-retrieval/router-entrypoint.sh:ro
       - router-data:/data
     networks:
       - appliance
@@ -42,14 +42,14 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
-      traefik.http.routers.web-retrieval.rule: "Host(`api.firewire.cc`) && (Path(`/web/api/v2/search`) || Path(`/web/api/v2/scrape`))"
+      traefik.http.routers.web-retrieval.rule: "Host(`${API_HOST:-api.firewire.cc}`) && (Path(`${API_PATH_PREFIX:-/web/api}/v2/search`) || Path(`${API_PATH_PREFIX:-/web/api}/v2/scrape`))"
       traefik.http.routers.web-retrieval.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
       traefik.http.routers.web-retrieval.tls: "true"
       traefik.http.routers.web-retrieval.tls.certresolver: "${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}"
       traefik.http.routers.web-retrieval.priority: "100"
       traefik.http.routers.web-retrieval.middlewares: "web-retrieval-private,web-retrieval-strip"
       traefik.http.routers.web-retrieval.service: "web-retrieval"
-      traefik.http.middlewares.web-retrieval-strip.stripprefix.prefixes: "/web/api"
+      traefik.http.middlewares.web-retrieval-strip.stripprefix.prefixes: "${API_PATH_PREFIX:-/web/api}"
       traefik.http.middlewares.web-retrieval-private.ipallowlist.sourcerange: "${ALLOWED_CIDRS:?set ALLOWED_CIDRS}"
       traefik.http.services.web-retrieval.loadbalancer.server.port: "8080"
     read_only: true
@@ -86,7 +86,7 @@ services:
       RUST_LOG: ${CRW_LOG_LEVEL:-info}
       CRW_CONFIG: config/crw
     volumes:
-      - ./config/crw.toml:/app/config/crw.toml:ro
+      - ./deployment/crw.toml:/app/config/crw.toml:ro
     networks:
       - appliance
     read_only: true

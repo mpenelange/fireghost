@@ -13,4 +13,3 @@ camofox_pool_size = 4
 # Cold Firefox contexts are intentionally launched one at a time; leave enough
 # room for first-use warm-up while steady-state searches remain much faster.
 timeout_ms = 60000
-

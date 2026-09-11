@@ -1,3 +1,5 @@
+# Legacy developer/production contract used by Make. Public users should use
+# the pull-only docker-compose.yml at the repository root.
 name: web-retrieval
 
 services:
