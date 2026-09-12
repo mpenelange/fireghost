@@ -290,13 +290,13 @@ func writeExecutionError(w http.ResponseWriter, err error) {
 
 func executionErrorEntry(err error) cachepkg.Entry {
 	if errors.Is(err, budgetpkg.ErrLimitExceeded) {
-		return cachepkg.Entry{Status: http.StatusServiceUnavailable, ContentType: "application/json", Body: []byte(`{"error":"cloud fallback skipped: credit budget exceeded"}`)}
+		return cachepkg.Entry{Status: http.StatusServiceUnavailable, ContentType: "application/json", Body: []byte("{\"error\":\"cloud fallback skipped: credit budget exceeded\"}\n")}
 	}
 	if err.Error() == "local and cloud upstream requests failed" ||
 		errors.Is(err, errLocalUpstreamResponseFailed) || errors.Is(err, errLocalResponseBudgetDenied) ||
 		errors.Is(err, errLocalResponseBudgetAccounting) || errors.Is(err, errCloudFallbackBudgetAccounting) {
 		body, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return cachepkg.Entry{Status: http.StatusBadGateway, ContentType: "application/json", Body: body}
+		return cachepkg.Entry{Status: http.StatusBadGateway, ContentType: "application/json", Body: append(body, '\n')}
 	}
 	return cachepkg.Entry{Status: http.StatusBadGateway, ContentType: "text/plain; charset=utf-8", Body: []byte(err.Error() + "\n")}
 }
