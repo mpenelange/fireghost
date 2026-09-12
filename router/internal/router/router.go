@@ -34,6 +34,7 @@ type Config struct {
 	MaxRequestBytes        int64
 	MaxResponseBytes       int64
 	MCPEnabled             bool
+	ServerVersion          string
 }
 
 // Dependencies contains injectable runtime dependencies.
@@ -75,8 +76,8 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 		_, _ = io.WriteString(w, registry.PrometheusText())
 	})
 	if config.MCPEnabled {
-		mux.HandleFunc("POST /mcp", func(w http.ResponseWriter, _ *http.Request) {
-			http.Error(w, "invalid MCP request", http.StatusBadRequest)
+		mux.HandleFunc("POST /mcp", func(w http.ResponseWriter, r *http.Request) {
+			serveMCP(w, r, config)
 		})
 	}
 	mux.HandleFunc("POST /v2/search", func(w http.ResponseWriter, r *http.Request) {

@@ -20,6 +20,8 @@ import (
 	flightpkg "web-retrieval/internal/singleflight"
 )
 
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -102,7 +104,7 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 		LocalBaseURL: cfg.LocalURL, CloudBaseURL: cfg.CloudURL, CloudAPIKey: cfg.CloudAPIKey, APIKey: cfg.APIKey,
 		SearchTTL: cfg.SearchTTL, ScrapeTTL: cfg.ScrapeTTL, HTTPTimeout: cfg.HTTPTimeout, SearchEstimatedCredits: cfg.SearchEstimatedCredits,
 		ScrapeEstimatedCredits: cfg.ScrapeEstimatedCredits, MaxRequestBytes: cfg.MaxRequestBytes, MaxResponseBytes: cfg.MaxResponseBytes,
-		MCPEnabled: cfg.MCPEnabled,
+		MCPEnabled: cfg.MCPEnabled, ServerVersion: version,
 	}, router.Dependencies{HTTPClient: client, Cache: fileCache, Budget: ledger, Metrics: registry, FlightGroup: flightpkg.NewWithLimit[cachepkg.Entry](cfg.MaxInflight)}), nil
 }
 
