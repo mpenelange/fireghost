@@ -2,6 +2,7 @@ name: crw
 
 on:
   push:
+    branches: ["**"]
     paths:
       - crw/**
       - Makefile
