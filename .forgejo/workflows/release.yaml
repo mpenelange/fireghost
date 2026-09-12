@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags:
-      - "appliance-v*.*.*"
+      - "fireghost-v*.*.*"
 
 concurrency:
   group: appliance-release
@@ -204,11 +204,85 @@ jobs:
           crw=git.firewire.cc/michael/fireghost-crw
 
           manifest_digest() {
-            docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>/dev/null |
-              python3 -c 'import json,sys; data=sys.stdin.read(); print(json.loads(data)["digest"]) if data else sys.exit(1)'
+            ref="$1"
+            for attempt in 1 2 3; do
+              set +e
+              output="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>&1)"
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then
+                if ! digest="$(printf '%s' "$output" | python3 -c 'import json,sys; value=json.load(sys.stdin)["digest"]; print(value) if isinstance(value,str) and value else sys.exit(1)')"; then
+                  output="malformed manifest inspection output: $output"
+                else
+                  printf '%s\n' "$digest"
+                  return 0
+                fi
+              elif printf '%s' "$output" | python3 scripts/release_tags.py --is-missing-inspection; then
+                return 1
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep "$((attempt * 2))"
+              fi
+            done
+            echo "registry inspection failed for $ref after 3 attempts: $output" >&2
+            return 2
+          }
+          load_optional_digest() {
+            ref="$1"
+            variable="$2"
+            if value="$(manifest_digest "$ref")"; then
+              printf -v "$variable" '%s' "$value"
+              return 0
+            else
+              status=$?
+            fi
+            if [ "$status" -eq 1 ]; then
+              printf -v "$variable" '%s' ""
+              return 0
+            fi
+            return "$status"
           }
           image_labels() {
-            docker buildx imagetools inspect "$1" --format '{{json .Image.Config.Labels}}'
+            ref="$1"
+            for attempt in 1 2 3; do
+              set +e
+              output="$(docker buildx imagetools inspect "$ref" --format '{{json .Image.Config.Labels}}' 2>&1)"
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then
+                if labels="$(printf '%s' "$output" | python3 -c 'import json,sys; value=json.load(sys.stdin); print(json.dumps(value)) if value is None or isinstance(value,dict) else sys.exit(1)')"; then
+                  printf '%s\n' "$labels"
+                  return 0
+                fi
+                output="malformed image label inspection output: $output"
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep "$((attempt * 2))"
+              fi
+            done
+            echo "image label inspection failed for $ref after 3 attempts: $output" >&2
+            return 2
+          }
+          existing_alias_versions() {
+            alias="$1"
+            existing_versions=()
+            for image in "$router" "$crw"; do
+              ref="$image:$alias"
+              load_optional_digest "$ref" existing || return 1
+              if [ -n "$existing" ]; then
+                if ! version="$(image_labels "$ref" | python3 -c 'import json,sys; labels=json.load(sys.stdin) or {}; value=labels.get("io.firewire.appliance.version"); print(value) if value else sys.exit(1)')"; then
+                  echo "$ref exists without a trustworthy appliance version label" >&2
+                  return 1
+                fi
+                existing_versions+=("$version")
+              fi
+            done
+          }
+          alias_promotion_status() {
+            alias="$1"
+            existing_alias_versions "$alias" || return 1
+            status_json="$(python3 scripts/release_tags.py --can-promote "$GITHUB_REF_NAME" "${existing_versions[@]}")" || return 1
+            python3 -c 'import json,sys; print(str(json.load(sys.stdin)["promote"]).lower())' <<<"$status_json"
           }
           promote() {
             target="$1"
@@ -225,7 +299,7 @@ jobs:
           ensure_immutable_version() {
             image="$1"
             candidate_digest="$2"
-            existing="$(manifest_digest "$image:$VERSION" || true)"
+            load_optional_digest "$image:$VERSION" existing || return 1
             if [ -n "$existing" ]; then
               labels="$(image_labels "$image:$VERSION")"
               if ! EXPECTED_REVISION="$GITHUB_SHA" EXPECTED_VERSION="$VERSION" python3 -c 'import json,os,sys; labels=json.load(sys.stdin) or {}; valid=labels.get("org.opencontainers.image.revision")==os.environ["EXPECTED_REVISION"] and labels.get("io.firewire.appliance.version")==os.environ["EXPECTED_VERSION"]; raise SystemExit(0 if valid else 1)' <<<"$labels"; then
@@ -240,8 +314,8 @@ jobs:
           }
           promote_alias_pair() {
             alias="$1"
-            router_previous="$(manifest_digest "$router:$alias" || true)"
-            crw_previous="$(manifest_digest "$crw:$alias" || true)"
+            load_optional_digest "$router:$alias" router_previous || return 1
+            load_optional_digest "$crw:$alias" crw_previous || return 1
             if promote "$router:$alias" "$router@$router_candidate" && \
                promote "$crw:$alias" "$crw@$crw_candidate" && \
                [ "$(manifest_digest "$router:$alias")" = "$router_candidate" ] && \
@@ -266,10 +340,8 @@ jobs:
           router_candidate="$(manifest_digest "$router:$VERSION")"
           crw_candidate="$(manifest_digest "$crw:$VERSION")"
 
-          mapfile -t release_refs < <(git tag --list 'appliance-v*')
-          status_json="$(python3 scripts/release_tags.py --promotion-status "$GITHUB_REF_NAME" "${release_refs[@]}")"
-          publish_minor="$(python3 -c 'import json,sys; print(str(json.load(sys.stdin)["publish_minor"]).lower())' <<<"$status_json")"
-          publish_latest="$(python3 -c 'import json,sys; print(str(json.load(sys.stdin)["publish_latest"]).lower())' <<<"$status_json")"
+          publish_minor="$(alias_promotion_status "$MINOR")"
+          publish_latest="$(alias_promotion_status latest)"
 
           if [ "$publish_minor" = true ]; then
             promote_alias_pair "$MINOR"

@@ -19,73 +19,78 @@ ENV_EXAMPLE = ROOT / ".env.example"
 
 
 class ReleaseTagContractTest(unittest.TestCase):
-    def run_script(self, tag):
+    def run_script(self, *args):
         return subprocess.run(
-            [sys.executable, str(SCRIPT), tag],
+            [sys.executable, str(SCRIPT), *args],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
         )
 
-    def test_stable_appliance_tag_emits_version_minor_and_latest(self):
-        result = self.run_script("appliance-v2.3.4")
+    def test_stable_fireghost_tag_emits_version_minor_and_latest(self):
+        result = self.run_script("fireghost-v1.0.0")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             json.loads(result.stdout),
-            {"minor": "2.3", "tags": ["2.3.4", "2.3", "latest"], "version": "2.3.4"},
+            {"minor": "1.0", "tags": ["1.0.0", "1.0", "latest"], "version": "1.0.0"},
         )
 
-    def test_component_and_malformed_tags_are_rejected(self):
-        for tag in ("v2.3.4", "1.2.0-fw.3", "appliance-v2.3", "appliance-v2.3.4-rc.1"):
+    def test_legacy_component_and_malformed_tags_are_rejected(self):
+        for tag in (
+            "v2.3.4",
+            "1.2.0-fw.3",
+            "appliance-v2.3.4",
+            "fireghost-v2.3",
+            "fireghost-v2.3.4-rc.1",
+        ):
             with self.subTest(tag=tag):
                 result = self.run_script(tag)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("appliance-vMAJOR.MINOR.PATCH", result.stderr)
+                self.assertIn("fireghost-vMAJOR.MINOR.PATCH", result.stderr)
 
-    def test_promotion_status_prevents_latest_and_minor_regression(self):
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--promotion-status",
-                "appliance-v2.3.4",
-                "router-v9.0.0",
-                "appliance-v2.3.5",
-                "appliance-v3.0.0",
-                "appliance-v2.3.4",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    def test_alias_without_a_successful_prior_release_can_be_created(self):
+        result = self.run_script("--can-promote", "fireghost-v1.0.0")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout),
-            {"publish_latest": False, "publish_minor": False},
-        )
+        self.assertEqual(json.loads(result.stdout), {"promote": True})
 
-    def test_newest_version_advances_latest_and_its_minor_alias(self):
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--promotion-status",
-                "appliance-v3.0.0",
-                "appliance-v2.3.5",
-                "appliance-v3.0.0",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
+    def test_alias_can_advance_or_be_retried_but_not_regress(self):
+        cases = (
+            (("0.9.9",), True),
+            (("1.0.0", "1.0.0"), True),
+            (("1.0.1",), False),
+            (("0.9.9", "2.0.0"), False),
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout),
-            {"publish_latest": True, "publish_minor": True},
+        for existing, expected in cases:
+            with self.subTest(existing=existing):
+                result = self.run_script("--can-promote", "fireghost-v1.0.0", *existing)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), {"promote": expected})
+
+    def test_alias_promotion_rejects_untrusted_version_labels(self):
+        result = self.run_script("--can-promote", "fireghost-v1.0.0", "not-semver")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("existing image versions must use MAJOR.MINOR.PATCH", result.stderr)
+
+    def test_registry_inspection_only_classifies_confirmed_missing_manifests_as_absent(self):
+        cases = (
+            ("manifest unknown", 0),
+            ("git.firewire.cc/michael/fireghost-router:latest: not found", 0),
+            ("unauthorized: authentication required", 1),
+            ("dial tcp: i/o timeout", 1),
+            ("unexpected malformed output", 1),
         )
+        for message, expected_code in cases:
+            with self.subTest(message=message):
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "--is-missing-inspection"],
+                    cwd=ROOT,
+                    input=message,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, expected_code)
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
@@ -118,7 +123,8 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertRegex(text, r"(?m)^\s+tags:\s*$")
-        self.assertIn("appliance-v*.*.*", text)
+        self.assertIn("fireghost-v*.*.*", text)
+        self.assertNotIn("appliance-v*.*.*", text)
         self.assertNotIn("pull_request:", text)
         self.assertLess(text.index("make check"), text.index("docker buildx build"))
         self.assertIn("scripts/release_tags.py", text)
@@ -145,7 +151,16 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("down -v", validation_block)
         self.assertGreater(text.index("docker buildx imagetools create"), promotion)
         promotion_block = text[promotion:]
-        self.assertIn("--promotion-status", promotion_block)
+        self.assertIn("--can-promote", promotion_block)
+        self.assertIn("--is-missing-inspection", promotion_block)
+        self.assertNotIn("git tag --list", promotion_block)
+        self.assertIn("existing_alias_versions", promotion_block)
+        self.assertIn("load_optional_digest", promotion_block)
+        self.assertNotIn('manifest_digest "$image:$VERSION" || true', promotion_block)
+        self.assertIn('if ! digest="$(printf', promotion_block)
+        self.assertIn("malformed manifest inspection output", promotion_block)
+        self.assertIn("image label inspection failed", promotion_block)
+        self.assertGreaterEqual(promotion_block.count("for attempt in 1 2 3; do"), 3)
         self.assertIn("already exists with unexpected provenance", promotion_block)
         self.assertIn("org.opencontainers.image.revision", promotion_block)
         self.assertIn('git show -s --format=%cI "$GITHUB_SHA"', text)
