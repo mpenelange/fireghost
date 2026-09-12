@@ -156,6 +156,21 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn('git show -s --format=%cI "$GITHUB_SHA"', text)
         self.assertNotIn("date -u +%Y-%m-%dT%H:%M:%SZ", text)
 
+    def test_release_uses_separate_bounded_build_validation_and_promotion_jobs(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(text.count("runs-on: ubuntu-latest"), 5)
+        self.assertIn("  build-router:\n    needs: verify", text)
+        self.assertIn("  build-crw:\n    needs: verify", text)
+        self.assertIn("  validate:\n    needs: [verify, build-router, build-crw]", text)
+        self.assertIn("  promote:\n    needs: [verify, validate]", text)
+        validation = text[text.index("  validate:"):text.index("  promote:")]
+        self.assertLess(
+            validation.index("docker system prune -af --volumes"),
+            validation.index('"${compose[@]}" up -d --pull always --wait'),
+        )
+        self.assertIn("if: always()", validation)
+        self.assertIn("needs.verify.outputs.candidate", validation)
+
     def test_public_compose_tracks_owned_latest_tags_but_pins_third_party_images(self):
         compose = COMPOSE.read_text(encoding="utf-8")
         env = ENV_EXAMPLE.read_text(encoding="utf-8")
