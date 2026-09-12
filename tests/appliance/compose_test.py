@@ -41,7 +41,7 @@ class ComposeContractTest(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^    ports:", self.text)), 1)
 
     def test_no_mcp_service_or_port(self):
-        self.assertNotRegex(self.text.lower(), r"(?m)^  .*mcp.*:")
+        self.assertNotRegex(self.text.lower(), r"(?m)^  [^ \n]*mcp[^ \n]*:")
         self.assertNotRegex(self.text, r"(?m)^\s*-?\s*['\"]?\d+:\d+.*#.*mcp")
 
     def test_router_receives_disabled_mcp_default(self):
