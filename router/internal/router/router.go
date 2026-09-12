@@ -33,6 +33,7 @@ type Config struct {
 	ScrapeEstimatedCredits int
 	MaxRequestBytes        int64
 	MaxResponseBytes       int64
+	MCPEnabled             bool
 }
 
 // Dependencies contains injectable runtime dependencies.
@@ -73,6 +74,11 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = io.WriteString(w, registry.PrometheusText())
 	})
+	if config.MCPEnabled {
+		mux.HandleFunc("POST /mcp", func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "invalid MCP request", http.StatusBadRequest)
+		})
+	}
 	mux.HandleFunc("POST /v2/search", func(w http.ResponseWriter, r *http.Request) {
 		requestBody, err := readRequestBody(r.Body, config.MaxRequestBytes)
 		if err != nil {
@@ -172,7 +178,8 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 			registry.IncRequest(endpoint, metricspkg.Status2xx)
 			registry.ObserveRequestDuration(endpoint, time.Since(start))
 		}
-		if config.APIKey != "" && strings.HasPrefix(r.URL.Path, "/v2/") && !validBearer(r.Header.Get("Authorization"), config.APIKey) {
+		protected := strings.HasPrefix(r.URL.Path, "/v2/") || (config.MCPEnabled && r.URL.Path == "/mcp")
+		if config.APIKey != "" && protected && !validBearer(r.Header.Get("Authorization"), config.APIKey) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		} else {
