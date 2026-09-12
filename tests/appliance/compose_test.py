@@ -4,9 +4,9 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-COMPOSE = ROOT / "deploy" / "compose.yaml"
-ENV_EXAMPLE = ROOT / "deploy" / ".env.example"
-STAGING_COMPOSE = ROOT / "deploy" / "compose.staging.yaml"
+COMPOSE = ROOT / "dev" / "compose.yaml"
+ENV_EXAMPLE = ROOT / "dev" / ".env.example"
+STAGING_COMPOSE = ROOT / "dev" / "compose.staging.yaml"
 
 
 class ComposeContractTest(unittest.TestCase):

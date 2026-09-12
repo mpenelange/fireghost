@@ -96,10 +96,10 @@ rollback; avoid `docker compose down -v` when state matters.
 
 - `docker-compose.yml`, `.env.example`, and `deployment/` are the supported
   pull-only public deployment.
-- `deploy/compose.yaml` is the legacy developer Compose contract used by Make and
+- `dev/compose.yaml` is the legacy developer Compose contract used by Make and
   running production workflows; it builds the router and binds loopback port
   33000. It is intentionally not the public quickstart.
-- `deploy/compose.staging.yaml` is the developer staging override on loopback port
+- `dev/compose.staging.yaml` is the developer staging override on loopback port
   33010.
 - `crw/docker-compose.yml` belongs to the preserved upstream CRW component, not
   the assembled appliance.

@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure non-secret deployment inputs
-        run: cp deploy/.env.example deploy/.env
+        run: cp dev/.env.example dev/.env
       - name: Packaging and Compose contracts
         run: make test-appliance compose-config check-stack-lock
       - name: Build router

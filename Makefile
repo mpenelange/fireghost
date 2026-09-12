@@ -8,10 +8,10 @@
 
 GO_IMAGE = golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c
 GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
-COMPOSE = docker compose --project-directory deploy -f deploy/compose.yaml
+COMPOSE = docker compose --project-directory dev -f dev/compose.yaml
 STAGING_PROJECT ?= hermes-web-retrieval-staging
 STAGING_ROUTER_VERSION ?= monorepo-staging
-STAGING_COMPOSE = $(COMPOSE) -f deploy/compose.staging.yaml -p $(STAGING_PROJECT)
+STAGING_COMPOSE = $(COMPOSE) -f dev/compose.staging.yaml -p $(STAGING_PROJECT)
 ROUTER_IMAGE ?= hermes-web-retrieval-router:dev
 MONOREPO_SOURCE ?= https://git.firewire.cc/michael/fireghost
 MONOREPO_REVISION ?= $(shell git rev-parse HEAD)
@@ -38,7 +38,7 @@ help:
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
-	  '  make up|down|ps        Manage the legacy developer appliance in deploy/' \
+	  '  make up|down|ps        Manage the legacy developer appliance in dev/' \
 	  '  make staging-up        Start an isolated candidate on port 33010' \
 	  '  make staging-down      Remove isolated candidate containers' \
 	  '  make smoke             Run the bounded production smoke test' \

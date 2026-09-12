@@ -78,7 +78,7 @@ services:
       RUST_LOG: ${CRW_LOG_LEVEL:-info}
       CRW_CONFIG: config/crw
     volumes:
-      - ./config/crw.toml:/app/config/crw.toml:ro
+      - ../deployment/crw.toml:/app/config/crw.toml:ro
     networks:
       - appliance
     read_only: true

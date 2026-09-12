@@ -4,7 +4,7 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
 compose() {
-  docker compose --project-directory "$repo_dir/deploy" -f "$repo_dir/deploy/compose.yaml" "$@"
+  docker compose --project-directory "$repo_dir/dev" -f "$repo_dir/dev/compose.yaml" "$@"
 }
 
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then

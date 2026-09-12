@@ -34,17 +34,17 @@ The imports deliberately precede mechanical reorganization. The intended final s
 ```text
 crw/                 Rust CRW/Camofox application
 router/              Go Firecrawl-compatible router
-deploy/              Compose topology and runtime configuration
+dev/                 Compose topology and runtime configuration
 tests/live/           Whole-appliance compatibility and regression gates
 scripts/              Root developer and release commands
 docs/                 Architecture, operations, and migration records
 ```
 
-The temporary `appliance/` import has been eliminated. Its contents moved to `router/`, `deploy/`, and the root test/documentation locations in small, behavior-neutral commits.
+The temporary `appliance/` import has been eliminated. Its contents moved to `router/`, `dev/`, and the root test/documentation locations in small, behavior-neutral commits.
 
 ## Release ownership
 
-One monorepo commit describes the tested appliance. Components keep their own versions, tests, and images, while `deploy/stack.lock.json` records the source provenance and exact external container digests assembled by Compose. The imported router baseline remains a documented legacy local build; the first monorepo release will replace it with a published immutable router digest. Production consumes only immutable registry digests once that transition is complete.
+One monorepo commit describes the tested appliance. Components keep their own versions, tests, and images, while `dev/stack.lock.json` records the source provenance and exact external container digests assembled by Compose. The imported router baseline remains a documented legacy local build; the first monorepo release will replace it with a published immutable router digest. Production consumes only immutable registry digests once that transition is complete.
 
 ## Migration gates
 

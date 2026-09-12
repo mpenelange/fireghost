@@ -106,6 +106,6 @@ Python/provider identities, bounded and secret-redacted probe inputs and summari
 (never full extracted page bodies), metrics snapshots and deltas, thresholds, and
 all pass/fail reasons. Timeouts and subprocess, JSON, HTTP, or metric failures also
 write a sanitized failing artifact without stderr, secrets, tokens, or config
-content. Do not merge, publish, update `deploy/stack.lock.json`, or
+content. Do not merge, publish, update `dev/stack.lock.json`, or
 cut production over until it passes. Production and its immutable CRW digest remain
 the rollback authority.

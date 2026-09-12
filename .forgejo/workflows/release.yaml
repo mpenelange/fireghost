@@ -49,7 +49,7 @@ jobs:
           printf 'version=%s\nminor=%s\ncandidate=%s\n' "$version" "$minor" "$candidate" >> "$GITHUB_OUTPUT"
 
       - name: Configure non-secret deployment inputs
-        run: cp deploy/.env.example deploy/.env
+        run: cp dev/.env.example dev/.env
 
       - name: Verify release source
         run: make check
@@ -134,7 +134,7 @@ jobs:
       - name: Clear build data before candidate extraction
         run: docker system prune -af --volumes
       - name: Configure non-secret deployment inputs
-        run: cp deploy/.env.example deploy/.env
+        run: cp dev/.env.example dev/.env
       - name: Log in to Forgejo registry
         env:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}

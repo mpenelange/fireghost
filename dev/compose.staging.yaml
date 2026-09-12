@@ -1,4 +1,4 @@
-# Developer staging override for deploy/compose.yaml; not an end-user stack.
+# Developer staging override for dev/compose.yaml; not an end-user stack.
 services:
   router:
     ports: !override

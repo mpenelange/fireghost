@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def env_file_value(name: str) -> str:
-    path = REPO_ROOT / "deploy" / ".env"
+    path = REPO_ROOT / "dev" / ".env"
     if not path.exists():
         return ""
     for raw in path.read_text(encoding="utf-8").splitlines():

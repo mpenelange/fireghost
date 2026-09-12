@@ -8,9 +8,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CHECK = ROOT / "scripts" / "check_stack_lock.py"
-LOCK = ROOT / "deploy" / "stack.lock.json"
-COMPOSE = ROOT / "deploy" / "compose.yaml"
-ENV_EXAMPLE = ROOT / "deploy" / ".env.example"
+LOCK = ROOT / "dev" / "stack.lock.json"
+COMPOSE = ROOT / "dev" / "compose.yaml"
+ENV_EXAMPLE = ROOT / "dev" / ".env.example"
 
 
 class StackLockTest(unittest.TestCase):

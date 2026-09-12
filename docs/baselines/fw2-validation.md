@@ -2,7 +2,7 @@
 
 `hermes-production-fw2.lock.json` is the superseded, known-good Hermes retrieval
 stack from before the `1.2.0-fw.3` rollout. It is retained only as migration and
-rollback evidence. The current deployment authority is `deploy/stack.lock.json`.
+rollback evidence. The current deployment authority is `dev/stack.lock.json`.
 
 ## Build an identifiable CRW candidate
 

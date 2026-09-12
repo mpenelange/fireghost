@@ -3,7 +3,7 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
-env_file=$repo_dir/deploy/.env
+env_file=$repo_dir/dev/.env
 
 base_url=${1:-http://127.0.0.1:33000}
 case "$base_url" in

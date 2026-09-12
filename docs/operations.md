@@ -1,6 +1,6 @@
 # Legacy developer and production operations
 
-These commands operate the preserved `deploy/compose.yaml` contract, not the
+These commands operate the preserved `dev/compose.yaml` contract, not the
 root public Compose stack. Start with `make up`, then inspect `make ps` and run
 `make smoke`. Logs are available through `make logs SERVICES="router crw camofox lightpanda"`; metrics are at `http://127.0.0.1:33000/metrics`.
 

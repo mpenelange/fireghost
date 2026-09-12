@@ -39,7 +39,7 @@ class BuildIdentityTest(unittest.TestCase):
         self.assertIn('org.opencontainers.image.title="Fireghost Router"', dockerfile)
 
     def test_compose_forwards_router_source(self):
-        compose = (ROOT / "deploy" / "compose.yaml").read_text(encoding="utf-8")
+        compose = (ROOT / "dev" / "compose.yaml").read_text(encoding="utf-8")
         self.assertIn("SOURCE: ${MONOREPO_SOURCE", compose)
 
 

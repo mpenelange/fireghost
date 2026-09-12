@@ -10,10 +10,10 @@ current endpoints and persistent identities; adopting these renamed packages
 requires an explicit pull and service recreation. Previously published
 `hermes-web-retrieval-*` immutable images remain historical artifacts.
 
-The files under `deploy/` are retained contracts for existing production,
+The files under `dev/` are retained contracts for existing production,
 development, Make targets, staging, backups, regression gates, and the immutable
-stack lock. `deploy/compose.yaml` builds local source and publishes only the
-router on loopback port 33000. `deploy/compose.staging.yaml` isolates a candidate
+stack lock. `dev/compose.yaml` builds local source and publishes only the
+router on loopback port 33000. `dev/compose.staging.yaml` isolates a candidate
 on loopback port 33010. They are not alternative public installation paths.
 
 CRW source and its upstream history remain under `crw/`. Its component-local

@@ -109,9 +109,9 @@ def validate(lock_path: Path, compose_path: Path, env_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lock", type=Path, default=ROOT / "deploy" / "stack.lock.json")
-    parser.add_argument("--compose", type=Path, default=ROOT / "deploy" / "compose.yaml")
-    parser.add_argument("--env", type=Path, default=ROOT / "deploy" / ".env.example")
+    parser.add_argument("--lock", type=Path, default=ROOT / "dev" / "stack.lock.json")
+    parser.add_argument("--compose", type=Path, default=ROOT / "dev" / "compose.yaml")
+    parser.add_argument("--env", type=Path, default=ROOT / "dev" / ".env.example")
     return parser.parse_args()
 
 

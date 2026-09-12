@@ -17,11 +17,11 @@ The router is independent of CRW internals and communicates only through HTTP. R
 
 The monorepo owns the deployable appliance: the Go router, Compose topology, runtime policy, and end-to-end contract tests. The deployment consumes CRW as a container image rather than reaching into its private implementation.
 
-The `crw/` component owns the Rust application and publishes versioned images. A component release crosses into `deploy/` only when its registry digest is recorded in `CRW_IMAGE` and the complete appliance passes validation. `deploy/stack.lock.json` records source provenance, registry references, and observed image IDs for the assembled baseline. The immutable digest remains the developer baseline and release-evidence authority. The public root installer may track the tested stable `latest` aliases for convenient upgrades; operators who require reproducibility or rollback should set both owned image variables to the same immutable appliance version.
+The `crw/` component owns the Rust application and publishes versioned images. A component release crosses into `dev/` only when its registry digest is recorded in `CRW_IMAGE` and the complete appliance passes validation. `dev/stack.lock.json` records source provenance, registry references, and observed image IDs for the assembled baseline. The immutable digest remains the developer baseline and release-evidence authority. The public root installer may track the tested stable `latest` aliases for convenient upgrades; operators who require reproducibility or rollback should set both owned image variables to the same immutable appliance version.
 
 The handoff is therefore one-way:
 
 1. `crw/` tests and publishes a versioned image.
 2. The registry returns the image's immutable digest.
-3. `deploy/` pins that digest and validates the assembled appliance.
+3. `dev/` pins that digest and validates the assembled appliance.
 4. Production adopts the validated digest while retaining the previous digest for rollback.
