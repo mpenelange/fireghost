@@ -23,6 +23,9 @@ func TestMCPInitializePingAndToolDiscovery(t *testing.T) {
 	if initialize.Code != http.StatusOK {
 		t.Fatalf("initialize status = %d, body %s", initialize.Code, initialize.Body.String())
 	}
+	if got := initialize.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("initialize Content-Type = %q, want application/json", got)
+	}
 	var initialized struct {
 		JSONRPC string `json:"jsonrpc"`
 		ID      int    `json:"id"`
