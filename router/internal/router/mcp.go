@@ -29,7 +29,7 @@ type mcpError struct {
 	Message string `json:"message"`
 }
 
-func serveMCP(w http.ResponseWriter, r *http.Request, config Config) {
+func serveMCP(w http.ResponseWriter, r *http.Request, config Config, runOperation operationRunner) {
 	body, err := readRequestBody(r.Body, config.MaxRequestBytes)
 	if err != nil {
 		if errors.Is(err, errBodyTooLarge) {
@@ -71,16 +71,65 @@ func serveMCP(w http.ResponseWriter, r *http.Request, config Config) {
 	case "initialize":
 		writeMCPResult(w, request.ID, map[string]any{
 			"protocolVersion": mcpProtocolVersion,
-			"capabilities": map[string]any{"tools": map[string]any{}},
-			"serverInfo": map[string]string{"name": "fireghost", "version": normalizedServerVersion(config.ServerVersion)},
+			"capabilities":    map[string]any{"tools": map[string]any{}},
+			"serverInfo":      map[string]string{"name": "fireghost", "version": normalizedServerVersion(config.ServerVersion)},
 		})
 	case "ping":
 		writeMCPResult(w, request.ID, map[string]any{})
 	case "tools/list":
 		writeMCPResult(w, request.ID, map[string]any{"tools": mcpTools()})
+	case "tools/call":
+		serveMCPToolCall(w, r, request, runOperation)
 	default:
 		writeMCPError(w, request.ID, -32601, "Method not found")
 	}
+}
+
+func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest, runOperation operationRunner) {
+	var params struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if len(request.Params) == 0 || json.Unmarshal(request.Params, &params) != nil || (params.Name != "search" && params.Name != "scrape") {
+		writeMCPError(w, request.ID, -32602, "Invalid params")
+		return
+	}
+	if len(params.Arguments) == 0 {
+		params.Arguments = json.RawMessage("{}")
+	}
+	if params.Arguments[0] != '{' || !json.Valid(params.Arguments) {
+		writeMCPError(w, request.ID, -32602, "Invalid params")
+		return
+	}
+	path := "/v2/" + params.Name
+	entry, err := runOperation(r.Context(), path, "application/json", params.Arguments)
+	if err != nil {
+		entry = executionErrorEntry(err)
+	}
+	compact := bytes.Buffer{}
+	if compactErr := json.Compact(&compact, entry.Body); compactErr != nil {
+		writeMCPResult(w, request.ID, mcpToolResult(string(entry.Body), nil, true))
+		return
+	}
+	isError := err != nil || entry.Status < http.StatusOK || entry.Status >= http.StatusMultipleChoices
+	var structured json.RawMessage
+	if !isError {
+		structured = json.RawMessage(bytes.Clone(compact.Bytes()))
+	}
+	writeMCPResult(w, request.ID, mcpToolResult(compact.String(), structured, isError))
+}
+
+func mcpToolResult(text string, structured json.RawMessage, isError bool) map[string]any {
+	result := map[string]any{
+		"content": []map[string]string{{"type": "text", "text": text}},
+	}
+	if structured != nil {
+		result["structuredContent"] = structured
+	}
+	if isError {
+		result["isError"] = true
+	}
+	return result
 }
 
 func ensureJSONEOF(decoder *json.Decoder) error {

@@ -65,6 +65,7 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 	if registry == nil {
 		registry = metricspkg.NewRegistry()
 	}
+	runOperation := newOperationRunner(config, dependencies, clock, registry, local, cloud)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -77,100 +78,30 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 	})
 	if config.MCPEnabled {
 		mux.HandleFunc("POST /mcp", func(w http.ResponseWriter, r *http.Request) {
-			serveMCP(w, r, config)
+			serveMCP(w, r, config, runOperation)
 		})
 	}
-	mux.HandleFunc("POST /v2/search", func(w http.ResponseWriter, r *http.Request) {
-		requestBody, err := readRequestBody(r.Body, config.MaxRequestBytes)
-		if err != nil {
-			if errors.Is(err, errBodyTooLarge) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+	handleOperation := func(path string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			requestBody, err := readRequestBody(r.Body, config.MaxRequestBytes)
+			if err != nil {
+				if errors.Is(err, errBodyTooLarge) {
+					http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+					return
+				}
+				http.Error(w, "invalid request body", http.StatusBadRequest)
 				return
 			}
-			http.Error(w, "invalid request body", http.StatusBadRequest)
-			return
-		}
-		cacheKey, cacheableRequest := responseCacheKey("/v2/search", requestBody)
-		if cacheableRequest && dependencies.Cache != nil && config.SearchTTL > 0 {
-			entry, found, cacheErr := dependencies.Cache.Get(r.Context(), cacheKey)
-			if cacheErr == nil && found && clock().Before(entry.ExpiresAt) {
-				registry.IncCacheHit(metricspkg.EndpointSearch)
-				writeResponse(w, entry)
+			entry, err := runOperation(r.Context(), path, r.Header.Get("Content-Type"), requestBody)
+			if err != nil {
+				writeExecutionError(w, err)
 				return
 			}
+			writeResponse(w, entry)
 		}
-
-		execute := func(ctx context.Context) (cachepkg.Entry, error) {
-			entry, executeErr := executeSearch(ctx, config, dependencies.Budget, registry, local, cloud, r.Header.Get("Content-Type"), requestBody)
-			if executeErr == nil && cacheableRequest && dependencies.Cache != nil && config.SearchTTL > 0 && cacheableSearchResponse(entry.Status, entry.Body) {
-				entry.ExpiresAt = clock().Add(config.SearchTTL)
-				_ = dependencies.Cache.Set(context.WithoutCancel(ctx), cacheKey, cachepkg.Entry{
-					Status: entry.Status, ContentType: entry.ContentType, Body: bytes.Clone(entry.Body), Warning: entry.Warning, ExpiresAt: entry.ExpiresAt,
-				})
-			}
-			return entry, executeErr
-		}
-		var entry cachepkg.Entry
-		if cacheableRequest && dependencies.FlightGroup != nil {
-			entry, err = dependencies.FlightGroup.Do(r.Context(), cacheKey, func() (cachepkg.Entry, error) {
-				executionCtx, cancel := sharedExecutionContext(config.HTTPTimeout)
-				defer cancel()
-				return execute(executionCtx)
-			})
-		} else {
-			entry, err = execute(r.Context())
-		}
-		if err != nil {
-			writeExecutionError(w, err)
-			return
-		}
-		writeResponse(w, entry)
-	})
-	mux.HandleFunc("POST /v2/scrape", func(w http.ResponseWriter, r *http.Request) {
-		requestBody, err := readRequestBody(r.Body, config.MaxRequestBytes)
-		if err != nil {
-			if errors.Is(err, errBodyTooLarge) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-				return
-			}
-			http.Error(w, "invalid request body", http.StatusBadRequest)
-			return
-		}
-		cacheKey, cacheableRequest := responseCacheKey("/v2/scrape", requestBody)
-		if cacheableRequest && dependencies.Cache != nil && config.ScrapeTTL > 0 {
-			entry, found, cacheErr := dependencies.Cache.Get(r.Context(), cacheKey)
-			if cacheErr == nil && found && clock().Before(entry.ExpiresAt) {
-				registry.IncCacheHit(metricspkg.EndpointScrape)
-				writeResponse(w, entry)
-				return
-			}
-		}
-		execute := func(ctx context.Context) (cachepkg.Entry, error) {
-			entry, executeErr := executeScrape(ctx, config, dependencies.Budget, registry, local, cloud, r.Header.Get("Content-Type"), requestBody)
-			if executeErr == nil && cacheableRequest && dependencies.Cache != nil && config.ScrapeTTL > 0 && successfulScrapeOutcome(entry.Status, requestBody, entry.Body) {
-				entry.ExpiresAt = clock().Add(config.ScrapeTTL)
-				_ = dependencies.Cache.Set(context.WithoutCancel(ctx), cacheKey, cachepkg.Entry{
-					Status: entry.Status, ContentType: entry.ContentType, Body: bytes.Clone(entry.Body), Warning: entry.Warning, ExpiresAt: entry.ExpiresAt,
-				})
-			}
-			return entry, executeErr
-		}
-		var entry cachepkg.Entry
-		if cacheableRequest && dependencies.FlightGroup != nil {
-			entry, err = dependencies.FlightGroup.Do(r.Context(), cacheKey, func() (cachepkg.Entry, error) {
-				executionCtx, cancel := sharedExecutionContext(config.HTTPTimeout)
-				defer cancel()
-				return execute(executionCtx)
-			})
-		} else {
-			entry, err = execute(r.Context())
-		}
-		if err != nil {
-			writeExecutionError(w, err)
-			return
-		}
-		writeResponse(w, entry)
-	})
+	}
+	mux.HandleFunc("POST /v2/search", handleOperation("/v2/search"))
+	mux.HandleFunc("POST /v2/scrape", handleOperation("/v2/scrape"))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		endpoint, measured := metricsEndpoint(r.URL.Path)
 		start := time.Now()
@@ -191,6 +122,54 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 			registry.ObserveRequestDuration(endpoint, time.Since(start))
 		}
 	})
+}
+
+type operationRunner func(context.Context, string, string, []byte) (cachepkg.Entry, error)
+
+func newOperationRunner(config Config, dependencies Dependencies, clock func() time.Time, registry *metricspkg.Registry, local, cloud *upstream.Client) operationRunner {
+	return func(ctx context.Context, path, contentType string, requestBody []byte) (cachepkg.Entry, error) {
+		endpoint := metricspkg.EndpointSearch
+		ttl := config.SearchTTL
+		cacheableOutcome := func(entry cachepkg.Entry) bool { return cacheableSearchResponse(entry.Status, entry.Body) }
+		executeUpstream := func(executionCtx context.Context) (cachepkg.Entry, error) {
+			return executeSearch(executionCtx, config, dependencies.Budget, registry, local, cloud, contentType, requestBody)
+		}
+		if path == "/v2/scrape" {
+			endpoint = metricspkg.EndpointScrape
+			ttl = config.ScrapeTTL
+			cacheableOutcome = func(entry cachepkg.Entry) bool { return successfulScrapeOutcome(entry.Status, requestBody, entry.Body) }
+			executeUpstream = func(executionCtx context.Context) (cachepkg.Entry, error) {
+				return executeScrape(executionCtx, config, dependencies.Budget, registry, local, cloud, contentType, requestBody)
+			}
+		}
+
+		cacheKey, cacheableRequest := responseCacheKey(path, requestBody)
+		if cacheableRequest && dependencies.Cache != nil && ttl > 0 {
+			entry, found, cacheErr := dependencies.Cache.Get(ctx, cacheKey)
+			if cacheErr == nil && found && clock().Before(entry.ExpiresAt) {
+				registry.IncCacheHit(endpoint)
+				return entry, nil
+			}
+		}
+		execute := func(executionCtx context.Context) (cachepkg.Entry, error) {
+			entry, executeErr := executeUpstream(executionCtx)
+			if executeErr == nil && cacheableRequest && dependencies.Cache != nil && ttl > 0 && cacheableOutcome(entry) {
+				entry.ExpiresAt = clock().Add(ttl)
+				_ = dependencies.Cache.Set(context.WithoutCancel(executionCtx), cacheKey, cachepkg.Entry{
+					Status: entry.Status, ContentType: entry.ContentType, Body: bytes.Clone(entry.Body), Warning: entry.Warning, ExpiresAt: entry.ExpiresAt,
+				})
+			}
+			return entry, executeErr
+		}
+		if cacheableRequest && dependencies.FlightGroup != nil {
+			return dependencies.FlightGroup.Do(ctx, cacheKey, func() (cachepkg.Entry, error) {
+				executionCtx, cancel := sharedExecutionContext(config.HTTPTimeout)
+				defer cancel()
+				return execute(executionCtx)
+			})
+		}
+		return execute(ctx)
+	}
 }
 
 func sharedExecutionContext(configuredTimeout time.Duration) (context.Context, context.CancelFunc) {
@@ -306,21 +285,20 @@ func validBearer(authorization, expected string) bool {
 }
 
 func writeExecutionError(w http.ResponseWriter, err error) {
+	writeResponse(w, executionErrorEntry(err))
+}
+
+func executionErrorEntry(err error) cachepkg.Entry {
 	if errors.Is(err, budgetpkg.ErrLimitExceeded) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "cloud fallback skipped: credit budget exceeded"})
-		return
+		return cachepkg.Entry{Status: http.StatusServiceUnavailable, ContentType: "application/json", Body: []byte(`{"error":"cloud fallback skipped: credit budget exceeded"}`)}
 	}
 	if err.Error() == "local and cloud upstream requests failed" ||
 		errors.Is(err, errLocalUpstreamResponseFailed) || errors.Is(err, errLocalResponseBudgetDenied) ||
 		errors.Is(err, errLocalResponseBudgetAccounting) || errors.Is(err, errCloudFallbackBudgetAccounting) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
+		body, _ := json.Marshal(map[string]string{"error": err.Error()})
+		return cachepkg.Entry{Status: http.StatusBadGateway, ContentType: "application/json", Body: body}
 	}
-	http.Error(w, err.Error(), http.StatusBadGateway)
+	return cachepkg.Entry{Status: http.StatusBadGateway, ContentType: "text/plain; charset=utf-8", Body: []byte(err.Error() + "\n")}
 }
 
 func executeScrape(ctx context.Context, config Config, ledger budgetpkg.Ledger, metrics *metricspkg.Registry, local, cloud *upstream.Client, contentType string, requestBody []byte) (cachepkg.Entry, error) {
