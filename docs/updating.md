@@ -22,6 +22,12 @@ The checker uses `git ls-remote` for branch heads and `docker buildx imagetools 
 
 When a result changes, review upstream commits, releases, licensing, security notices, and browser compatibility before updating the reviewed ledger. Update one component per review; do not advance unrelated entries merely because they were discovered together.
 
+The 1.1 update program treats MCP and upstream refreshes as separate reviewable
+changes on the same release line. Camofox and Lightpanda remain pinned until
+their individual reviews are ready. Each browser candidate must pass the
+production-versus-candidate browser matrix in `docs/migration-validation.md`;
+never combine both browser candidates in one comparison.
+
 ## Prepare a CRW-fork source review
 
 Work from a separate local clone so fetching cannot alter this repository's refs:
@@ -53,5 +59,11 @@ For each source or browser update:
 3. Build and identify a candidate without changing production. Runtime images and release manifests must identify the monorepo revision and component version.
 4. Resolve the candidate image to an immutable digest and update `dev/stack.lock.json` only in the later appliance-candidate change. Run `make check-stack-lock` and the full validation suite.
 5. Exercise the isolated staging appliance and its smoke/live-contract gates. Obtain equivalence and regression approval before any production cutover.
+
+For a Camofox or Lightpanda candidate, also run
+`scripts/browser-regression-gate.py` twice (cold and warm) and retain both
+exclusive JSON artifacts. Confirm that `renderedWith` names the intended engine
+for every case, and record container restart, OOM, peak-memory, and peak-PID
+observations beside the artifacts before approval.
 
 `CRW_IMAGE` remains supplied through ignored `dev/.env`; never copy credentials into the ledger or commit them. `dev/.env.example` and the lock describe tested candidates using immutable digests. Back up volumes and retain the previous image/configuration for rollback before any separately authorized deployment.
