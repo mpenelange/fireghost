@@ -178,6 +178,9 @@ func validate(c Config) error {
 	if c.ScrapeEstimatedCredits <= 0 {
 		return fmt.Errorf("ROUTER_SCRAPE_ESTIMATED_CREDITS must be positive")
 	}
+	if c.MCPEnabled && c.APIKey == "" {
+		return fmt.Errorf("MCP_ENABLED=true requires ROUTER_API_KEY")
+	}
 	if c.CloudAPIKey != "" && c.DailyCloudCredits == 0 && c.MonthlyCloudCredits == 0 {
 		return fmt.Errorf("cloud API key requires a positive daily or monthly cloud credit limit")
 	}

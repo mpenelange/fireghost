@@ -235,6 +235,8 @@ func metricsEndpoint(path string) (metricspkg.Endpoint, bool) {
 		return metricspkg.EndpointHealth, true
 	case "/metrics":
 		return metricspkg.EndpointMetrics, true
+	case "/mcp":
+		return metricspkg.EndpointMCP, true
 	default:
 		return 0, false
 	}

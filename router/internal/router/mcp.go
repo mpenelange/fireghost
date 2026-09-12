@@ -111,7 +111,11 @@ func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest
 		writeMCPResult(w, request.ID, mcpToolResult(string(entry.Body), nil, true))
 		return
 	}
-	isError := err != nil || entry.Status < http.StatusOK || entry.Status >= http.StatusMultipleChoices
+	succeeded := cacheableSearchResponse(entry.Status, entry.Body)
+	if params.Name == "scrape" {
+		succeeded = successfulScrapeOutcome(entry.Status, params.Arguments, entry.Body)
+	}
+	isError := err != nil || !succeeded
 	var structured json.RawMessage
 	if !isError {
 		structured = json.RawMessage(bytes.Clone(compact.Bytes()))

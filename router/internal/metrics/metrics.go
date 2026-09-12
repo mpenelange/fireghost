@@ -15,6 +15,7 @@ const (
 	EndpointScrape
 	EndpointHealth
 	EndpointMetrics
+	EndpointMCP
 	endpointCount
 )
 
@@ -36,7 +37,7 @@ const (
 	upstreamCount
 )
 
-var endpointNames = [...]string{"search", "scrape", "health", "metrics"}
+var endpointNames = [...]string{"search", "scrape", "health", "metrics", "mcp"}
 var statusNames = [...]string{"2xx", "3xx", "4xx", "5xx"}
 var upstreamNames = [...]string{"local", "cloud"}
 
