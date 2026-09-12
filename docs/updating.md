@@ -6,7 +6,7 @@ Upstream discovery and deployment selection are deliberately separate:
 - `dev/stack.lock.json` remains the tested appliance lock. Compose and stack-lock tests continue to require immutable deployment digests.
 - `./scripts/check-updates.sh check` reads the review ledger and reports every component as `current`, `changed`, or `unavailable`. It does not edit either file, fetch source into the worktree, pull an image, or deploy anything. A nonzero exit means operator review is required.
 
-The monorepo's `crw/` is our maintained fork, with local changes after the shared lineage commit `aac7999b9379fd8b6ef818ce37f78634416f79c1`. The source entries are intentionally distinct: `crwVendor` tracks the immediate vendor upstream at `adambenhassen/crw-camofox`; its reviewed head is `ca65413060fc3daaf621c0a81cd3d0368160402e`, whose patch is already represented in the maintained fork. `crwFoundation` independently exposes movement in foundational `us/crw`. A foundation change is research input and must not be imported directly into `crw/`. The retired `michael/crw-camofox` repository is not an update source.
+The monorepo's `crw/` is our maintained fork, with local changes after the shared lineage commit `aac7999b9379fd8b6ef818ce37f78634416f79c1`. The source entries are intentionally distinct: `crwVendor` tracks the immediate vendor upstream's renderer work at `adambenhassen/crw-camofox` branch `feat/camofox-renderer`; its reviewed head is `84f12bb3ef4c4111142e4da894444f2052fea493`, whose patch is already represented in the maintained fork. `crwFoundation` independently exposes movement in foundational `us/crw`. A foundation change is research input and must not be imported directly into `crw/`. The retired `michael/crw-camofox` repository is not an update source.
 
 The image entries probe mutable tags only to discover new published artifacts. Their `reviewedDigest` values never authorize a deployment. Resolve and test a platform-appropriate immutable digest before proposing any later change to the appliance lock.
 
@@ -28,7 +28,7 @@ Work from a separate local clone so fetching cannot alter this repository's refs
 
 ```sh
 git clone https://github.com/adambenhassen/crw-camofox /tmp/crw-camofox-review
-git -C /tmp/crw-camofox-review fetch --prune origin main
+git -C /tmp/crw-camofox-review fetch --prune origin feat/camofox-renderer
 ./scripts/check-updates.sh prepare-crw \
   --source-repo /tmp/crw-camofox-review \
   --candidate <full-candidate-commit> \
