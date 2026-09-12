@@ -95,7 +95,11 @@ class UpstreamManifestTest(unittest.TestCase):
         self.assertEqual(set(data), {"schemaVersion", "sources", "images"})
         self.assertEqual(
             data["sources"]["crwVendor"]["reviewedCommit"],
-            "ca65413060fc3daaf621c0a81cd3d0368160402e",
+            "84f12bb3ef4c4111142e4da894444f2052fea493",
+        )
+        self.assertEqual(
+            data["sources"]["crwVendor"]["ref"],
+            "refs/heads/feat/camofox-renderer",
         )
         self.assertEqual(
             data["sources"]["crwFoundation"]["reviewedCommit"],
