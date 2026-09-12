@@ -70,7 +70,7 @@ hermes-regression:
 	$(HERMES_PYTHON) scripts/hermes-regression-gate.py --hermes-python "$(HERMES_PYTHON)" --search-query "$(HERMES_REGRESSION_SEARCH_QUERY)" --output "$(OUTPUT)"
 
 router-fmt-check:
-	$(GO_DOCKER) sh -c 'test -z "$$(gofmt -l .)"'
+	$(GO_DOCKER) sh -c 'files="$$(gofmt -l .)"; test -z "$$files" || { gofmt -d $$files; exit 1; }'
 
 router-vet:
 	$(GO_DOCKER) go vet ./...
