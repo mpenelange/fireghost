@@ -45,7 +45,7 @@ func TestParseMCPEnabledStrictBoolean(t *testing.T) {
 		{value: "true", want: true},
 		{value: "false", want: false},
 	} {
-		values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "MCP_ENABLED": test.value}
+		values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "ROUTER_API_KEY": "secret", "MCP_ENABLED": test.value}
 		got, err := config.Parse(func(name string) string { return values[name] })
 		if err != nil {
 			t.Fatalf("MCP_ENABLED=%q: %v", test.value, err)
@@ -59,6 +59,13 @@ func TestParseMCPEnabledStrictBoolean(t *testing.T) {
 		if _, err := config.Parse(func(name string) string { return values[name] }); err == nil {
 			t.Fatalf("MCP_ENABLED=%q succeeded, want strict boolean error", value)
 		}
+	}
+}
+
+func TestParseRejectsEnabledMCPWithoutAPIKey(t *testing.T) {
+	values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "MCP_ENABLED": "true"}
+	if _, err := config.Parse(func(name string) string { return values[name] }); err == nil {
+		t.Fatal("enabled MCP without ROUTER_API_KEY succeeded, want error")
 	}
 }
 
