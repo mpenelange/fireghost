@@ -13,6 +13,7 @@ FORGEJO_APPLIANCE = ROOT / ".forgejo" / "workflows" / "appliance.yaml"
 FORGEJO_CRW = ROOT / ".forgejo" / "workflows" / "crw.yaml"
 FORGEJO_ROUTER = ROOT / ".forgejo" / "workflows" / "router.yaml"
 GITHUB_CI = ROOT / ".github" / "workflows" / "ci.yaml"
+GITHUB_RELEASE = ROOT / ".github" / "workflows" / "release.yaml"
 COMPOSE = ROOT / "docker-compose.yml"
 ENV_EXAMPLE = ROOT / ".env.example"
 
@@ -120,6 +121,29 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("docker exec fake-cloud python -c 'import socket", text)
         self.assertNotIn("REGISTRY_TOKEN", text)
         self.assertNotIn("docker buildx build", text)
+
+    def test_github_ci_excludes_release_tags(self):
+        text = GITHUB_CI.read_text(encoding="utf-8")
+        push_block = text[text.index("  push:"):text.index("  pull_request:")]
+        self.assertIn("branches:", push_block)
+        self.assertNotIn("tags:", push_block)
+
+    def test_github_release_uses_ghcr_and_builtin_credentials(self):
+        text = GITHUB_RELEASE.read_text(encoding="utf-8")
+        self.assertIn('appliance-v*.*.*', text)
+        self.assertEqual(text.count("runs-on: ubuntu-latest"), 5)
+        self.assertIn("packages: write", text)
+        self.assertIn("secrets.GITHUB_TOKEN", text)
+        self.assertIn("github.actor", text)
+        self.assertIn("docker login ghcr.io", text)
+        self.assertIn("ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-router", text)
+        self.assertIn("ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-crw", text)
+        self.assertIn("needs: [verify, build-router, build-crw]", text)
+        self.assertIn("needs: [verify, validate]", text)
+        self.assertIn("docker system prune -af --volumes", text)
+        self.assertIn("$GITHUB_SERVER_URL/$GITHUB_REPOSITORY", text)
+        self.assertNotIn("git.firewire.cc", text)
+        self.assertNotIn("secrets.REGISTRY_", text)
 
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")

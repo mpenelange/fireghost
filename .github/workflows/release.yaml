@@ -1,0 +1,287 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "appliance-v*.*.*"
+
+concurrency:
+  group: appliance-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      minor: ${{ steps.release.outputs.minor }}
+      candidate: ${{ steps.release.outputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: clippy, rustfmt
+
+      - name: Cache Cargo inputs and artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crw/target
+          key: ${{ runner.os }}-crw-${{ hashFiles('crw/Cargo.lock') }}
+
+      - name: Resolve and validate release tags
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(python3 scripts/release_tags.py "$GITHUB_REF_NAME")"
+          version="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])' <<<"$release_json")"
+          minor="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["minor"])' <<<"$release_json")"
+          candidate="candidate-$version-$GITHUB_RUN_ID-${GITHUB_RUN_ATTEMPT:-0}"
+          printf 'version=%s\nminor=%s\ncandidate=%s\n' "$version" "$minor" "$candidate" >> "$GITHUB_OUTPUT"
+
+      - name: Configure non-secret deployment inputs
+        run: cp deploy/.env.example deploy/.env
+
+      - name: Verify release source
+        run: make check
+
+  build-router:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear prior Docker job data
+        run: docker system prune -af --volumes
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME"
+          test -n "$REGISTRY_TOKEN"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+      - uses: docker/setup-buildx-action@v3
+      - name: Build router candidate
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          CANDIDATE: ${{ needs.verify.outputs.candidate }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-router
+        run: |
+          set -euo pipefail
+          build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
+          docker buildx build --platform linux/amd64 --push \
+            --build-arg VERSION="$VERSION" \
+            --build-arg REVISION="$GITHUB_SHA" \
+            --build-arg BUILD_DATE="$build_date" \
+            --build-arg SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "io.firewire.appliance.version=$VERSION" \
+            --tag "$IMAGE:$CANDIDATE" \
+            router
+
+  build-crw:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear prior Docker job data
+        run: docker system prune -af --volumes
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME"
+          test -n "$REGISTRY_TOKEN"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+      - uses: docker/setup-buildx-action@v3
+      - name: Build CRW candidate
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          CANDIDATE: ${{ needs.verify.outputs.candidate }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-crw
+        run: |
+          set -euo pipefail
+          build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
+          crw_version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("crw/Cargo.toml").read_text())["workspace"]["package"]["version"])')"
+          docker buildx build --platform linux/amd64 --push \
+            --build-arg CRW_VERSION="$crw_version" \
+            --build-arg CRW_REVISION="$GITHUB_SHA" \
+            --build-arg CRW_BUILD_DATE="$build_date" \
+            --build-arg CRW_SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "io.firewire.appliance.version=$VERSION" \
+            --tag "$IMAGE:$CANDIDATE" \
+            crw
+
+  validate:
+    needs: [verify, build-router, build-crw]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear build data before candidate extraction
+        run: docker system prune -af --volumes
+      - name: Configure non-secret deployment inputs
+        run: cp deploy/.env.example deploy/.env
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME"
+          test -n "$REGISTRY_TOKEN"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+      - name: Validate candidate appliance
+        env:
+          ROUTER_IMAGE: ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-router:${{ needs.verify.outputs.candidate }}
+          CRW_IMAGE: ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-crw:${{ needs.verify.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          project="web-retrieval-release-$GITHUB_RUN_ID"
+          proxy_network="$project-proxy"
+          compose=(docker compose --project-name "$project" -f docker-compose.yml -f deployment/compose.release-smoke.yaml)
+          cleanup() {
+            "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+            docker network rm "$proxy_network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create "$proxy_network"
+          export TRAEFIK_NETWORK="$proxy_network"
+          export TRAEFIK_ENTRYPOINT=websecure
+          export TRAEFIK_CERTRESOLVER=release-smoke
+          export API_HOST=release.invalid
+          export API_PATH_PREFIX=/web/api
+          export ALLOWED_CIDRS=127.0.0.1/32
+          export ROUTER_API_KEY=release-smoke
+          export FIRECRAWL_ENABLED=false
+          "${compose[@]}" up -d --pull always --wait
+          router_address="$("${compose[@]}" port router 8080)"
+          ROUTER_URL="http://$router_address" ROUTER_API_KEY="$ROUTER_API_KEY" \
+            python3 scripts/live-contract-test.py
+      - name: Clear candidate images
+        if: always()
+        run: docker system prune -af --volumes
+
+  promote:
+    needs: [verify, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME"
+          test -n "$REGISTRY_TOKEN"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+      - uses: docker/setup-buildx-action@v3
+      - name: Promote tested images
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          MINOR: ${{ needs.verify.outputs.minor }}
+          CANDIDATE: ${{ needs.verify.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          router=ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-router
+          crw=ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-crw
+
+          manifest_digest() {
+            docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>/dev/null |
+              python3 -c 'import json,sys; data=sys.stdin.read(); print(json.loads(data)["digest"]) if data else sys.exit(1)'
+          }
+          image_labels() {
+            docker buildx imagetools inspect "$1" --format '{{json .Image.Config.Labels}}'
+          }
+          promote() {
+            target="$1"
+            source="$2"
+            for attempt in 1 2 3; do
+              if docker buildx imagetools create --tag "$target" "$source"; then
+                return 0
+              fi
+              echo "promotion attempt $attempt failed for $target" >&2
+              sleep "$((attempt * 2))"
+            done
+            return 1
+          }
+          ensure_immutable_version() {
+            image="$1"
+            candidate_digest="$2"
+            existing="$(manifest_digest "$image:$VERSION" || true)"
+            if [ -n "$existing" ]; then
+              labels="$(image_labels "$image:$VERSION")"
+              if ! EXPECTED_REVISION="$GITHUB_SHA" EXPECTED_VERSION="$VERSION" python3 -c 'import json,os,sys; labels=json.load(sys.stdin) or {}; valid=labels.get("org.opencontainers.image.revision")==os.environ["EXPECTED_REVISION"] and labels.get("io.firewire.appliance.version")==os.environ["EXPECTED_VERSION"]; raise SystemExit(0 if valid else 1)' <<<"$labels"; then
+                echo "$image:$VERSION already exists with unexpected provenance" >&2
+                return 1
+              fi
+              echo "$image:$VERSION already records this source revision; preserving its immutable digest"
+              return 0
+            fi
+            promote "$image:$VERSION" "$image@$candidate_digest"
+            [ "$(manifest_digest "$image:$VERSION")" = "$candidate_digest" ]
+          }
+          promote_alias_pair() {
+            alias="$1"
+            router_previous="$(manifest_digest "$router:$alias" || true)"
+            crw_previous="$(manifest_digest "$crw:$alias" || true)"
+            if promote "$router:$alias" "$router@$router_candidate" && \
+               promote "$crw:$alias" "$crw@$crw_candidate" && \
+               [ "$(manifest_digest "$router:$alias")" = "$router_candidate" ] && \
+               [ "$(manifest_digest "$crw:$alias")" = "$crw_candidate" ]; then
+              return 0
+            fi
+            echo "paired $alias promotion failed; restoring prior aliases where available" >&2
+            if [ -n "$router_previous" ]; then
+              promote "$router:$alias" "$router@$router_previous" || true
+            fi
+            if [ -n "$crw_previous" ]; then
+              promote "$crw:$alias" "$crw@$crw_previous" || true
+            fi
+            return 1
+          }
+
+          router_candidate="$(manifest_digest "$router:$CANDIDATE")"
+          crw_candidate="$(manifest_digest "$crw:$CANDIDATE")"
+          ensure_immutable_version "$router" "$router_candidate"
+          ensure_immutable_version "$crw" "$crw_candidate"
+          # On a retry, immutable tags from the prior attempt are authoritative.
+          router_candidate="$(manifest_digest "$router:$VERSION")"
+          crw_candidate="$(manifest_digest "$crw:$VERSION")"
+
+          mapfile -t release_refs < <(git tag --list 'appliance-v*')
+          status_json="$(python3 scripts/release_tags.py --promotion-status "$GITHUB_REF_NAME" "${release_refs[@]}")"
+          publish_minor="$(python3 -c 'import json,sys; print(str(json.load(sys.stdin)["publish_minor"]).lower())' <<<"$status_json")"
+          publish_latest="$(python3 -c 'import json,sys; print(str(json.load(sys.stdin)["publish_latest"]).lower())' <<<"$status_json")"
+
+          if [ "$publish_minor" = true ]; then
+            promote_alias_pair "$MINOR"
+          else
+            echo "not moving $MINOR backward"
+          fi
+          if [ "$publish_latest" = true ]; then
+            promote_alias_pair latest
+          else
+            echo "not moving latest backward"
+          fi
