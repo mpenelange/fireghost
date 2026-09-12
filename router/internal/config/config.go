@@ -21,7 +21,7 @@ type Config struct {
 	CloudBurstCredits, CloudRefillCreditsPerDay          int
 	MonthlyResetDay                                      int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
-	MCPEnabled                                            bool
+	MCPEnabled                                           bool
 }
 
 // Parse reads configuration through getenv, making parsing deterministic in tests.
