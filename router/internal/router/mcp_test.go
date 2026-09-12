@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	budgetpkg "web-retrieval/internal/budget"
 	cachepkg "web-retrieval/internal/cache"
 	"web-retrieval/internal/router"
 	flightpkg "web-retrieval/internal/singleflight"
@@ -183,6 +184,44 @@ func TestMCPToolErrorsAndInvalidCalls(t *testing.T) {
 
 type mcpTestError struct {
 	Code int `json:"code"`
+}
+
+func TestMCPToolsPreserveFallbackBudgetAndResponseLimits(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"success":false,"error":"blocked"}`)
+	}))
+	defer local.Close()
+	cloudCalls := 0
+	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		cloudCalls++
+		_, _ = io.WriteString(w, `{"success":true,"data":{"web":[{"url":"https://cloud.test"}]}}`)
+	}))
+	defer cloud.Close()
+
+	success := router.NewHandler(router.Config{
+		MCPEnabled: true, APIKey: "secret", LocalBaseURL: local.URL, CloudBaseURL: cloud.URL, CloudAPIKey: "cloud-key",
+		SearchEstimatedCredits: 2, MaxResponseBytes: 1 << 20,
+	}, router.Dependencies{HTTPClient: local.Client(), Budget: budgetpkg.NewMemory(2, 0, time.Now)})
+	fallback := callMCP(t, success, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":{"query":"x"}}}`)
+	if !strings.Contains(fallback.Body.String(), `https://cloud.test`) || strings.Contains(fallback.Body.String(), `"isError":true`) || cloudCalls != 1 {
+		t.Fatalf("fallback response = %s, cloud calls = %d", fallback.Body.String(), cloudCalls)
+	}
+
+	denied := router.NewHandler(router.Config{
+		MCPEnabled: true, APIKey: "secret", LocalBaseURL: local.URL, CloudBaseURL: cloud.URL, CloudAPIKey: "cloud-key",
+		SearchEstimatedCredits: 2, MaxResponseBytes: 1 << 20,
+	}, router.Dependencies{HTTPClient: local.Client(), Budget: budgetpkg.NewMemory(1, 0, time.Now)})
+	denial := callMCP(t, denied, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"denied"}}}`)
+	if !strings.Contains(denial.Body.String(), `"isError":true`) || !strings.Contains(denial.Body.String(), "credit budget exceeded") || cloudCalls != 1 {
+		t.Fatalf("budget denial response = %s, cloud calls = %d", denial.Body.String(), cloudCalls)
+	}
+
+	limited := router.NewHandler(router.Config{MCPEnabled: true, APIKey: "secret", LocalBaseURL: cloud.URL, MaxResponseBytes: 8}, router.Dependencies{HTTPClient: cloud.Client()})
+	oversize := callMCP(t, limited, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search","arguments":{"query":"large"}}}`)
+	if !strings.Contains(oversize.Body.String(), `"isError":true`) || !strings.Contains(oversize.Body.String(), "local upstream response failed") {
+		t.Fatalf("oversize response = %s", oversize.Body.String())
+	}
 }
 
 func TestMCPNotificationsAreAcceptedWithoutResponse(t *testing.T) {
