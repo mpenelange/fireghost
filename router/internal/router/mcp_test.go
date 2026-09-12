@@ -3,11 +3,16 @@ package router_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	cachepkg "web-retrieval/internal/cache"
 	"web-retrieval/internal/router"
+	flightpkg "web-retrieval/internal/singleflight"
 )
 
 func TestMCPInitializePingAndToolDiscovery(t *testing.T) {
@@ -67,6 +72,117 @@ func TestMCPInitializePingAndToolDiscovery(t *testing.T) {
 			t.Fatalf("%s input schema is not permissive: %#v", tool.Name, tool.InputSchema)
 		}
 	}
+}
+
+func TestMCPToolsShareExactRESTOperationsAndCache(t *testing.T) {
+	searchBody := `{"success":true,"data":{"web":[{"url":"https://example.test"}]},"unknown":{"kept":true}}`
+	scrapeBody := `{"success":true,"data":{"markdown":"hello"},"unknown":[1,2]}`
+	calls := map[string]int{}
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls[r.URL.Path]++
+		request, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(request, []byte(`"extension":"preserved"`)) {
+			t.Errorf("upstream body lost unknown argument: %s", request)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v2/search" {
+			_, _ = io.WriteString(w, searchBody)
+		} else {
+			_, _ = io.WriteString(w, scrapeBody)
+		}
+	}))
+	defer local.Close()
+	handler := router.NewHandler(router.Config{
+		MCPEnabled: true, APIKey: "secret", LocalBaseURL: local.URL,
+		SearchTTL: time.Minute, ScrapeTTL: time.Minute, MaxRequestBytes: 1 << 20, MaxResponseBytes: 1 << 20,
+	}, router.Dependencies{
+		HTTPClient: local.Client(), Cache: &testCache{entries: make(map[string]cachepkg.Entry)},
+		FlightGroup: flightpkg.New[cachepkg.Entry](),
+	})
+
+	for _, test := range []struct {
+		name, path, upstreamBody string
+	}{
+		{name: "search", path: "/v2/search", upstreamBody: searchBody},
+		{name: "scrape", path: "/v2/scrape", upstreamBody: scrapeBody},
+	} {
+		arguments := `{"query":"x","url":"https://example.test","extension":"preserved"}`
+		restRequest := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(arguments))
+		restRequest.Header.Set("Authorization", "Bearer secret")
+		rest := httptest.NewRecorder()
+		handler.ServeHTTP(rest, restRequest)
+		if rest.Body.String() != test.upstreamBody {
+			t.Fatalf("%s REST body = %q, want exact %q", test.name, rest.Body.String(), test.upstreamBody)
+		}
+
+		mcp := callMCP(t, handler, `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"`+test.name+`","arguments":`+arguments+`}}`)
+		var response struct {
+			Result struct {
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+				StructuredContent json.RawMessage `json:"structuredContent"`
+				IsError           bool            `json:"isError"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(mcp.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Result.IsError || len(response.Result.Content) != 1 || response.Result.Content[0].Type != "text" || response.Result.Content[0].Text != test.upstreamBody {
+			t.Fatalf("%s MCP result = %#v; body %s", test.name, response.Result, mcp.Body.String())
+		}
+		assertJSONEqual(t, response.Result.StructuredContent, test.upstreamBody)
+		if calls[test.path] != 1 {
+			t.Fatalf("%s upstream calls = %d, want shared REST/MCP cache hit", test.name, calls[test.path])
+		}
+	}
+}
+
+func TestMCPToolErrorsAndInvalidCalls(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"success":false,"error":"upstream unavailable"}`)
+	}))
+	defer local.Close()
+	handler := router.NewHandler(router.Config{MCPEnabled: true, APIKey: "secret", LocalBaseURL: local.URL, MaxResponseBytes: 1 << 20}, router.Dependencies{HTTPClient: local.Client()})
+
+	failed := callMCP(t, handler, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":{"query":"x"}}}`)
+	var toolResponse struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(failed.Body.Bytes(), &toolResponse); err != nil {
+		t.Fatal(err)
+	}
+	if !toolResponse.Result.IsError || len(toolResponse.Result.Content) != 1 || !strings.Contains(toolResponse.Result.Content[0].Text, "upstream unavailable") {
+		t.Fatalf("failed tool result = %#v; body %s", toolResponse.Result, failed.Body.String())
+	}
+
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"missing","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search","arguments":"bad"}}`,
+	} {
+		response := callMCP(t, handler, body)
+		var rpc struct {
+			Error *mcpTestError `json:"error"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &rpc); err != nil {
+			t.Fatal(err)
+		}
+		if rpc.Error == nil || rpc.Error.Code != -32602 {
+			t.Fatalf("invalid call response = %s, want -32602", response.Body.String())
+		}
+	}
+}
+
+type mcpTestError struct {
+	Code int `json:"code"`
 }
 
 func TestMCPNotificationsAreAcceptedWithoutResponse(t *testing.T) {
