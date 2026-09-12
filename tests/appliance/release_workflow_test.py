@@ -111,39 +111,9 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("make smoke", text)
         self.assertNotIn("docker network connect", text)
 
-    def test_github_ci_splits_checks_across_standard_hosted_runners(self):
-        text = GITHUB_CI.read_text(encoding="utf-8")
-        self.assertEqual(text.count("runs-on: ubuntu-latest"), 3)
-        self.assertIn("make check-router", text)
-        self.assertIn("make check-crw", text)
-        self.assertIn("make test-appliance compose-config check-stack-lock test-hermes-regression", text)
-        self.assertIn("make build-router", text)
-        self.assertIn("docker exec fake-cloud python -c 'import socket", text)
-        self.assertNotIn("REGISTRY_TOKEN", text)
-        self.assertNotIn("docker buildx build", text)
-
-    def test_github_ci_excludes_release_tags(self):
-        text = GITHUB_CI.read_text(encoding="utf-8")
-        push_block = text[text.index("  push:"):text.index("  pull_request:")]
-        self.assertIn("branches:", push_block)
-        self.assertNotIn("tags:", push_block)
-
-    def test_github_release_uses_ghcr_and_builtin_credentials(self):
-        text = GITHUB_RELEASE.read_text(encoding="utf-8")
-        self.assertIn('appliance-v*.*.*', text)
-        self.assertEqual(text.count("runs-on: ubuntu-latest"), 5)
-        self.assertIn("packages: write", text)
-        self.assertIn("secrets.GITHUB_TOKEN", text)
-        self.assertIn("github.actor", text)
-        self.assertIn("docker login ghcr.io", text)
-        self.assertIn("ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-router", text)
-        self.assertIn("ghcr.io/${{ github.repository_owner }}/hermes-web-retrieval-crw", text)
-        self.assertIn("needs: [verify, build-router, build-crw]", text)
-        self.assertIn("needs: [verify, validate]", text)
-        self.assertIn("docker system prune -af --volumes", text)
-        self.assertIn("$GITHUB_SERVER_URL/$GITHUB_REPOSITORY", text)
-        self.assertNotIn("git.firewire.cc", text)
-        self.assertNotIn("secrets.REGISTRY_", text)
+    def test_github_defines_no_build_or_release_workflows(self):
+        self.assertFalse(GITHUB_CI.exists())
+        self.assertFalse(GITHUB_RELEASE.exists())
 
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")
@@ -152,8 +122,9 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("pull_request:", text)
         self.assertLess(text.index("make check"), text.index("docker buildx build"))
         self.assertIn("scripts/release_tags.py", text)
-        self.assertIn("hermes-web-retrieval-router", text)
-        self.assertIn("hermes-web-retrieval-crw", text)
+        self.assertIn("git.firewire.cc/michael/fireghost-router", text)
+        self.assertIn("git.firewire.cc/michael/fireghost-crw", text)
+        self.assertIn("https://git.firewire.cc/michael/fireghost", text)
         self.assertIn("REGISTRY_USERNAME", text)
         self.assertIn("REGISTRY_TOKEN", text)
 
@@ -199,15 +170,15 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         compose = COMPOSE.read_text(encoding="utf-8")
         env = ENV_EXAMPLE.read_text(encoding="utf-8")
         self.assertIn(
-            "image: ${ROUTER_IMAGE:-git.firewire.cc/michael/hermes-web-retrieval-router:latest}",
+            "image: ${ROUTER_IMAGE:-git.firewire.cc/michael/fireghost-router:latest}",
             compose,
         )
         self.assertIn(
-            "image: ${CRW_IMAGE:-git.firewire.cc/michael/hermes-web-retrieval-crw:latest}",
+            "image: ${CRW_IMAGE:-git.firewire.cc/michael/fireghost-crw:latest}",
             compose,
         )
-        self.assertRegex(env, r"(?m)^ROUTER_IMAGE=\S+/hermes-web-retrieval-router:latest$")
-        self.assertRegex(env, r"(?m)^CRW_IMAGE=\S+/hermes-web-retrieval-crw:latest$")
+        self.assertRegex(env, r"(?m)^ROUTER_IMAGE=git\.firewire\.cc/michael/fireghost-router:latest$")
+        self.assertRegex(env, r"(?m)^CRW_IMAGE=git\.firewire\.cc/michael/fireghost-crw:latest$")
         third_party = [
             value
             for value in re.findall(r"(?m)^\s+image:\s*(.+)$", compose)

@@ -2,7 +2,7 @@ name: web-retrieval
 
 services:
   router:
-    image: ${ROUTER_IMAGE:-git.firewire.cc/michael/hermes-web-retrieval-router:latest}
+    image: ${ROUTER_IMAGE:-git.firewire.cc/michael/fireghost-router:latest}
     restart: unless-stopped
     depends_on:
       crw:
@@ -75,7 +75,7 @@ services:
   crw:
     labels:
       traefik.enable: "false"
-    image: ${CRW_IMAGE:-git.firewire.cc/michael/hermes-web-retrieval-crw:latest}
+    image: ${CRW_IMAGE:-git.firewire.cc/michael/fireghost-crw:latest}
     restart: unless-stopped
     depends_on:
       camofox:

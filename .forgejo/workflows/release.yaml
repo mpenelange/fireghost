@@ -76,7 +76,7 @@ jobs:
         env:
           VERSION: ${{ needs.verify.outputs.version }}
           CANDIDATE: ${{ needs.verify.outputs.candidate }}
-          IMAGE: git.firewire.cc/michael/hermes-web-retrieval-router
+          IMAGE: git.firewire.cc/michael/fireghost-router
         run: |
           set -euo pipefail
           build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
@@ -84,7 +84,7 @@ jobs:
             --build-arg VERSION="$VERSION" \
             --build-arg REVISION="$GITHUB_SHA" \
             --build-arg BUILD_DATE="$build_date" \
-            --build-arg SOURCE="https://git.firewire.cc/michael/hermes-web-retrieval" \
+            --build-arg SOURCE="https://git.firewire.cc/michael/fireghost" \
             --label "io.firewire.appliance.version=$VERSION" \
             --tag "$IMAGE:$CANDIDATE" \
             router
@@ -111,7 +111,7 @@ jobs:
         env:
           VERSION: ${{ needs.verify.outputs.version }}
           CANDIDATE: ${{ needs.verify.outputs.candidate }}
-          IMAGE: git.firewire.cc/michael/hermes-web-retrieval-crw
+          IMAGE: git.firewire.cc/michael/fireghost-crw
         run: |
           set -euo pipefail
           build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
@@ -120,7 +120,7 @@ jobs:
             --build-arg CRW_VERSION="$crw_version" \
             --build-arg CRW_REVISION="$GITHUB_SHA" \
             --build-arg CRW_BUILD_DATE="$build_date" \
-            --build-arg CRW_SOURCE="https://git.firewire.cc/michael/hermes-web-retrieval" \
+            --build-arg CRW_SOURCE="https://git.firewire.cc/michael/fireghost" \
             --label "io.firewire.appliance.version=$VERSION" \
             --tag "$IMAGE:$CANDIDATE" \
             crw
@@ -146,8 +146,8 @@ jobs:
           printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
       - name: Validate candidate appliance
         env:
-          ROUTER_IMAGE: git.firewire.cc/michael/hermes-web-retrieval-router:${{ needs.verify.outputs.candidate }}
-          CRW_IMAGE: git.firewire.cc/michael/hermes-web-retrieval-crw:${{ needs.verify.outputs.candidate }}
+          ROUTER_IMAGE: git.firewire.cc/michael/fireghost-router:${{ needs.verify.outputs.candidate }}
+          CRW_IMAGE: git.firewire.cc/michael/fireghost-crw:${{ needs.verify.outputs.candidate }}
         run: |
           set -euo pipefail
           project="web-retrieval-release-$GITHUB_RUN_ID"
@@ -200,8 +200,8 @@ jobs:
           CANDIDATE: ${{ needs.verify.outputs.candidate }}
         run: |
           set -euo pipefail
-          router=git.firewire.cc/michael/hermes-web-retrieval-router
-          crw=git.firewire.cc/michael/hermes-web-retrieval-crw
+          router=git.firewire.cc/michael/fireghost-router
+          crw=git.firewire.cc/michael/fireghost-crw
 
           manifest_digest() {
             docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>/dev/null |

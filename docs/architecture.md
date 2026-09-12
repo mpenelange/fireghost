@@ -1,8 +1,11 @@
-# Architecture
+# Fireghost architecture
 
 Identical cacheable requests are coalesced by key. Unique in-flight work is bounded by `ROUTER_MAX_INFLIGHT` (default `64`); capacity waits honor caller cancellation, while work already started continues independently until completion and releases its slot only then.
 
-The appliance publishes one loopback endpoint: the Go router at `127.0.0.1:33000`. The router accepts the Firecrawl-compatible `/v2/search` and `/v2/scrape` APIs, plus `/health` and `/metrics`.
+Fireghost is a general local-first retrieval platform. Its legacy developer
+appliance publishes one loopback endpoint: the Go router at
+`127.0.0.1:33000`. The router accepts the Firecrawl-compatible `/v2/search` and
+`/v2/scrape` APIs, plus `/health` and `/metrics`.
 
 Requests go to CRW first. CRW uses direct HTTP, then LightPanda at `ws://lightpanda:9222/`, then Camofox at `http://camofox:9377`. Those three services have no host ports. The single `appliance` bridge permits outbound retrieval while service names provide internal discovery.
 

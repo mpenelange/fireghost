@@ -1,10 +1,13 @@
-# Hermes Web Retrieval
+# Fireghost
 
-A self-hosted, local-first Firecrawl-compatible search and scrape appliance. The
-public deployment runs a Go router, CRW, Camofox, and LightPanda behind an
-existing private Traefik installation. Owned router and CRW images default to
-the newest tested stable release; third-party browser images remain pinned by
-digest. The public Compose path performs no builds or host-port publishing.
+Fireghost is a self-hosted, local-first retrieval platform with
+Firecrawl-compatible search and scrape APIs. It runs a Go router, CRW, Camofox,
+and LightPanda behind an existing private Traefik installation, and is designed
+for clients that need private retrieval infrastructure rather than for one
+specific assistant. Future client integrations may include MCP, but Fireghost
+does not currently provide an MCP server. Owned router and CRW images default
+to the newest tested stable release; third-party browser images remain pinned
+by digest. The public Compose path performs no builds or host-port publishing.
 
 ## Quickstart
 
@@ -14,8 +17,8 @@ read access to `git.firewire.cc`. The published images are tested on amd64;
 verify every pinned image supports your architecture before deploying elsewhere.
 
 ```sh
-git clone <repository-url> hermes-web-retrieval
-cd hermes-web-retrieval
+git clone https://git.firewire.cc/michael/fireghost.git
+cd fireghost
 cp .env.example .env
 # Edit .env: replace ROUTER_API_KEY and verify the Traefik settings/CIDRs.
 docker compose pull
@@ -33,6 +36,14 @@ docker compose up -d --pull always --wait
 by itself. For a reproducible deployment or rollback, set `ROUTER_IMAGE` and
 `CRW_IMAGE` in `.env` to the same immutable release version, such as `0.1.0`,
 then run the command above. Camofox and LightPanda stay digest-pinned.
+
+Existing deployments and API endpoints remain compatible: the Compose project,
+service and volume identities, routes, mount paths, environment variables, and
+`/v2/search` and `/v2/scrape` contracts are unchanged. Old immutable
+`hermes-web-retrieval-*` images remain historical rollback artifacts and are not
+overwritten or deleted. To adopt the new `fireghost-router` and `fireghost-crw`
+packages, update the checkout and explicitly pull/recreate the services with
+`docker compose up -d --pull always --wait`.
 
 This is the single end-user deployment route. Docker Compose automatically finds
 [`docker-compose.yml`](docker-compose.yml) and `.env` at the repository root.

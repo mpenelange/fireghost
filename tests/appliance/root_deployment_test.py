@@ -57,8 +57,19 @@ class RootDeploymentContractTest(unittest.TestCase):
         ):
             self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
         env = ENV_EXAMPLE.read_text(encoding="utf-8")
-        self.assertRegex(env, r"(?m)^ROUTER_IMAGE=\S+/hermes-web-retrieval-router:latest$")
-        self.assertRegex(env, r"(?m)^CRW_IMAGE=\S+/hermes-web-retrieval-crw:latest$")
+        self.assertRegex(env, r"(?m)^ROUTER_IMAGE=git\.firewire\.cc/michael/fireghost-router:latest$")
+        self.assertRegex(env, r"(?m)^CRW_IMAGE=git\.firewire\.cc/michael/fireghost-crw:latest$")
+
+    def test_public_rename_preserves_deployment_compatibility_identifiers(self):
+        text = COMPOSE.read_text(encoding="utf-8")
+        self.assertIn("name: web-retrieval", text)
+        self.assertIn("traefik.http.routers.web-retrieval.rule", text)
+        self.assertIn("traefik.http.services.web-retrieval.loadbalancer.server.port", text)
+        self.assertIn("./deployment/router-entrypoint.sh:/etc/web-retrieval/router-entrypoint.sh:ro", text)
+        self.assertIn("router-data:/data", text)
+        self.assertIn("camofox-profiles:/home/node/.camofox", text)
+        self.assertIn("${API_HOST:-api.firewire.cc}", text)
+        self.assertIn("${API_PATH_PREFIX:-/web/api}", text)
 
     def test_templates_contain_no_embedded_secrets(self):
         compose = COMPOSE.read_text(encoding="utf-8")
