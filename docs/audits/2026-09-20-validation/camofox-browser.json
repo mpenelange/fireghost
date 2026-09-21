@@ -1,0 +1,212 @@
+{
+  "timestamp": "2026-09-20T05:10:20.543913+00:00",
+  "repo_head": "d1c1acbbcf0edf8a7b5820d1121bf78074cd6c16",
+  "endpoints": {
+    "production": "http://127.0.0.1:33000",
+    "candidate": "http://127.0.0.1:33010"
+  },
+  "matrix_schema_version": 1,
+  "cases": [
+    {
+      "name": "lightpanda-static",
+      "renderer": "lightpanda",
+      "url": "https://example.com/",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 8.236
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 8.261
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-static",
+      "renderer": "camofox",
+      "url": "https://example.com/",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 3.231
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 3.448
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "lightpanda-javascript",
+      "renderer": "lightpanda",
+      "url": "https://quotes.toscrape.com/js/",
+      "thresholds": {
+        "minimum_markdown_chars": 500,
+        "minimum_candidate_ratio": 0.8
+      },
+      "production": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 8.916
+      },
+      "candidate": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 8.454
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-javascript",
+      "renderer": "camofox",
+      "url": "https://quotes.toscrape.com/js/",
+      "thresholds": {
+        "minimum_markdown_chars": 500,
+        "minimum_candidate_ratio": 0.8
+      },
+      "production": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 2.787
+      },
+      "candidate": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 2.643
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "lightpanda-redirect",
+      "renderer": "lightpanda",
+      "url": "https://httpbin.org/redirect-to",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 9.698
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 167,
+        "markdown_sha256": "5945db6fd8137aa377638814ca9bb1ac0a663fd90a97f11f86c3f5c09cfb40e3",
+        "latency_seconds": 9.43
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-real-world",
+      "renderer": "camofox",
+      "url": "https://www.reddit.com/r/selfhosted/",
+      "thresholds": {
+        "minimum_markdown_chars": 1000,
+        "minimum_candidate_ratio": 0.75
+      },
+      "production": {
+        "success": true,
+        "title": "",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 52,
+        "markdown_sha256": "339ed067b96086698094341642879d4fa3539a1058f870000ad6464de9b2b7cd",
+        "latency_seconds": 7.807
+      },
+      "candidate": {
+        "success": true,
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "status_code": 200,
+        "rendered_with": null,
+        "markdown_chars": 13537,
+        "markdown_sha256": "49e95355a23276906533e16be433cce8d44ceef726b27d882df395d7184e6c82",
+        "latency_seconds": 6.55
+      },
+      "comparison": {
+        "markdown_size_ratio": 260.3269
+      }
+    }
+  ],
+  "reasons": [
+    "lightpanda-static: production used no reported renderer; expected lightpanda",
+    "lightpanda-static: candidate used no reported renderer; expected lightpanda",
+    "camofox-static: production used no reported renderer; expected camofox",
+    "camofox-static: candidate used no reported renderer; expected camofox",
+    "lightpanda-javascript: production used no reported renderer; expected lightpanda",
+    "lightpanda-javascript: production is missing required text",
+    "lightpanda-javascript: candidate used no reported renderer; expected lightpanda",
+    "lightpanda-javascript: candidate is missing required text",
+    "camofox-javascript: production used no reported renderer; expected camofox",
+    "camofox-javascript: production is missing required text",
+    "camofox-javascript: candidate used no reported renderer; expected camofox",
+    "camofox-javascript: candidate is missing required text",
+    "lightpanda-redirect: production used no reported renderer; expected lightpanda",
+    "lightpanda-redirect: candidate used no reported renderer; expected lightpanda",
+    "camofox-real-world: production used no reported renderer; expected camofox",
+    "camofox-real-world: production markdown is too small",
+    "camofox-real-world: production is missing required text",
+    "camofox-real-world: candidate used no reported renderer; expected camofox"
+  ],
+  "passed": false
+}

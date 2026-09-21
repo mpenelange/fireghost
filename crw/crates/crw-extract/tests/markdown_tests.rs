@@ -1,6 +1,22 @@
 use crw_extract::markdown::html_to_markdown;
 
 #[test]
+fn markdown_preserves_unicode_numbered_text() {
+    let md = html_to_markdown("<p>2½. cups of flour</p><p>1é. café</p>");
+    assert!(md.contains(r"2½\. cups of flour"), "Got: {md}");
+    assert!(md.contains("1é. café"), "Got: {md}");
+}
+
+#[test]
+fn markdown_preserves_math_delimiters_and_subscripts() {
+    let md = html_to_markdown(
+        r#"<p><span class="math math-inline">x_1</span></p><p><span class="math math-display">a_2 + b^2</span></p>"#,
+    );
+    assert!(md.contains("$x_1$"), "Got: {md}");
+    assert!(md.contains("$$a_2 + b^2$$"), "Got: {md}");
+}
+
+#[test]
 fn markdown_empty_input() {
     let result = html_to_markdown("");
     // Should not panic

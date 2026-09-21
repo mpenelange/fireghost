@@ -598,6 +598,9 @@ impl CamofoxSearchClient {
         while Instant::now() < deadline {
             match self.evaluate_rows(worker, tab_id, engine).await {
                 Ok(rows) if !rows.is_empty() => return Ok(rows),
+                // A dead tab cannot recover through polling. Let fetch's
+                // bounded stale-tab retry replace it before trying again.
+                Err(error) if is_stale_tab(&error) => return Err(error),
                 Ok(_) | Err(_) => {
                     let remaining = deadline.saturating_duration_since(Instant::now());
                     tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
@@ -955,6 +958,74 @@ mod github_api_tests {
     use super::*;
     use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A tab can disappear after URL polling succeeded. Propagate that
+    /// extraction failure to the existing one-shot stale-tab recovery.
+    #[tokio::test]
+    async fn fetch_recovers_tab_lost_during_result_evaluation() {
+        let server = MockServer::start().await;
+        let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(3));
+        *client.workers[0].tab.lock().await = Some("t1".into());
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "t2" })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "tabs": [
+                    { "tabId": "t1", "url": "https://www.google.com/search?q=rust" },
+                    { "tabId": "t2", "url": "https://www.google.com/search?q=rust" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        for tab in ["t1", "t2"] {
+            Mock::given(method("POST"))
+                .and(path(format!("/tabs/{tab}/evaluate")))
+                .and(body_partial_json(json!({ "timeout": 3000 })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "ok": true, "result": true
+                })))
+                .with_priority(1)
+                .mount(&server)
+                .await;
+        }
+        Mock::given(method("POST"))
+            .and(path("/tabs/t1/evaluate"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+                "error": "tab not found"
+            })))
+            .with_priority(10)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let rows = r#"[{"url":"https://rust-lang.org","title":"Rust","content":"language"}]"#;
+        Mock::given(method("POST"))
+            .and(path("/tabs/t2/evaluate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true, "result": rows
+            })))
+            .with_priority(10)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let response = client
+            .fetch(&SearxngParams {
+                q: "rust".into(),
+                camofox_engines: vec![SearchEngine::Google],
+                ..Default::default()
+            })
+            .await
+            .expect("the stale tab is retried on a fresh tab");
+        assert_eq!(response.results.len(), 1);
+        assert!(response.unresponsive_engines.is_empty());
+        assert_eq!(client.workers[0].tab.lock().await.as_deref(), Some("t2"));
+        server.verify().await;
+    }
 
     /// `github_search` hits the REST Search API and maps `items[]` into result
     /// rows: `html_url` → url, `full_name` → title, `description` → content,

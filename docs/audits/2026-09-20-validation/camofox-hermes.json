@@ -1,0 +1,242 @@
+{
+  "timestamp": "2026-09-20T05:13:40.702293+00:00",
+  "endpoints": {
+    "production": "http://127.0.0.1:33000",
+    "candidate": "http://127.0.0.1:33010"
+  },
+  "probes": {
+    "production": {
+      "available": true,
+      "identity": {
+        "python": "3.11.15",
+        "provider": "plugins.web.firecrawl.provider.FirecrawlWebSearchProvider"
+      },
+      "search": {
+        "success": true,
+        "results": [
+          {
+            "title": "Our Documentation",
+            "url": "https://www.google.com",
+            "description": "The official home of the Python Programming Language. Browse the docs online or download a copy of your own. Python's documentation, tutorials, and guides. Get\u00a0..."
+          },
+          {
+            "title": "3.14.7 Documentation",
+            "url": "https://www.google.com",
+            "description": "This is the official documentation for Python 3.14.7. Python setup and usage How to install, configure, and use Python"
+          },
+          {
+            "title": "The Python Language Reference",
+            "url": "https://www.google.com",
+            "description": "This reference manual describes the syntax and core semantics of the language. It is terse, but attempts to be exact and complete. Elsewhere, the built-in\u00a0..."
+          },
+          {
+            "title": "The Python standard library",
+            "url": "https://www.google.com",
+            "description": "The Python Language Reference describes the exact syntax and semantics of the Python language, and Python built-ins reference describes the built-in functions."
+          },
+          {
+            "title": "The Python Tutorial \u2014 Python 3.14.7 documentation",
+            "url": "https://www.google.com",
+            "description": "This tutorial introduces the reader informally to the basic concepts and features of the Python language and system. Be aware that it expects you to have a\u00a0..."
+          }
+        ]
+      },
+      "extract": {
+        "success": true,
+        "items": [
+          {
+            "url": "https://example.com",
+            "title": "Example Domain",
+            "content_chars": 167
+          }
+        ]
+      },
+      "latency_seconds": {
+        "search": 1.896016436003265,
+        "extract": 1.6534753040032228,
+        "total": 3.549491740006488
+      }
+    },
+    "candidate": {
+      "available": true,
+      "identity": {
+        "python": "3.11.15",
+        "provider": "plugins.web.firecrawl.provider.FirecrawlWebSearchProvider"
+      },
+      "search": {
+        "success": false,
+        "results": []
+      },
+      "extract": {
+        "success": true,
+        "items": [
+          {
+            "url": "https://example.com",
+            "title": "Example Domain",
+            "content_chars": 167
+          }
+        ]
+      },
+      "latency_seconds": {
+        "search": 60.40849054099817,
+        "extract": 0.055666344007477164,
+        "total": 60.46415688500565
+      }
+    }
+  },
+  "metrics": {
+    "production": {
+      "before": {
+        "requests": {
+          "search": 6.0,
+          "scrape": 8.0
+        },
+        "cache_hits": {
+          "search": 1.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 5.0,
+          "scrape": 8.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "after": {
+        "requests": {
+          "search": 7.0,
+          "scrape": 9.0
+        },
+        "cache_hits": {
+          "search": 1.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 6.0,
+          "scrape": 9.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "delta": {
+        "requests": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "search": 0.0,
+        "scrape": 0.0
+      }
+    },
+    "candidate": {
+      "before": {
+        "requests": {
+          "search": 0.0,
+          "scrape": 6.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 6.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "after": {
+        "requests": {
+          "search": 0.0,
+          "scrape": 7.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 2.0,
+          "scrape": 7.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "delta": {
+        "requests": {
+          "search": 0.0,
+          "scrape": 1.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "search": 0.0,
+        "scrape": 0.0
+      }
+    }
+  },
+  "thresholds": {
+    "search_min_results": 1,
+    "search_max_results": 5,
+    "search_required_fields": [
+      "title",
+      "url",
+      "description"
+    ],
+    "extract_title": "Example Domain",
+    "extract_min_content_chars": 100,
+    "candidate_total_timeout_seconds": 120.0,
+    "search_min_title_overlap_ratio": 0.5,
+    "extract_min_production_size_ratio": 0.9
+  },
+  "reproducibility": {
+    "repo_head": "d1c1acbbcf0edf8a7b5820d1121bf78074cd6c16",
+    "hermes_python": "/usr/local/lib/hermes-agent/venv/bin/python3",
+    "probe_inputs": {
+      "search_query": "Python programming language official documentation",
+      "search_limit": 5,
+      "extract_url": "https://example.com/",
+      "extract_format": "markdown"
+    },
+    "check_definitions": {
+      "semantic": "availability, result bounds/fields, production title overlap, representative extraction parity",
+      "endpoint_provenance": "each bracketed router probe must gain exactly one 2xx search and scrape request",
+      "latency": "candidate total must not exceed the absolute ceiling",
+      "cloud": "candidate search and scrape attempt deltas must remain zero; production is the recorded baseline"
+    }
+  },
+  "passed": false,
+  "reasons": [
+    "candidate search request delta is 0; expected exactly 1",
+    "candidate search failed",
+    "candidate search result count 0 is outside bounds",
+    "candidate search title overlap 0.000 is below production threshold"
+  ]
+}

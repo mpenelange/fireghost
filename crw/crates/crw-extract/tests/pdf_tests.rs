@@ -4,6 +4,7 @@
 #![cfg(feature = "pdf")]
 
 use crw_extract::pdf::{self, PdfError};
+use lopdf::dictionary;
 
 const SAMPLE: &[u8] = include_bytes!("fixtures/sample.pdf");
 
@@ -48,6 +49,86 @@ fn max_pages_caps_conversion() {
         !r.markdown.contains("Second page content"),
         "second page should be excluded by max_pages=1"
     );
+}
+
+#[test]
+fn oversized_page_limit_is_bounded_by_document_pages() {
+    let r = pdf::convert(SAMPLE, false, Some(usize::MAX), 1024 * 1024)
+        .expect("a page limit beyond the document should include every page");
+    assert_eq!(r.page_count, 2);
+    assert!(r.markdown.contains("Second page content"));
+}
+
+#[test]
+fn metadata_title_survives_conversion() {
+    let mut doc = lopdf::Document::load_mem(SAMPLE).expect("fixture");
+    let info = doc.add_object(lopdf::dictionary! {
+        "Title" => lopdf::Object::string_literal("CRW metadata regression"),
+    });
+    doc.trailer.set("Info", info);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("serialize fixture");
+    let r = pdf::convert(&bytes, false, None, 1024 * 1024).expect("convert");
+    assert_eq!(r.title.as_deref(), Some("CRW metadata regression"));
+}
+
+#[test]
+fn encrypted_documents_remain_unsupported_including_empty_passwords() {
+    for password in ["", "test-user-password"] {
+        let mut doc = lopdf::Document::load_mem(SAMPLE).expect("fixture");
+        let state = lopdf::EncryptionState::try_from(lopdf::EncryptionVersion::V2 {
+            document: &doc,
+            owner_password: "test-owner-password",
+            user_password: password,
+            key_length: 128,
+            permissions: lopdf::Permissions::PRINTABLE,
+        })
+        .expect("encryption state");
+        doc.encrypt(&state).expect("encrypt fixture");
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).expect("serialize fixture");
+        for cap in [0, 1024 * 1024] {
+            assert!(
+                matches!(
+                    pdf::convert(&bytes, false, None, cap),
+                    Err(PdfError::Encrypted)
+                ),
+                "encrypted input must remain unsupported, including with cap={cap}"
+            );
+        }
+    }
+}
+
+#[test]
+fn compressed_object_stream_respects_preflight_budget() {
+    use std::io::Write;
+
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    encoder
+        .write_all(&[b' '; 64 * 1024])
+        .expect("compress fixture");
+    let mut doc = lopdf::Document::load_mem(SAMPLE).expect("fixture");
+    doc.add_object(lopdf::Stream::new(
+        lopdf::dictionary! {
+            // lopdf's writer drops existing ObjStm containers. Serialize an
+            // equal-width placeholder, then restore the type without changing
+            // cross-reference offsets so the load path really sees the stream.
+            "Type" => "RawStm",
+            "N" => 0,
+            "First" => 0,
+            "Filter" => "FlateDecode",
+        },
+        encoder.finish().expect("finish compression"),
+    ));
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("serialize fixture");
+    let marker = bytes
+        .windows(b"/RawStm".len())
+        .position(|window| window == b"/RawStm")
+        .expect("serialized stream type");
+    bytes[marker..marker + b"/ObjStm".len()].copy_from_slice(b"/ObjStm");
+    let result = pdf::convert(&bytes, false, None, 1024);
+    assert!(matches!(result, Err(PdfError::TooLarge)), "{result:?}");
 }
 
 #[test]
