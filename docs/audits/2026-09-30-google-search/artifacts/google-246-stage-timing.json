@@ -1,0 +1,73 @@
+{
+  "scope": "two actual optimized candidate HTTP searches through transparent Docker-local proxy to246; no response bodies retained; timings include proxy overhead",
+  "requests": [
+    {
+      "phase": "first",
+      "status": 200,
+      "elapsedSeconds": 2.135,
+      "resultCount": 5,
+      "errorCode": null
+    },
+    {
+      "phase": "repeat",
+      "status": 200,
+      "elapsedSeconds": 1.71,
+      "resultCount": 5,
+      "errorCode": null
+    }
+  ],
+  "browserEvents": [
+    {
+      "id": 1,
+      "stage": "create-tab",
+      "status": 200,
+      "seconds": 0.53
+    },
+    {
+      "id": 2,
+      "stage": "schedule",
+      "status": 200,
+      "seconds": 0.225,
+      "validOrigin": true
+    },
+    {
+      "id": 3,
+      "stage": "document",
+      "status": 200,
+      "seconds": 0.569,
+      "fresh": true,
+      "queryMatch": true,
+      "rows": 6,
+      "truncated": false
+    },
+    {
+      "id": 4,
+      "stage": "url-check",
+      "status": 200,
+      "seconds": 0.285
+    },
+    {
+      "id": 5,
+      "stage": "schedule",
+      "status": 200,
+      "seconds": 0.401,
+      "validOrigin": true
+    },
+    {
+      "id": 6,
+      "stage": "document",
+      "status": 200,
+      "seconds": 0.613,
+      "fresh": true,
+      "queryMatch": true,
+      "rows": 6,
+      "truncated": false
+    },
+    {
+      "id": 7,
+      "stage": "url-check",
+      "status": 200,
+      "seconds": 0.185
+    }
+  ]
+}

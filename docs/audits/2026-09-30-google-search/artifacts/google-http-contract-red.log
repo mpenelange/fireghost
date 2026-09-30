@@ -1,0 +1,49 @@
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 4.70s
+     Running tests/google_search_contract.rs (/target/debug/deps/google_search_contract-021412f7b140d46f)
+
+running 3 tests
+test google_challenge_returns_typed_502_instead_of_empty_success ... FAILED
+test blocked_google_with_wikipedia_results_is_partial_success_with_warnings ... FAILED
+test valid_google_empty_array_remains_success_with_neutral_warning ... FAILED
+
+failures:
+
+---- google_challenge_returns_typed_502_instead_of_empty_success stdout ----
+
+thread 'google_challenge_returns_typed_502_instead_of_empty_success' (454) panicked at crates/crw-server/tests/google_search_contract.rs:76:14:
+assertion failed: `(left == right)`: Expected status code to be 502 (Bad Gateway), received 200 (OK), for request POST http://localhost/v2/search, with body {
+  "creditsUsed": 0,
+  "data": {
+    "web": []
+  },
+  "id": "3db3fcb7-efe0-468c-ae8a-0e98c71b2653",
+  "success": true
+}
+
+[1mDiff[0m [31m< left[0m / [32mright >[0m :
+[31m<[0m[1;48;5;52;31m50[0m[31m2[0m
+[32m>2[0m[1;48;5;22;32m00[0m
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- blocked_google_with_wikipedia_results_is_partial_success_with_warnings stdout ----
+
+thread 'blocked_google_with_wikipedia_results_is_partial_success_with_warnings' (453) panicked at crates/crw-server/tests/google_search_contract.rs:94:48:
+partial engine failure must survive v2 reshaping
+
+---- valid_google_empty_array_remains_success_with_neutral_warning stdout ----
+
+thread 'valid_google_empty_array_remains_success_with_neutral_warning' (457) panicked at crates/crw-server/tests/google_search_contract.rs:112:48:
+neutral empty-result notice must survive v2 reshaping
+
+
+failures:
+    blocked_google_with_wikipedia_results_is_partial_success_with_warnings
+    google_challenge_returns_typed_502_instead_of_empty_success
+    valid_google_empty_array_remains_success_with_neutral_warning
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.89s
+
+error: test failed, to rerun pass `-p crw-server --test google_search_contract`

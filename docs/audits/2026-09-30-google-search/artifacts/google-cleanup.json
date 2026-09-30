@@ -1,0 +1,19 @@
+{
+  "removedContainers": 10,
+  "removedOwnedVolumes": 5,
+  "removedImageIdsInFinalPass": [
+    "sha256:c823433a1f3875ae143fc99e54ea475143f8a93b043acab47dfb8e751c42beea"
+  ],
+  "cleanupAttempts": 3,
+  "cleanupRetryReason": "Docker automatically removed digest aliases and an unreferenced base manifest during scoped deletion; stale image references were skipped on resume",
+  "preservedContainerCount": 12,
+  "preservedRunningContainerCount": 8,
+  "existingContainerDifferences": [],
+  "finalImageCount": 10,
+  "finalVolumeCount": 14,
+  "imageInventoryRestored": true,
+  "volumeInventoryRestored": true,
+  "dockerSystemDf": "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE\nImages          10        6         7.745GB   7.58GB (97%)\nContainers      12        8         27.12MB   27.02MB (99%)\nLocal Volumes   14        14        71.32GB   0B (0%)\nBuild Cache     81        0         5.985GB   1.905GB",
+  "sharedBuildCachePruned": false,
+  "productionMutated": false
+}

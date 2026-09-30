@@ -1,0 +1,186 @@
+info: downloading 2 components
+   Compiling crw-search v1.2.0 (/work/crw/crates/crw-search)
+    Finished `test` profile [unoptimized] target(s) in 7.58s
+     Running unittests src/lib.rs (target/debug/deps/crw_search-9b691dee6ccf68ff)
+
+running 89 tests
+test camofox_search::diagnostic_tests::late_navigation_changes_query_without_returning_stale_rows ... ok
+test camofox_search::diagnostic_tests::blocked_google_preserves_wikipedia_results_with_a_warning ... ok
+test camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_changes_query ... ok
+test camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_redirects_to_challenge ... ok
+test camofox_search::diagnostic_tests::late_navigation_to_challenge_after_empty_evaluation_is_blocked ... ok
+test camofox_search::diagnostic_tests::late_navigation_to_challenge_during_settle_is_blocked ... ok
+test camofox_search::diagnostic_tests::persistent_previous_query_url_times_out_without_scraping_stale_rows ... ok
+test camofox_search::diagnostic_tests::recognized_google_challenges_are_blocked_not_empty_success ... ok
+test camofox_search::diagnostic_tests::truncated_evaluation_is_rejected_even_when_result_parses ... ok
+test camofox_search::diagnostic_tests::malformed_evaluation_is_invalid_response_not_empty_success ... ok
+test camofox_search::extractor_tests::browser_engines_have_dedicated_extractors ... ok
+test camofox_search::extractor_tests::browser_engines_have_query_specific_target_urls ... ok
+test camofox_search::extractor_tests::engine_failure_reason_is_concise_and_leaks_no_internals ... ok
+test camofox_search::extractor_tests::google_challenge_is_not_a_matching_result_page ... ok
+test camofox_search::extractor_tests::google_challenge_paths_include_bare_sorry_without_matching_other_routes ... ok
+test camofox_search::extractor_tests::merge_results_propagates_unresponsive_engines ... ok
+test camofox_search::diagnostic_tests::valid_empty_row_array_remains_a_warned_success ... ok
+test camofox_search::github_api_tests::fetch_errors_when_all_engines_fail ... ok
+test camofox_search::github_api_tests::fetch_skips_failed_engine_and_returns_partial ... ok
+test camofox_search::github_api_tests::github_search_maps_error_status ... ok
+test camofox_search::github_api_tests::github_search_maps_items_to_rows ... ok
+test params::tests::category_string_roundtrip_keeps_curated_and_passthrough ... ok
+test params::tests::clean_query_applied_in_params ... ok
+test params::tests::clean_query_keeps_operator_query ... ok
+test params::tests::clean_query_keeps_quoted_top_gun ... ok
+test params::tests::clean_query_keeps_short_query ... ok
+test params::tests::clean_query_leaves_non_filler_leading_token ... ok
+test params::tests::clean_query_strips_leading_best ... ok
+test params::tests::clean_query_strips_leading_top ... ok
+test params::tests::curated_and_passthrough_categories_coexist ... ok
+test params::tests::empty_engines_list_defaults_to_google ... ok
+test params::tests::empty_lang_defaults_to_en ... ok
+test params::tests::engines_default_to_google_when_unset ... ok
+test params::tests::engines_passed_through ... ok
+test params::tests::explicit_lang_is_honored ... ok
+test params::tests::github_category_sets_engines ... ok
+test params::tests::missing_lang_defaults_to_en ... ok
+test params::tests::passthrough_categories_merge_with_sources ... ok
+test params::tests::passthrough_category_dedupes_against_sources ... ok
+test params::tests::pdf_category_modifies_query_only ... ok
+test params::tests::pdf_plus_github_combine ... ok
+test params::tests::plain_query_is_passed_through ... ok
+test params::tests::research_category_expands_to_default_engines ... ok
+test params::tests::sources_join_to_searxng_categories ... ok
+test params::tests::tbs_hour_collapses_to_day ... ok
+test params::tests::tbs_year_maps_to_year ... ok
+test params::tests::unknown_category_passes_through_to_searxng ... ok
+test rerank::tests::dedupe_by_registrable_domain ... ok
+test rerank::tests::degrade_never_returns_empty_when_coverage_fails ... ok
+test rerank::tests::domain_strips_www_and_port ... ok
+test rerank::tests::empty_input_returns_empty ... ok
+test rerank::tests::junk_bot_check_title_dropped ... ok
+test rerank::tests::junk_dictionary_host_dropped ... ok
+test rerank::tests::junk_never_leaks_through_degrade ... ok
+test rerank::tests::non_junk_real_result_kept ... ok
+test rerank::tests::registrable_takes_last_two_labels ... ok
+test rerank::tests::relevance_gate_degrade_safe_with_no_important_terms ... ok
+test rerank::tests::relevance_gate_evicts_below_max_coverage ... ok
+test rerank::tests::relevance_gate_keeps_max_coverage_drops_zero_coverage ... ok
+test rerank::tests::relevance_gate_noop_when_all_rows_equal_coverage ... ok
+test research::tests::abstract_reconstruction ... ok
+test research::tests::arxiv_extraction_and_norm ... ok
+test research::tests::live_smoke ... ignored
+test research::tests::merge_rank_dedups_and_orders_by_frequency ... ok
+test research::tests::openalex_work_maps_arxiv_from_doi ... ok
+test structured::tests::parses_infobox_attributes ... ok
+test structured::tests::parses_string_and_object_answers ... ok
+test structured::tests::skips_empty_and_malformed ... ok
+test transform::tests::flat_dedupe_keeps_highest_score ... ok
+test transform::tests::flat_missing_score_treated_as_zero ... ok
+test transform::tests::flat_respects_limit ... ok
+test transform::tests::flat_sorts_by_score_desc ... ok
+test transform::tests::grouped_hot_bucket_does_not_starve_cold_buckets ... ok
+test transform::tests::grouped_image_falls_back_to_url_when_img_src_missing ... ok
+test transform::tests::grouped_images_picks_image_or_img_src ... ok
+test transform::tests::grouped_limit_applies_per_source ... ok
+test transform::tests::grouped_news_only_news_category ... ok
+test transform::tests::grouped_unrequested_source_omitted ... ok
+test transform::tests::grouped_web_filters_general_and_unknown ... ok
+test transform::tests::malformed_rows_are_dropped_silently ... ok
+test wikidata::tests::capital_of_beats_capital ... ok
+test wikidata::tests::classify_relation_of_entity ... ok
+test wikidata::tests::label_extraction ... ok
+test wikidata::tests::missing_claim_is_none ... ok
+test wikidata::tests::parses_entityid_claim ... ok
+test wikidata::tests::parses_time_and_string_claims ... ok
+test wikidata::tests::possessive_pattern ... ok
+test wikidata::tests::rejects_non_entity_relation ... ok
+test camofox_search::github_api_tests::fetch_recovers_tab_lost_during_result_evaluation ... ok
+
+test result: ok. 88 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.39s
+
+     Running tests/camofox_search_tests.rs (target/debug/deps/camofox_search_tests-18ca76e04c3c54d9)
+
+running 15 tests
+test fetch_maps_scraped_rows_to_searxng_response ... ok
+test fetch_tolerates_empty_results ... ok
+test google_challenge_page_rejects_rows_after_fresh_document_confirmation ... ok
+test navigation_http_409_is_reported_without_recreation ... ok
+test google_search_uses_bounded_scheduler_and_fresh_frame_without_wait_route ... ok
+test pool_size_two_overlaps_searches_on_independent_warm_tabs ... ok
+test pool_size_four_serializes_cold_tabs_but_overlaps_warm_navigation ... ok
+test recreates_tab_and_retries_after_stale_failure ... ok
+test recovers_http_410_tab_destroyed_during_evaluation ... ok
+test rejects_http_200_navigation_response_with_ok_false ... ok
+test repeated_http_410_is_retried_only_once ... ok
+test reuses_one_warm_tab_across_sequential_searches ... ok
+test stale_warm_url_is_not_accepted_for_a_new_query ... ok
+test two_engines_merge_and_dedupe_by_url ... ok
+test timed_out_navigation_rotates_tab_before_bounded_cleanup ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.04s
+
+     Running tests/google_navigation_tests.rs (target/debug/deps/google_navigation_tests-78e28e302c3abda2)
+
+running 11 tests
+test challenge_is_classified_only_after_a_new_document_is_observed ... ok
+test fresh_google_empty_rows_remain_a_warned_success ... ok
+test fresh_wrong_query_rows_are_ignored_until_the_requested_query_is_observed ... ok
+test fresh_wrong_query_never_establishes_empty_or_nonempty_success ... ok
+test google_schedules_navigation_and_accepts_only_new_document_rows ... ok
+test malformed_or_truncated_google_harvest_envelopes_are_not_empty_success ... ok
+test malformed_or_truncated_navigation_identity_is_rejected_before_polling ... ok
+test old_challenge_document_does_not_block_a_fresh_valid_search ... ok
+test same_query_old_document_never_establishes_empty_or_nonempty_success ... ok
+test wikipedia_keeps_direct_navigation_and_legacy_row_array_extraction ... ok
+test google_harvest_requires_url_positive_finite_origin_and_array_rows ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.07s
+
+     Running tests/rerank_tests.rs (target/debug/deps/rerank_tests-7d7891534447e460)
+
+running 8 tests
+test belgrad_restaurants_are_geo_correct_and_clean ... ok
+test python_snake_excludes_programming_homonym ... ok
+test relevance_gate_evicts_partial_match_homonym ... ok
+test relevance_gate_is_degrade_safe_when_no_full_match ... ok
+test relevance_gate_keeps_full_match_and_drops_zero_coverage ... ok
+test junk_at5_is_zero_over_corpus ... ok
+test transform_flat_reranked_smoke ... ok
+test reranked_cleanrel_beats_baseline ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+   Doc-tests crw_search
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling crw-mcp-proto v1.2.0 (/work/crw/crates/crw-mcp-proto)
+   Compiling crw-core v1.2.0 (/work/crw/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/work/crw/crates/crw-extract)
+   Compiling crw-diff v1.2.0 (/work/crw/crates/crw-diff)
+   Compiling crw-search v1.2.0 (/work/crw/crates/crw-search)
+   Compiling crw-renderer v1.2.0 (/work/crw/crates/crw-renderer)
+   Compiling crw-crawl v1.2.0 (/work/crw/crates/crw-crawl)
+   Compiling crw-server v1.2.0 (/work/crw/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 25.52s
+     Running tests/google_search_contract.rs (target/debug/deps/google_search_contract-3edef195a09fecb8)
+
+running 3 tests
+test google_challenge_returns_typed_502_instead_of_empty_success ... ok
+test blocked_google_with_wikipedia_results_is_partial_success_with_warnings ... ok
+test valid_google_empty_array_remains_success_with_neutral_warning ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.43s
+
+    Checking crw-mcp-proto v1.2.0 (/work/crw/crates/crw-mcp-proto)
+    Checking crw-core v1.2.0 (/work/crw/crates/crw-core)
+    Checking crw-extract v1.2.0 (/work/crw/crates/crw-extract)
+    Checking crw-diff v1.2.0 (/work/crw/crates/crw-diff)
+    Checking crw-search v1.2.0 (/work/crw/crates/crw-search)
+    Checking crw-renderer v1.2.0 (/work/crw/crates/crw-renderer)
+    Checking crw-crawl v1.2.0 (/work/crw/crates/crw-crawl)
+    Checking crw-server v1.2.0 (/work/crw/crates/crw-server)
+    Checking crw-monitor v1.2.0 (/work/crw/crates/crw-monitor)
+    Checking crw-mcp v1.2.0 (/work/crw/crates/crw-mcp)
+    Checking crw-cli v1.2.0 (/work/crw/crates/crw-cli)
+    Finished `dev` profile [unoptimized] target(s) in 21.28s

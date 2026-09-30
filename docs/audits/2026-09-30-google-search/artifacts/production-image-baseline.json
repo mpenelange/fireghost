@@ -1,0 +1,14 @@
+[
+  {
+    "imageId": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+    "architecture": "amd64",
+    "revision": "c7a58561821496d33f7d46497665db63002022cd",
+    "version": "1.2.0"
+  },
+  {
+    "imageId": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "architecture": "amd64",
+    "revision": "c7a58561821496d33f7d46497665db63002022cd",
+    "version": "1.0.0"
+  }
+]

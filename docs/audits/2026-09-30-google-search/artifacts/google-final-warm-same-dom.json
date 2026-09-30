@@ -1,0 +1,179 @@
+{
+  "scope": "both exact extractors on each existing warm tab, no navigation; raw rows remain ephemeral",
+  "legacyScriptSHA256": "e5e5d48742d23ac4cbb060d3d98766203c5cfc8e1ce3ece5b0fc9ec3cbe9e0f2",
+  "candidateScriptSHA256": "393d54321fd049646dbe2fbcf4bd24412422b96da20a616da2e94ec4f2770601",
+  "cases": [
+    {
+      "queryMatch": true,
+      "formQueryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790809951313,
+      "browser": "fireghost-google-246",
+      "tabHash": "5ec94b447e8b52fa12655a53f4ed01fefbde68e4ad1f3d1ad0b55849e1b1a17d",
+      "rows": {
+        "legacy": {
+          "count": 6,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+            "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+            "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+            "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+            "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3"
+          ],
+          "urlHashes": [
+            "1e45b5a169db0ca53cd8062090480a97e4b879d259f8185eaf0ff3724b9dc2ad",
+            "2d0bf2d27201cd7d40777cde13a2d388ebe3e1e18e94d93def664d192494a5cf",
+            "c2d857b54e572a206599fdb026c19a7349b7f15f6d82257c8c6f3c4d8b1c94e3",
+            "7cedb894196846b0332cd37305a677f40962ac195b84ebe9b1135c678ea87bc7",
+            "020a44dd67f4b5fe5ddef6dc275d470cb3f258ee23d511486067f954afb89ccf",
+            "15fe27e092dc99e232c0274a0b15dce9b8174287570e6d1bac26fd2f0c61c643"
+          ]
+        },
+        "candidate": {
+          "count": 6,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+            "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+            "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+            "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+            "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3"
+          ],
+          "urlHashes": [
+            "1e45b5a169db0ca53cd8062090480a97e4b879d259f8185eaf0ff3724b9dc2ad",
+            "2d0bf2d27201cd7d40777cde13a2d388ebe3e1e18e94d93def664d192494a5cf",
+            "c2d857b54e572a206599fdb026c19a7349b7f15f6d82257c8c6f3c4d8b1c94e3",
+            "7cedb894196846b0332cd37305a677f40962ac195b84ebe9b1135c678ea87bc7",
+            "020a44dd67f4b5fe5ddef6dc275d470cb3f258ee23d511486067f954afb89ccf",
+            "15fe27e092dc99e232c0274a0b15dce9b8174287570e6d1bac26fd2f0c61c643"
+          ]
+        }
+      }
+    },
+    {
+      "queryMatch": true,
+      "formQueryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790809932614,
+      "browser": "fireghost-google-246",
+      "tabHash": "2d23e32f828ffdd283b61b026b26efffabb314fb7ddb9197d2fcb202e2abc6a4",
+      "rows": {
+        "legacy": {
+          "count": 8,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "3e7c44f74a79fa0e5169a87ddef5a4a77de9e8998dea2954bc90fd9f0fda5934",
+            "3e7c44f74a79fa0e5169a87ddef5a4a77de9e8998dea2954bc90fd9f0fda5934",
+            "bd8f960b0aed588049e60676871a538f93983121079440487392f81fa41d0edb",
+            "9892b01d030cca5d1638dbd08447478046e8f6486474ccc88d7407ddc2dd2d3f",
+            "7b1aaa629b87357f348c56735a71c6741410a987719c147fd21ec821adadb39c",
+            "f9d1c0cc50cd13b7060f412ece3545fa418c402d0d383d049699e7923c0d4ce9",
+            "05c2795a3ec8b0a0c336d224e2f5442f62c6c9770a16c8d832f491f3bfbea044"
+          ],
+          "urlHashes": [
+            "9a9871e04a8c6c676b34e9660a99f82b3373cbb045d654085e004a821ab8a031",
+            "8e80dcabb4d014b6548934121a564b9d761a5616f69e60bcb6955cdb31fed106",
+            "8dd42e4d7aa665dc39c0e5ca7e62ec7f7e5bd8958bc696ff1f1580c206ef7741",
+            "411000c9c7713a4bc778109405b8b2a2e191cfeaec7921bc2cb98cbb32fb9c03",
+            "519f073d727d0edcab0f3531790eac1c3c812c6010b368a361bb186a87eaed78",
+            "c2999c9c37e963e85b0321a61f0e718df829056f2566d8c7596595ed15d7b2f2",
+            "7cb5f50e24ac1eb03989659385440f655770826a5afaa81856ac714ffd748531",
+            "8f0edf30e2daf3595a663e0cf4a2853dcbb7895730f3f3cd8d1853aacb6899c3"
+          ]
+        },
+        "candidate": {
+          "count": 6,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "bd8f960b0aed588049e60676871a538f93983121079440487392f81fa41d0edb",
+            "9892b01d030cca5d1638dbd08447478046e8f6486474ccc88d7407ddc2dd2d3f",
+            "7b1aaa629b87357f348c56735a71c6741410a987719c147fd21ec821adadb39c",
+            "f9d1c0cc50cd13b7060f412ece3545fa418c402d0d383d049699e7923c0d4ce9",
+            "05c2795a3ec8b0a0c336d224e2f5442f62c6c9770a16c8d832f491f3bfbea044"
+          ],
+          "urlHashes": [
+            "9a9871e04a8c6c676b34e9660a99f82b3373cbb045d654085e004a821ab8a031",
+            "411000c9c7713a4bc778109405b8b2a2e191cfeaec7921bc2cb98cbb32fb9c03",
+            "519f073d727d0edcab0f3531790eac1c3c812c6010b368a361bb186a87eaed78",
+            "c2999c9c37e963e85b0321a61f0e718df829056f2566d8c7596595ed15d7b2f2",
+            "7cb5f50e24ac1eb03989659385440f655770826a5afaa81856ac714ffd748531",
+            "8f0edf30e2daf3595a663e0cf4a2853dcbb7895730f3f3cd8d1853aacb6899c3"
+          ]
+        }
+      }
+    },
+    {
+      "queryMatch": true,
+      "formQueryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790809956142,
+      "browser": "fireghost-google-248",
+      "tabHash": "05c66dc96e910fa70dddaa3bc484b4e44c71fbda01aa3e00e94b9db63a1ab8ea",
+      "rows": {
+        "legacy": {
+          "count": 9,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "69aa62ead8f2b0a741bb58af38ee9df922ed2a357d211d31f3f499af18fe2942",
+            "332713ef4c1d5671d1b2c9da49e37872916a81d5b3d0557745284f5235b15814",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "acbeccc3278393b00930a5e55fd33160b01b164a5575d1469d2ba65005b9db92"
+          ],
+          "urlHashes": [
+            "7a96536cff332c0ebd60fc4e26605454f22b9096eaa30efe65c35494745f5be3",
+            "99d7eeac31d68aa006a86cf9d146798a0dacdb3c3fa2d500a7ccb490acf33ef3",
+            "d024a0567be23b3bd7abe6f49f58ada92c9461063ceede38bcc3739fb973cbdf",
+            "952d69926d115846accb495c167e376b8a5dbfeff919fdfd83d47a35b8926306",
+            "4db945073aa91f67b0cd2569f8b141333b57b4bf69d5d3599d21a144e28f3b22",
+            "3890c24c49729c339241bde3a1a1c937f08f04501ddc90692ef0b54ebc2d20e2",
+            "dfc91062eb6de3b5b8b8c185ce2ef9eb202d7178e1ce1719dd3ec2bb34d0cb6a",
+            "1cdda09e86627f7ea650c3dd1d8543b41cf70970a4fc3496ac1f2848149702e8",
+            "fa786840c200d5189df91a70a9cf5a2656735b26677bf418a743b0394a3add37"
+          ]
+        },
+        "candidate": {
+          "count": 9,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "69aa62ead8f2b0a741bb58af38ee9df922ed2a357d211d31f3f499af18fe2942",
+            "332713ef4c1d5671d1b2c9da49e37872916a81d5b3d0557745284f5235b15814",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "acbeccc3278393b00930a5e55fd33160b01b164a5575d1469d2ba65005b9db92"
+          ],
+          "urlHashes": [
+            "7a96536cff332c0ebd60fc4e26605454f22b9096eaa30efe65c35494745f5be3",
+            "99d7eeac31d68aa006a86cf9d146798a0dacdb3c3fa2d500a7ccb490acf33ef3",
+            "d024a0567be23b3bd7abe6f49f58ada92c9461063ceede38bcc3739fb973cbdf",
+            "952d69926d115846accb495c167e376b8a5dbfeff919fdfd83d47a35b8926306",
+            "4db945073aa91f67b0cd2569f8b141333b57b4bf69d5d3599d21a144e28f3b22",
+            "3890c24c49729c339241bde3a1a1c937f08f04501ddc90692ef0b54ebc2d20e2",
+            "dfc91062eb6de3b5b8b8c185ce2ef9eb202d7178e1ce1719dd3ec2bb34d0cb6a",
+            "1cdda09e86627f7ea650c3dd1d8543b41cf70970a4fc3496ac1f2848149702e8",
+            "fa786840c200d5189df91a70a9cf5a2656735b26677bf418a743b0394a3add37"
+          ]
+        }
+      }
+    }
+  ]
+}

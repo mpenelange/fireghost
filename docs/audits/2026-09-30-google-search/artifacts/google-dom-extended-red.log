@@ -1,0 +1,54 @@
+FAIL linked heading preserves its destination and snippet: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      content: 'The organic result snippet.',
+      title: 'A linked result heading',
+      url: 'https://example.org/guide'
+...
+    },
+-   {
+-     content: 'An official Maps page can be an organic result.',
+-     title: 'Google Maps',
+-     url: 'https://maps.google.com/'
+-   },
+-   {
+-     content: 'A linked Maps destination is not a provider navigation control.',
+-     title: 'Chicago on Google Maps',
+-     url: 'https://www.google.com/maps/place/Chicago/'
+-   }
+  ]
+
+PASS preceding decoy anchor cannot replace the linked heading destination
+PASS nested result wrappers preserve distinct headings without duplicates
+PASS Google tracking q link resolves to the external destination
+PASS empty unsafe malformed and untitled links are not results
+PASS provider widgets and unlinked headings are not organic results
+FAIL heading owns one child link but ambiguous child links are not guessed: Expected values to be strictly deep-equal:
++ actual - expected
+
++ []
+- [
+-   {
+-     content: "Snippet for the heading's child link.",
+-     title: 'A heading with its own child link',
+-     url: 'https://example.org/child-link'
+-   }
+- ]
+
+FAIL snippet ascends only single-heading wrappers without borrowing another result: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
++     content: '',
+-     content: 'This snippet belongs to the surrounding single-heading card.',
+      title: 'Heading inside a presentation wrapper',
+      url: 'https://example.org/outer-snippet'
+    },
+    {
+      content: '',
+
+5/8 Google DOM fixtures passed

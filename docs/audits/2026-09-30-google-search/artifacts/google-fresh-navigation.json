@@ -1,0 +1,49 @@
+{
+  "scope": "counterbalanced navigation transport, same extractor, requires new document time origin and exact query; two fresh owned profiles",
+  "cases": [
+    {
+      "browser": "fireghost-google-246",
+      "mode": "scheduled",
+      "ackSeconds": 0.152,
+      "fresh": true,
+      "queryMatch": true,
+      "challenge": false,
+      "count": 9,
+      "totalSeconds": 1.967,
+      "timedOut": false
+    },
+    {
+      "browser": "fireghost-google-246",
+      "mode": "direct",
+      "ackSeconds": 10.416,
+      "fresh": true,
+      "queryMatch": true,
+      "challenge": false,
+      "count": 9,
+      "totalSeconds": 10.445,
+      "timedOut": false
+    },
+    {
+      "browser": "fireghost-google-248",
+      "mode": "direct",
+      "ackSeconds": 7.803,
+      "fresh": true,
+      "queryMatch": true,
+      "challenge": false,
+      "count": 9,
+      "totalSeconds": 7.831,
+      "timedOut": false
+    },
+    {
+      "browser": "fireghost-google-248",
+      "mode": "scheduled",
+      "ackSeconds": 0.049,
+      "fresh": true,
+      "queryMatch": true,
+      "challenge": false,
+      "count": 9,
+      "totalSeconds": 1.011,
+      "timedOut": false
+    }
+  ]
+}

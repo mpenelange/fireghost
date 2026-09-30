@@ -1,0 +1,15 @@
+{
+  "imageId": "sha256:5af225d24a57e6a121eb4d97e33b6d2cf7ee4509d28f42def98f45c28521792d",
+  "baseImageId": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+  "revision": "69cc7e71483d845166ad246bce74108b3d0529a7",
+  "version": "1.2.0-google-candidate",
+  "binarySHA256": "36a89f7afdffc7675ba7c88ea337e0c88245a2b59d9e2684b9eb22dfc8d39827",
+  "binaryIdentity": "crw-server 1.2.0-google-candidate (package 1.2.0, revision 69cc7e71483d845166ad246bce74108b3d0529a7, built 2026-09-30)",
+  "architecture": "amd64",
+  "scope": "optimized Google server copied into frozen CRW runtime; other binaries/config remain baseline; not full appliance release",
+  "labels": {
+    "org.opencontainers.image.revision": "69cc7e71483d845166ad246bce74108b3d0529a7",
+    "org.opencontainers.image.version": "1.2.0-google-candidate",
+    "cc.firewire.fireghost.validation-scope": "google-search-server-only"
+  }
+}

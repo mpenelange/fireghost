@@ -1,0 +1,507 @@
+ Downloading crates ...
+  Downloaded allocator-api2 v0.2.21
+  Downloaded anstyle v1.0.14
+  Downloaded clap_lex v1.1.1
+  Downloaded bit-set v0.8.0
+  Downloaded borrow-or-share v0.2.4
+  Downloaded colorchoice v1.0.5
+  Downloaded anstyle-query v1.1.5
+  Downloaded cpubits v0.1.1
+  Downloaded futf v0.1.5
+  Downloaded heck v0.5.0
+  Downloaded num v0.4.3
+  Downloaded cpufeatures v0.2.17
+  Downloaded hex v0.4.3
+  Downloaded markup5ever v0.38.0
+  Downloaded anstream v1.0.0
+  Downloaded mac v0.1.1
+  Downloaded generic-array v0.14.7
+  Downloaded crypto-common v0.1.7
+  Downloaded new_debug_unreachable v1.0.6
+  Downloaded num-cmp v0.1.0
+  Downloaded block-buffer v0.10.4
+  Downloaded expect-json-macros v1.11.0
+  Downloaded inventory v0.3.24
+  Downloaded inout v0.2.2
+  Downloaded cssparser-macros v0.6.1
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded outref v0.5.2
+  Downloaded env_filter v2.0.0
+  Downloaded ref-cast v1.0.27
+  Downloaded block-padding v0.4.2
+  Downloaded matchers v0.2.0
+  Downloaded defmt-parser v1.0.0
+  Downloaded dtoa-short v0.3.5
+  Downloaded autocfg v1.5.1
+  Downloaded cipher v0.5.2
+  Downloaded axum-core v0.5.6
+  Downloaded cbc v0.2.1
+  Downloaded data-encoding v2.11.1
+  Downloaded dtoa v1.0.11
+  Downloaded either v1.18.0
+  Downloaded getopts v0.2.24
+  Downloaded ego-tree v0.10.0
+  Downloaded crypto-common v0.2.2
+  Downloaded num-iter v0.1.46
+  Downloaded crossbeam-deque v0.8.8
+  Downloaded ahash v0.8.12
+  Downloaded markup5ever_rcdom v0.38.0+unofficial
+  Downloaded num-rational v0.4.2
+  Downloaded hashlink v0.10.0
+  Downloaded md-5 v0.11.0
+  Downloaded anstyle-parse v1.0.0
+  Downloaded block-buffer v0.12.1
+  Downloaded dashmap v6.2.1
+  Downloaded digest v0.10.7
+  Downloaded ecb v0.2.1
+  Downloaded bytesize v2.7.0
+  Downloaded email_address v0.2.9
+  Downloaded foldhash v0.1.5
+  Downloaded digest v0.11.3
+  Downloaded anyhow v1.0.104
+  Downloaded axum-macros v0.5.1
+  Downloaded env_logger v0.11.11
+  Downloaded num-integer v0.1.47
+  Downloaded bytecount v0.6.9
+  Downloaded clap_derive v4.6.7
+  Downloaded fastrand v2.5.0
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded fluent-uri v0.3.2
+  Downloaded aes v0.9.3
+  Downloaded quick-error v1.2.3
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded rustc_version v0.4.1
+  Downloaded iana-time-zone v0.1.65
+  Downloaded markup5ever v0.36.1
+  Downloaded hybrid-array v0.4.15
+  Downloaded bit-vec v0.8.0
+  Downloaded num-complex v0.4.6
+  Downloaded num-traits v0.2.19
+  Downloaded bitflags v1.3.2
+  Downloaded defmt v1.1.1
+  Downloaded matchit v0.8.4
+  Downloaded multer v3.1.0
+  Downloaded const-oid v0.10.2
+  Downloaded getrandom v0.3.4
+  Downloaded markup5ever v0.13.0
+  Downloaded tracing-serde v0.2.0
+  Downloaded diff v0.1.13
+  Downloaded rust-multipart-rfc7578_2 v0.9.0
+  Downloaded rand_chacha v0.9.0
+  Downloaded cssparser v0.36.0
+  Downloaded rand_core v0.6.4
+  Downloaded expect-json v1.11.0
+  Downloaded strsim v0.11.1
+  Downloaded html5ever v0.38.0
+  Downloaded defmt-macros v1.1.1
+  Downloaded reserve-port v2.5.0
+  Downloaded clap v4.6.7
+  Downloaded string_cache_codegen v0.5.4
+  Downloaded uuid-simd v0.8.0
+  Downloaded html5ever v0.36.1
+  Downloaded phf_shared v0.11.3
+  Downloaded precomputed-hash v0.1.1
+  Downloaded utf-8 v0.7.6
+  Downloaded html5ever v0.28.0
+  Downloaded phf_shared v0.13.1
+  Downloaded fancy-regex v0.14.0
+  Downloaded scraper v0.25.0
+  Downloaded tokio-tungstenite v0.28.0
+  Downloaded phf_codegen v0.13.1
+  Downloaded derive_more v2.1.1
+  Downloaded fraction v0.15.4
+  Downloaded sha1 v0.10.7
+  Downloaded string_cache_codegen v0.6.1
+  Downloaded utf8parse v0.2.2
+  Downloaded derive_more-impl v2.1.1
+  Downloaded jsonschema v0.28.3
+  Downloaded siphasher v1.0.3
+  Downloaded typed-arena v1.7.0
+  Downloaded phf_codegen v0.11.3
+  Downloaded phf_generator v0.13.1
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded typetag-impl v0.2.23
+  Downloaded num-bigint v0.4.8
+  Downloaded string_cache v0.9.0
+  Downloaded phf_macros v0.11.3
+  Downloaded rand_core v0.9.5
+  Downloaded string_cache v0.8.9
+  Downloaded rangemap v1.8.0
+  Downloaded peresil v0.3.0
+  Downloaded jiff-core v0.1.1
+  Downloaded phf v0.13.1
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded thread_local v1.1.10
+  Downloaded referencing v0.28.3
+  Downloaded tracing-log v0.2.0
+  Downloaded tendril v0.4.3
+  Downloaded servo_arc v0.4.3
+  Downloaded nom v8.0.0
+  Downloaded sxd_html v0.1.2
+  Downloaded typetag v0.2.23
+  Downloaded lol_html v2.9.0
+  Downloaded sha2 v0.10.9
+  Downloaded clap_builder v4.6.7
+  Downloaded hashbrown v0.15.5
+  Downloaded phf v0.11.3
+  Downloaded phf_generator v0.11.3
+  Downloaded web_atoms v0.2.6
+  Downloaded axum v0.8.9
+  Downloaded xxhash-rust v0.8.18
+  Downloaded vsimd v0.8.0
+  Downloaded phf_macros v0.13.1
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded rayon-core v1.13.0
+  Downloaded spin v0.9.9
+  Downloaded unicode-bidi v0.3.18
+  Downloaded unicode-properties v0.1.4
+  Downloaded sha2 v0.11.0
+  Downloaded semver v1.0.28
+  Downloaded stringprep v0.1.5
+  Downloaded sxd-document v0.3.2
+  Downloaded tendril v0.5.1
+  Downloaded pretty_assertions v1.4.1
+  Downloaded similar v2.7.0
+  Downloaded sxd-xpath v0.4.2
+  Downloaded rand v0.9.5
+  Downloaded ryu v1.0.23
+  Downloaded selectors v0.33.0
+  Downloaded xml5ever v0.38.0
+  Downloaded sharded-slab v0.1.7
+  Downloaded selectors v0.37.0
+  Downloaded rand v0.8.8
+  Downloaded tungstenite v0.28.0
+  Downloaded chrono v0.4.45
+  Downloaded lopdf v0.45.0
+  Downloaded yansi v1.0.1
+  Downloaded weezl v0.2.1
+  Downloaded yaml-rust2 v0.10.4
+  Downloaded htmd v0.5.5
+  Downloaded typenum v1.20.1
+  Downloaded unicode-normalization v0.1.25
+  Downloaded rayon v1.12.0
+  Downloaded reqwest v0.12.28
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded ttf-parser v0.25.1
+  Downloaded axum-test v19.1.1
+  Downloaded unicode-width v0.2.2
+  Downloaded zerocopy v0.8.57
+  Downloaded jiff v0.2.37
+  Downloaded pdf-inspector v1.21.0
+   Compiling syn v2.0.119
+   Compiling log v0.4.34
+   Compiling siphasher v1.0.3
+   Compiling stable_deref_trait v1.2.1
+   Compiling phf_shared v0.13.1
+   Compiling foldhash v0.2.0
+   Compiling fastrand v2.5.0
+   Compiling phf_generator v0.13.1
+   Compiling yoke v0.8.3
+   Compiling typenum v1.20.1
+   Compiling zerovec v0.11.8
+   Compiling tracing-core v0.1.36
+   Compiling new_debug_unreachable v1.0.6
+   Compiling allocator-api2 v0.2.21
+   Compiling hashbrown v0.17.1
+   Compiling tinystr v0.8.4
+   Compiling phf_codegen v0.13.1
+   Compiling serde_json v1.0.151
+   Compiling icu_locale_core v2.3.0
+   Compiling tracing-attributes v0.1.31
+   Compiling indexmap v2.14.2
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling tracing v0.1.44
+   Compiling precomputed-hash v0.1.1
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling phf_macros v0.13.1
+   Compiling idna_adapter v1.2.2
+   Compiling phf v0.13.1
+   Compiling form_urlencoded v1.2.2
+   Compiling hybrid-array v0.4.15
+   Compiling regex-automata v0.4.18
+   Compiling h2 v0.4.19
+   Compiling idna v1.1.0
+   Compiling brotli-decompressor v5.0.3
+   Compiling hyper v1.11.1
+   Compiling string_cache_codegen v0.6.1
+   Compiling phf_shared v0.11.3
+   Compiling rand_core v0.6.4
+   Compiling hyper-util v0.1.20
+   Compiling rand v0.8.8
+   Compiling web_atoms v0.2.6
+   Compiling url v2.5.8
+   Compiling zerocopy v0.8.57
+   Compiling getrandom v0.3.4
+   Compiling phf_generator v0.11.3
+   Compiling tower v0.5.3
+   Compiling brotli v8.0.4
+   Compiling crypto-common v0.2.2
+   Compiling string_cache v0.9.0
+   Compiling generic-array v0.14.7
+   Compiling utf-8 v0.7.6
+   Compiling compression-codecs v0.4.43
+   Compiling num-integer v0.1.47
+   Compiling uuid v1.26.1
+   Compiling mac v0.1.1
+   Compiling cpufeatures v0.3.1
+   Compiling futf v0.1.5
+   Compiling async-compression v0.4.48
+   Compiling regex v1.13.1
+   Compiling block-padding v0.4.2
+   Compiling thiserror-impl v1.0.69
+   Compiling hashbrown v0.14.5
+   Compiling inout v0.2.2
+   Compiling pest_generator v2.9.1
+   Compiling thiserror v1.0.69
+   Compiling tower-http v0.6.11
+   Compiling tendril v0.4.3
+   Compiling num-bigint v0.4.8
+   Compiling hashbrown v0.16.1
+   Compiling dtoa v1.0.11
+   Compiling utf8parse v0.2.2
+   Compiling crossbeam-deque v0.8.8
+   Compiling publicsuffix v2.3.0
+   Compiling anstyle-parse v1.0.0
+   Compiling dtoa-short v0.3.5
+   Compiling hashlink v0.11.1
+   Compiling num-rational v0.4.2
+   Compiling pest_derive v2.9.1
+   Compiling protobuf-support v3.7.2
+   Compiling ordered-multimap v0.7.3
+   Compiling cipher v0.5.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling chacha20 v0.10.2
+   Compiling num-iter v0.1.46
+   Compiling string_cache_codegen v0.5.4
+   Compiling phf_codegen v0.11.3
+   Compiling block-buffer v0.12.1
+   Compiling num-complex v0.4.6
+   Compiling derive_more-impl v2.1.1
+   Compiling cssparser-macros v0.6.1
+   Compiling tendril v0.5.1
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling rayon-core v1.13.0
+   Compiling ryu v1.0.23
+   Compiling const-oid v0.10.2
+   Compiling iana-time-zone v0.1.65
+   Compiling ref-cast v1.0.27
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.14
+   Compiling toml_edit v0.22.27
+   Compiling anstream v1.0.0
+   Compiling chrono v0.4.45
+   Compiling digest v0.11.3
+   Compiling serde_urlencoded v0.7.1
+   Compiling markup5ever v0.38.0
+   Compiling derive_more v2.1.1
+   Compiling cssparser v0.36.0
+   Compiling num v0.4.3
+   Compiling markup5ever v0.13.0
+   Compiling rand v0.10.2
+   Compiling digest v0.10.7
+   Compiling rust-ini v0.21.3
+   Compiling protobuf v3.7.2
+   Compiling json5 v0.4.1
+   Compiling yaml-rust2 v0.11.1
+   Compiling cookie_store v0.22.1
+   Compiling hyper-rustls v0.27.9
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_core v0.9.5
+   Compiling phf_macros v0.11.3
+   Compiling ahash v0.8.12
+   Compiling servo_arc v0.4.3
+   Compiling ref-cast-impl v1.0.27
+   Compiling rustc-hash v2.1.3
+   Compiling tinyvec v1.13.3
+   Compiling cpufeatures v0.2.17
+   Compiling reqwest v0.13.5
+   Compiling unicode-normalization v0.1.25
+   Compiling config v0.15.25
+   Compiling phf v0.11.3
+   Compiling prometheus v0.14.0
+   Compiling rand_chacha v0.9.0
+   Compiling toml v0.8.23
+   Compiling string_cache v0.8.9
+   Compiling crw-mcp-proto v1.2.0 (/src/crates/crw-mcp-proto)
+   Compiling html5ever v0.28.0
+   Compiling selectors v0.33.0
+   Compiling selectors v0.37.0
+   Compiling email_address v0.2.9
+   Compiling unicode-bidi v0.3.18
+   Compiling unicode-properties v0.1.4
+   Compiling cpubits v0.1.1
+   Compiling bit-vec v0.8.0
+   Compiling peresil v0.3.0
+   Compiling typed-arena v1.7.0
+   Compiling either v1.18.0
+   Compiling borrow-or-share v0.2.4
+   Compiling jiff-core v0.1.1
+   Compiling rayon v1.12.0
+   Compiling jiff v0.2.37
+   Compiling fluent-uri v0.3.2
+   Compiling sxd-document v0.3.2
+   Compiling bit-set v0.8.0
+   Compiling stringprep v0.1.5
+   Compiling aes v0.9.3
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling rand v0.9.5
+   Compiling html5ever v0.38.0
+   Compiling xml5ever v0.38.0
+   Compiling sha2 v0.11.0
+   Compiling md-5 v0.11.0
+   Compiling cbc v0.2.1
+   Compiling ecb v0.2.1
+   Compiling markup5ever v0.36.1
+   Compiling env_filter v2.0.0
+   Compiling nom v8.0.0
+   Compiling rangemap v1.8.0
+   Compiling weezl v0.2.1
+   Compiling outref v0.5.2
+   Compiling vsimd v0.8.0
+   Compiling unicode-width v0.2.2
+   Compiling getopts v0.2.24
+   Compiling uuid-simd v0.8.0
+   Compiling env_logger v0.11.11
+   Compiling html5ever v0.36.1
+   Compiling lopdf v0.45.0
+   Compiling markup5ever_rcdom v0.38.0+unofficial
+   Compiling referencing v0.28.3
+   Compiling fancy-regex v0.14.0
+   Compiling sha1 v0.10.7
+   Compiling fraction v0.15.4
+   Compiling reqwest v0.12.28
+   Compiling multer v3.1.0
+   Compiling ego-tree v0.10.0
+   Compiling ttf-parser v0.25.1
+   Compiling bytecount v0.6.9
+   Compiling quick-error v1.2.3
+   Compiling data-encoding v2.11.1
+   Compiling num-cmp v0.1.0
+   Compiling jsonschema v0.28.3
+   Compiling pdf-inspector v1.21.0
+   Compiling tungstenite v0.28.0
+   Compiling moka v0.12.16
+   Compiling sxd-xpath v0.4.2
+   Compiling scraper v0.25.0
+   Compiling lol_html v2.9.0
+   Compiling sxd_html v0.1.2
+   Compiling htmd v0.5.5
+   Compiling spin v0.9.9
+   Compiling typetag v0.2.23
+   Compiling xxhash-rust v0.8.18
+   Compiling tokio-tungstenite v0.28.0
+   Compiling sha2 v0.10.9
+   Compiling dashmap v6.2.1
+   Compiling axum-core v0.5.6
+   Compiling axum-macros v0.5.1
+   Compiling serde_path_to_error v0.1.20
+   Compiling typetag-impl v0.2.23
+   Compiling strsim v0.11.1
+   Compiling inventory v0.3.24
+   Compiling heck v0.5.0
+   Compiling similar v2.7.0
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling matchit v0.8.4
+   Compiling foldhash v0.1.5
+   Compiling anyhow v1.0.104
+   Compiling clap_lex v1.1.1
+   Compiling hex v0.4.3
+   Compiling crw-diff v1.2.0 (/src/crates/crw-diff)
+   Compiling clap_builder v4.6.7
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling hashbrown v0.15.5
+   Compiling axum v0.8.9
+   Compiling clap_derive v4.6.7
+   Compiling sharded-slab v0.1.7
+   Compiling matchers v0.2.0
+   Compiling expect-json-macros v1.11.0
+   Compiling tracing-serde v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling yansi v1.0.1
+   Compiling nu-ansi-term v0.50.3
+   Compiling diff v0.1.13
+   Compiling pretty_assertions v1.4.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling expect-json v1.11.0
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling clap v4.6.7
+   Compiling hashlink v0.10.0
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+   Compiling rust-multipart-rfc7578_2 v0.9.0
+   Compiling assert-json-diff v2.0.2
+   Compiling reserve-port v2.5.0
+   Compiling bytesize v2.7.0
+   Compiling axum-test v19.1.1
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+   Compiling wiremock v0.6.5
+   Compiling yaml-rust2 v0.10.4
+    Finished `test` profile [unoptimized] target(s) in 1m 57s
+     Running unittests src/lib.rs (/target/debug/deps/crw_server-ec142c4b118ba34e)
+
+running 2 tests
+test routes::search::tests::map_search_error_blocked_never_exposes_arbitrary_engine_text ... FAILED
+test routes::search::tests::map_search_error_blocked_has_typed_502_response ... FAILED
+
+failures:
+
+---- routes::search::tests::map_search_error_blocked_never_exposes_arbitrary_engine_text stdout ----
+
+thread 'routes::search::tests::map_search_error_blocked_never_exposes_arbitrary_engine_text' (4956) panicked at crates/crw-server/src/routes/search.rs:1478:9:
+assertion `left == right` failed
+  left: "http_error"
+ right: "search_blocked"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- routes::search::tests::map_search_error_blocked_has_typed_502_response stdout ----
+
+thread 'routes::search::tests::map_search_error_blocked_has_typed_502_response' (4955) panicked at crates/crw-server/src/routes/search.rs:1465:9:
+assertion `left == right` failed
+  left: String("http_error")
+ right: "search_blocked"
+
+
+failures:
+    routes::search::tests::map_search_error_blocked_has_typed_502_response
+    routes::search::tests::map_search_error_blocked_never_exposes_arbitrary_engine_text
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p crw-server --lib`
+    Finished `test` profile [unoptimized] target(s) in 0.38s
+     Running unittests src/lib.rs (/target/debug/deps/crw_server-ec142c4b118ba34e)
+
+running 4 tests
+test routes::v2::scrape::tests::v2_response_clean_omits_error_key ... ok
+test routes::v2::scrape::tests::v2_response_blocked_serializes_success_false_with_error ... ok
+test routes::v2::search::tests::v2_response_genuine_empty_success_does_not_invent_failure_or_warning_fields ... ok
+test routes::v2::search::tests::v2_response_preserves_partial_engine_warnings_and_enrichment_warning ... FAILED
+
+failures:
+
+---- routes::v2::search::tests::v2_response_preserves_partial_engine_warnings_and_enrichment_warning stdout ----
+
+thread 'routes::v2::search::tests::v2_response_preserves_partial_engine_warnings_and_enrichment_warning' (4966) panicked at crates/crw-server/src/routes/v2/search.rs:135:9:
+assertion `left == right` failed
+  left: Null
+ right: "scrape enrichment partially failed"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    routes::v2::search::tests::v2_response_preserves_partial_engine_warnings_and_enrichment_warning
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 49 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p crw-server --lib`

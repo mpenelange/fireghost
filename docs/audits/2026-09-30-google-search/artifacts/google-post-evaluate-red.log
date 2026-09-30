@@ -1,0 +1,27 @@
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+    Finished `test` profile [unoptimized] target(s) in 3.21s
+     Running unittests src/lib.rs (/target/debug/deps/crw_search-57fcb1885d6fee0b)
+
+running 5 tests
+
+thread 'camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_changes_query' (916) panicked at crates/crw-search/src/camofox_search.rs:1397:9:
+rows from a tab that changed query must not be accepted
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_changes_query ... FAILED
+test camofox_search::diagnostic_tests::late_navigation_changes_query_without_returning_stale_rows ... ok
+
+thread 'camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_redirects_to_challenge' (919) panicked at crates/crw-search/src/camofox_search.rs:1412:9:
+a challenge reached during evaluation must not return its rows
+test camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_redirects_to_challenge ... FAILED
+test camofox_search::diagnostic_tests::late_navigation_to_challenge_after_empty_evaluation_is_blocked ... ok
+test camofox_search::diagnostic_tests::late_navigation_to_challenge_during_settle_is_blocked ... ok
+
+failures:
+
+failures:
+    camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_changes_query
+    camofox_search::diagnostic_tests::late_navigation_nonempty_evaluation_redirects_to_challenge
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 83 filtered out; finished in 1.66s
+
+error: test failed, to rerun pass `-p crw-search --lib`

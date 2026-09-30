@@ -1,0 +1,9 @@
+PASS linked heading preserves its destination and snippet
+PASS preceding decoy anchor cannot replace the linked heading destination
+PASS nested result wrappers preserve distinct headings without duplicates
+PASS Google tracking q link resolves to the external destination
+PASS empty unsafe malformed and untitled links are not results
+PASS provider widgets and unlinked headings are not organic results
+PASS heading owns one child link but ambiguous child links are not guessed
+PASS snippet ascends only single-heading wrappers without borrowing another result
+8/8 Google DOM fixtures passed

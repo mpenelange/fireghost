@@ -1,0 +1,102 @@
+[
+  {
+    "name": "fireghost-google-246",
+    "imageId": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "cases": [
+      {
+        "mode": "direct",
+        "ackSeconds": 5.586,
+        "navigationClass": "matching-search",
+        "readyState": "interactive",
+        "h3Count": 13,
+        "containerCount": 20,
+        "bodyTextChars": 7487,
+        "rows": 10,
+        "rowHashes": [
+          "7f1e943c9508dab2cd5687bc4401081f12a29a138e232f75995f7f0d44cc7f9b",
+          "cf024c66967c2982348b036b29c711882076e0893d1636b26a5a741e1bb1f8a5",
+          "8dd67ac9b5480d9805d4adb48b0a10141ecd607c698cd8105b563b9fbab6baa9",
+          "cc421f93b9cf30d7a6d7eacdd94e5224afaaa2f379aa109ce2d3ffb39f7fcb83",
+          "3507990abbbe1356b8779fc7602d9f3fcff18a890440c00085ae23bb83fa5ee3",
+          "dce23dc2cb1e92f5030f4b545e3905646766db4a4b5840ad65aa21208115efb6",
+          "a9b0de7088b62748ee38b9452adb512a5a87bf3bbb23975c58186e67c4468814",
+          "591a033a9e2b294a113331622f7c098bb1d892e106c92869891274f41190350e",
+          "498d0eae83c9c6c5422ac8f032ba0894c858ec168be4ac90f9ab1c7b70bc574c",
+          "5d17b531e087d1c1438da7e01418bfd599aa6b8d74e1783e53b5afd8a48ce3cb"
+        ],
+        "truncated": false,
+        "totalSeconds": 8.078
+      },
+      {
+        "mode": "scheduled",
+        "ackSeconds": 0.826,
+        "navigationClass": "matching-search",
+        "readyState": "interactive",
+        "h3Count": 10,
+        "containerCount": 20,
+        "bodyTextChars": 3450,
+        "rows": 9,
+        "rowHashes": [
+          "96bcfee87727bc2d099d7aee7e21ebb2dcf7d20b366b4be933de9a0e9c3bba2e",
+          "95cb28988691ee9b9bc6df6f61d53c0712600aeb7b3e057b08a191f4e78145e5",
+          "7726e0b48e8fcb4fc61509e0f8127be799ea271fe9b591373eb8cd30ed00a2ea",
+          "1a68c9553cb66a9ec6bc8e44f20a27f86b45ab0e7f0dca94174cfcdd553a54de",
+          "75c55506f92b25411db5f72062f86e41bc0eec62c8050b63600f87f979c681e1",
+          "4bf92a9778dfeb2673ee0ab4e0605fb01aca9ce283705fe85333de332ed6b59e",
+          "76b573148c823056ce13d890168f901657020684fa7e5f5c2f6fd6ca10581c29",
+          "8cb839e3bd44d9bd28a7ca21a275e172c93a721a69547e2bd49ba30467499bbf",
+          "2785495d7ca969cacb18849afc2c4910d6cf7a2fbd18e4db7e68dab966ea940f"
+        ],
+        "truncated": false,
+        "totalSeconds": 2.426
+      }
+    ],
+    "version": "2.4.6",
+    "cleanupAcknowledged": true
+  },
+  {
+    "name": "fireghost-google-248",
+    "imageId": "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+    "cases": [
+      {
+        "mode": "scheduled",
+        "ackSeconds": 0.254,
+        "navigationClass": "matching-search",
+        "readyState": "complete",
+        "h3Count": 0,
+        "containerCount": 0,
+        "bodyTextChars": 0,
+        "rows": 0,
+        "rowHashes": [],
+        "truncated": false,
+        "totalSeconds": 1.148
+      },
+      {
+        "mode": "direct",
+        "ackSeconds": 5.626,
+        "navigationClass": "matching-search",
+        "readyState": "complete",
+        "h3Count": 13,
+        "containerCount": 21,
+        "bodyTextChars": 6854,
+        "rows": 10,
+        "rowHashes": [
+          "a25841d912b0b1bfc2a0eb3f4fcac4b2ca57f5a63903ecc85bf43a6f7fa819fd",
+          "4bda303e7db3ca2b2cb57aff9f9d52550741c1df5ed6691a5422d2ae2e1c64c0",
+          "e7cb3fcd91afb154adf2fb6c918644c77ef47c634d8af26c74ac1310dc9b556b",
+          "d79ace2a961944bddd90205d461c8632df36c80be3ddab996a8067883900d185",
+          "ec9072ef8545df10a54a2491798f48c1d412eb8f981aed93353ce67c224e91d2",
+          "77478a9243766c6430fb7aed5fe53682affa7992423776218d6a17cea89ed5f4",
+          "e381af3d2f155becd00dbacd88083c2d1c3ebd241fcae77f6259bedebc203f64",
+          "e35a86e347e3ace7b4904515fb40387c90a829a5a813436fe9bec2c1a5fb5b9d",
+          "46914132b25c4b68a4d9e40a48e1b3788a2fc93b9b936ff33278f505af943332",
+          "90cd529a754996e122bc38a93566943e7b8f6b3c1c6c946e595d1fcd7d9e6984"
+        ],
+        "truncated": false,
+        "totalSeconds": 6.479
+      }
+    ],
+    "version": "2.4.8",
+    "cleanupAcknowledged": true
+  }
+]

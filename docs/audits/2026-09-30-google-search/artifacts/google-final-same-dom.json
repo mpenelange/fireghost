@@ -1,0 +1,186 @@
+{
+  "scope": "both exact extractors on each existing warm tab, no navigation; raw rows remain ephemeral",
+  "legacyScriptSHA256": "e5e5d48742d23ac4cbb060d3d98766203c5cfc8e1ce3ece5b0fc9ec3cbe9e0f2",
+  "candidateScriptSHA256": "393d54321fd049646dbe2fbcf4bd24412422b96da20a616da2e94ec4f2770601",
+  "cases": [
+    {
+      "queryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790807428467,
+      "browser": "fireghost-google-246",
+      "tabHash": "346aeacb2c96c09a55519eeb25870f253977926589dd2993a39e60950ef16b07",
+      "rows": {
+        "legacy": {
+          "count": 6,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+            "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+            "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+            "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+            "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3"
+          ],
+          "urlHashes": [
+            "de5cb948fa5e12733a6ef3a04900d2c94ac2a80e014cd4141ab33b88f40fadaa",
+            "0e6db220356e618c33e9f67135b1eb0db1a530cd680ae3f52c7184a14b63b700",
+            "9914af98cc2bfa324b5707f38f7a0174ed90f91d0300eb946d54b45dde42c969",
+            "a2ac4c107a58d60ab8d9aaa5e43df74c8e1f6108ead28f0fc89db65c06baeee5",
+            "d0e98278e2d9b386b11d95e3ff907d8f995a69624e85258a83531dcf704a48eb",
+            "a1b08b0cb976a497a9161543935be1dc536e279de325cd8b53762987adda5f99"
+          ]
+        },
+        "candidate": {
+          "count": 6,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+            "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+            "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+            "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+            "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3"
+          ],
+          "urlHashes": [
+            "de5cb948fa5e12733a6ef3a04900d2c94ac2a80e014cd4141ab33b88f40fadaa",
+            "0e6db220356e618c33e9f67135b1eb0db1a530cd680ae3f52c7184a14b63b700",
+            "9914af98cc2bfa324b5707f38f7a0174ed90f91d0300eb946d54b45dde42c969",
+            "a2ac4c107a58d60ab8d9aaa5e43df74c8e1f6108ead28f0fc89db65c06baeee5",
+            "d0e98278e2d9b386b11d95e3ff907d8f995a69624e85258a83531dcf704a48eb",
+            "a1b08b0cb976a497a9161543935be1dc536e279de325cd8b53762987adda5f99"
+          ]
+        }
+      }
+    },
+    {
+      "queryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790807398996,
+      "browser": "fireghost-google-246",
+      "tabHash": "5154ae6859e9fa51026458236214c302e72db45ee1e9274905b06b8447dc53c0",
+      "rows": {
+        "legacy": {
+          "count": 10,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "3e7c44f74a79fa0e5169a87ddef5a4a77de9e8998dea2954bc90fd9f0fda5934",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "346840cee7ddf7a3472237617663f31a33ee8dd7662779d22378a2218077017c",
+            "bacc49be948aa7263d727e827b76c873ac69b69e492aa115164c348d0b53fd6c",
+            "0e3ede782cdfeb8bb44527e32d4113e95b7c683eae70d98854763fe40d41c469",
+            "332713ef4c1d5671d1b2c9da49e37872916a81d5b3d0557745284f5235b15814",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "576a920e48fd8aee2441b6da6891d3bd4e748c9049462eda4649a80b233b5b70",
+            "8dc248025c88a50109ac3190150d1e0f03afdba963dc34df34ac97e3579b5c89"
+          ],
+          "urlHashes": [
+            "9bfbd3e87a83b28f68f35683ee2ccfeb62cc1690f527483bb2e873fc5ae3d15d",
+            "5c641e92453eebe04d7f23719a92c36f6f15cae87335923392c919e893804c77",
+            "3f4f3c521bcf3350deb0c1fdd5690d72523891c158a1117f985b860e53b3f5d2",
+            "db6f6f3bb2728d245cf6f44a5773175019e67fc7c9a720e29e2f3f430574a4f1",
+            "5b1e1764ecc7e67d2ebd31eabad61e57904fd1ebb8b6fe276ca5a16817c1603c",
+            "c7d00545a5dcae4ba66e67c87149102a817c97351aee6b8db2c3184250881399",
+            "dfc91062eb6de3b5b8b8c185ce2ef9eb202d7178e1ce1719dd3ec2bb34d0cb6a",
+            "ae54ba1db8bb6a80353e01683640c6195265f2ef1f2c1edc65255f4e8f342e37",
+            "057f64b07b0b9ca1b827e8213cc478c66a9d36cc2fdc460f3a3d02f6d16a0443",
+            "6df8b1de8dc9851e2f3530fc5466b171946747da24badecd3a21a633cd1b80fb"
+          ]
+        },
+        "candidate": {
+          "count": 9,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "346840cee7ddf7a3472237617663f31a33ee8dd7662779d22378a2218077017c",
+            "bacc49be948aa7263d727e827b76c873ac69b69e492aa115164c348d0b53fd6c",
+            "0e3ede782cdfeb8bb44527e32d4113e95b7c683eae70d98854763fe40d41c469",
+            "332713ef4c1d5671d1b2c9da49e37872916a81d5b3d0557745284f5235b15814",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "576a920e48fd8aee2441b6da6891d3bd4e748c9049462eda4649a80b233b5b70",
+            "8dc248025c88a50109ac3190150d1e0f03afdba963dc34df34ac97e3579b5c89"
+          ],
+          "urlHashes": [
+            "9bfbd3e87a83b28f68f35683ee2ccfeb62cc1690f527483bb2e873fc5ae3d15d",
+            "3f4f3c521bcf3350deb0c1fdd5690d72523891c158a1117f985b860e53b3f5d2",
+            "db6f6f3bb2728d245cf6f44a5773175019e67fc7c9a720e29e2f3f430574a4f1",
+            "5b1e1764ecc7e67d2ebd31eabad61e57904fd1ebb8b6fe276ca5a16817c1603c",
+            "c7d00545a5dcae4ba66e67c87149102a817c97351aee6b8db2c3184250881399",
+            "dfc91062eb6de3b5b8b8c185ce2ef9eb202d7178e1ce1719dd3ec2bb34d0cb6a",
+            "ae54ba1db8bb6a80353e01683640c6195265f2ef1f2c1edc65255f4e8f342e37",
+            "057f64b07b0b9ca1b827e8213cc478c66a9d36cc2fdc460f3a3d02f6d16a0443",
+            "6df8b1de8dc9851e2f3530fc5466b171946747da24badecd3a21a633cd1b80fb"
+          ]
+        }
+      }
+    },
+    {
+      "queryMatch": true,
+      "readyState": "complete",
+      "documentLanguage": "en",
+      "navigatorLanguage": "en-US",
+      "timeOrigin": 1790807431237,
+      "browser": "fireghost-google-248",
+      "tabHash": "bfe63e8ac793ca99e551f848c03f1defaed9fdb60fdc3abc00b7456f3ad24d58",
+      "rows": {
+        "legacy": {
+          "count": 9,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "576a920e48fd8aee2441b6da6891d3bd4e748c9049462eda4649a80b233b5b70",
+            "acbeccc3278393b00930a5e55fd33160b01b164a5575d1469d2ba65005b9db92",
+            "8b7ed91f04e8e55c9f42184436d0d965303a346ade51b8c915abeb4f20a4525e",
+            "bacc49be948aa7263d727e827b76c873ac69b69e492aa115164c348d0b53fd6c"
+          ],
+          "urlHashes": [
+            "09a2aea3daddca46c874f3fea6e8b150c5a2c5e879399dee2805beb641bf5a53",
+            "c4512d002c1db3f51da27de7561d36654ddf26a7a50e0be29ad7db230eebe45d",
+            "8097116288c3f31744ad406d2900e959eb413e1e6986c5235831857cbe9bdf53",
+            "21fb0b0ed60625b94b3f5e055fdfce80ea32b22d99e352ca98cbfd5c047bb22b",
+            "6d1800c20d06c678e3d42288bc64d979c5dca7964a87ea4ca3c7bb30f6c1b2d7",
+            "a90e2bd97fefea77744a4debf6b670deed1404fe237c0bd82668968ff7221452",
+            "cb93a5854c9597d05b163118de7890b007ec565113903dc14ec68a32ff481044",
+            "1b1be1ed6655e5a313a8ddebba1cad7cd0f81e6712c619f972921d767732543f",
+            "ed15e2bf3acfb85dcbcf13d9d2ffc06f63897586bc2786859bba87cdf5da6dc1"
+          ]
+        },
+        "candidate": {
+          "count": 9,
+          "duplicateURLs": 0,
+          "titleHashes": [
+            "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+            "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a",
+            "036344798cd0701ac9f9bf9a707e082948a9623f3cb017cb792778c22c2c351e",
+            "576a920e48fd8aee2441b6da6891d3bd4e748c9049462eda4649a80b233b5b70",
+            "acbeccc3278393b00930a5e55fd33160b01b164a5575d1469d2ba65005b9db92",
+            "8b7ed91f04e8e55c9f42184436d0d965303a346ade51b8c915abeb4f20a4525e",
+            "bacc49be948aa7263d727e827b76c873ac69b69e492aa115164c348d0b53fd6c"
+          ],
+          "urlHashes": [
+            "09a2aea3daddca46c874f3fea6e8b150c5a2c5e879399dee2805beb641bf5a53",
+            "c4512d002c1db3f51da27de7561d36654ddf26a7a50e0be29ad7db230eebe45d",
+            "8097116288c3f31744ad406d2900e959eb413e1e6986c5235831857cbe9bdf53",
+            "21fb0b0ed60625b94b3f5e055fdfce80ea32b22d99e352ca98cbfd5c047bb22b",
+            "6d1800c20d06c678e3d42288bc64d979c5dca7964a87ea4ca3c7bb30f6c1b2d7",
+            "a90e2bd97fefea77744a4debf6b670deed1404fe237c0bd82668968ff7221452",
+            "cb93a5854c9597d05b163118de7890b007ec565113903dc14ec68a32ff481044",
+            "1b1be1ed6655e5a313a8ddebba1cad7cd0f81e6712c619f972921d767732543f",
+            "ed15e2bf3acfb85dcbcf13d9d2ffc06f63897586bc2786859bba87cdf5da6dc1"
+          ]
+        }
+      }
+    }
+  ]
+}

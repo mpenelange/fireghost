@@ -1,0 +1,34 @@
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+    Finished `test` profile [unoptimized] target(s) in 3.05s
+     Running unittests src/lib.rs (/target/debug/deps/crw_search-57fcb1885d6fee0b)
+
+running 4 tests
+
+thread 'camofox_search::diagnostic_tests::malformed_evaluation_is_invalid_response_not_empty_success' (915) panicked at crates/crw-search/src/camofox_search.rs:1337:13:
+malformed extraction cannot establish a successful empty search
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'camofox_search::diagnostic_tests::persistent_previous_query_url_times_out_without_scraping_stale_rows' (916) panicked at crates/crw-search/src/camofox_search.rs:1316:9:
+failure to reach this query must not become an empty success
+test camofox_search::diagnostic_tests::malformed_evaluation_is_invalid_response_not_empty_success ... FAILED
+test camofox_search::diagnostic_tests::persistent_previous_query_url_times_out_without_scraping_stale_rows ... FAILED
+
+thread 'camofox_search::diagnostic_tests::recognized_google_challenges_are_blocked_not_empty_success' (919) panicked at crates/crw-search/src/camofox_search.rs:1303:13:
+a known challenge cannot establish a successful empty search
+test camofox_search::diagnostic_tests::recognized_google_challenges_are_blocked_not_empty_success ... FAILED
+
+thread 'camofox_search::diagnostic_tests::truncated_evaluation_is_rejected_even_when_result_parses' (920) panicked at crates/crw-search/src/camofox_search.rs:1359:9:
+truncated data cannot be accepted as complete result rows
+test camofox_search::diagnostic_tests::truncated_evaluation_is_rejected_even_when_result_parses ... FAILED
+
+failures:
+
+failures:
+    camofox_search::diagnostic_tests::malformed_evaluation_is_invalid_response_not_empty_success
+    camofox_search::diagnostic_tests::persistent_previous_query_url_times_out_without_scraping_stale_rows
+    camofox_search::diagnostic_tests::recognized_google_challenges_are_blocked_not_empty_success
+    camofox_search::diagnostic_tests::truncated_evaluation_is_rejected_even_when_result_parses
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 77 filtered out; finished in 1.38s
+
+error: test failed, to rerun pass `-p crw-search --lib`

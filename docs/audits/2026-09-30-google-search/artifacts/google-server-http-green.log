@@ -1,0 +1,114 @@
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-diff v1.2.0 (/src/crates/crw-diff)
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 26.57s
+     Running unittests src/lib.rs (/target/debug/deps/crw_server-ec142c4b118ba34e)
+
+running 53 tests
+test diagnostics::tests::sanitize_redacts_unparseable ... ok
+test build_info::tests::display_contains_every_identity_surface ... ok
+test diagnostics::tests::sanitize_strips_userinfo_path_query_fragment ... ok
+test diagnostics::tests::startup_status_enabled_no_backend_warns ... ok
+test diagnostics::tests::startup_status_disabled ... ok
+test diagnostics::tests::startup_status_never_leaks_credentials ... ok
+test diagnostics::tests::startup_status_enabled_with_camofox ... ok
+test error::tests::app_error_body_is_api_response ... ok
+test error::tests::app_error_http_error_502 ... ok
+test error::tests::app_error_extraction_422 ... ok
+test error::tests::app_error_internal_500 ... ok
+test error::tests::app_error_invalid_request_400 ... ok
+test error::tests::app_error_not_found_404 ... ok
+test error::tests::app_error_timeout_504 ... ok
+test routes::search::tests::_suppress_unused_search_source_warning ... ok
+test error::tests::app_error_renderer_500 ... ok
+test routes::search::tests::byok_config_clears_reasoning_effort ... ok
+test routes::search::tests::byok_config_none_without_api_key ... ok
+test routes::search::tests::is_abstention_detects_marker_phrases ... ok
+test routes::search::tests::is_abstention_false_for_normal_answer ... ok
+test routes::search::tests::map_search_error_blocked_never_exposes_arbitrary_engine_text ... ok
+test routes::search::tests::map_search_error_blocked_has_typed_502_response ... ok
+test routes::search::tests::map_search_error_timeout_to_timeout ... ok
+test routes::search::tests::map_search_error_transport_names_sanitized_host ... ok
+test routes::search::tests::map_search_error_upstream_to_http_error ... ok
+test routes::search::tests::validate_accepts_engines_at_cap ... ok
+test routes::search::tests::validate_accepts_basic_request ... ok
+test routes::search::tests::validate_rejects_empty_query ... ok
+test routes::search::tests::validate_rejects_limit_above_max ... ok
+test routes::search::tests::validate_rejects_too_many_engines ... ok
+test routes::search::tests::validate_rejects_oversized_query ... ok
+test routes::search::tests::validate_rejects_zero_limit ... ok
+test routes::v2::adapters::tests::pagination_skip_next_and_credits ... ok
+test routes::v2::adapters::tests::rfc3339_matches_known_epoch ... ok
+test routes::v2::adapters::tests::v2_images_flatten_to_url_strings ... ok
+test routes::v2::adapters::tests::v2_metadata_omits_absent_renderer_provenance ... ok
+test routes::v2::adapters::tests::v2_metadata_preserves_renderer_provenance ... ok
+test routes::v2::adapters::tests::running_job_emits_next_even_at_buffer_edge ... ok
+test routes::v2::formats::tests::bare_strings_parse ... ok
+test routes::v2::formats::tests::change_tracking_auto_adds_markdown ... ok
+test routes::v2::formats::tests::empty_formats_default_to_markdown ... ok
+test routes::v2::formats::tests::images_format_now_supported ... ok
+test routes::v2::formats::tests::mixed_string_and_object ... ok
+test routes::v2::formats::tests::object_json_lifts_schema ... ok
+test routes::v2::formats::tests::object_missing_type_errors ... ok
+test routes::v2::formats::tests::unknown_format_errors_with_v1_wording ... ok
+test routes::v2::formats::tests::two_screenshots_rejected ... ok
+test routes::v2::scrape::tests::rich_not_found_page_is_still_a_truthful_http_error ... ok
+test routes::v2::formats::tests::unsupported_formats_collected_not_fatal ... ok
+test routes::v2::scrape::tests::v2_response_blocked_serializes_success_false_with_error ... ok
+test routes::v2::scrape::tests::v2_response_clean_omits_error_key ... ok
+test routes::v2::search::tests::v2_response_genuine_empty_success_does_not_invent_failure_or_warning_fields ... ok
+test routes::v2::search::tests::v2_response_preserves_partial_engine_warnings_and_enrichment_warning ... ok
+
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 7.49s
+     Running tests/api.rs (/target/debug/deps/api-8c3249c7d2957e6a)
+
+running 11 tests
+test crawl_start_invalid_url ... ok
+test crawl_start_returns_job_id ... ok
+test crawl_status_not_found ... ok
+test crawl_with_renderer_auto_accepted ... ok
+test crawl_with_renderer_unavailable_returns_400 ... ok
+test health_endpoint_returns_ok ... ok
+test map_endpoint_invalid_url ... ok
+test ready_endpoint_returns_renderers ... ok
+test scrape_endpoint_ftp_url_rejected ... ok
+test scrape_endpoint_invalid_url ... ok
+test scrape_with_renderer_unavailable_returns_400 ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/google_search_contract.rs (/target/debug/deps/google_search_contract-021412f7b140d46f)
+
+running 3 tests
+test google_challenge_returns_typed_502_instead_of_empty_success ... ok
+test blocked_google_with_wikipedia_results_is_partial_success_with_warnings ... ok
+test valid_google_empty_array_remains_success_with_neutral_warning ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.89s
+
+     Running tests/v2_api.rs (/target/debug/deps/v2_api-40e6343443136530)
+
+running 13 tests
+test v2_batch_status_unknown_404 ... ok
+test v2_batch_requires_urls_400 ... ok
+test v2_crawl_active_routes_ok ... ok
+test v2_crawl_status_unknown_404 ... ok
+test v2_extract_requires_urls_400 ... ok
+test v2_extract_status_unknown_404 ... ok
+test v2_map_invalid_url_400 ... ok
+test v2_scrape_auth_ok_reaches_handler ... ok
+test v2_scrape_invalid_url_400 ... ok
+test v2_scrape_job_stub_404 ... ok
+test v2_scrape_object_formats_deserialize ... ok
+test v2_scrape_requires_auth_when_keys_set ... ok
+test v2_scrape_tolerates_unknown_sdk_fields ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+

@@ -1,0 +1,137 @@
+Unable to find image 'node:22-bookworm' locally
+22-bookworm: Pulling from library/node
+0c06829c34ad: Pulling fs layer
+0d48f423dff0: Pulling fs layer
+105754cf457c: Pulling fs layer
+b92563fa790f: Pulling fs layer
+0c06829c34ad: Download complete
+105754cf457c: Download complete
+b92563fa790f: Download complete
+b92563fa790f: Pull complete
+2eb4cc97ddcf: Download complete
+763bd2369550: Download complete
+0d48f423dff0: Download complete
+105754cf457c: Pull complete
+0d48f423dff0: Pull complete
+0c06829c34ad: Pull complete
+Digest: sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
+Status: Downloaded newer image for node:22-bookworm
+npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+
+added 50 packages in 2s
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+PASS linked heading preserves its destination and snippet
+FAIL preceding decoy anchor cannot replace the linked heading destination: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      content: 'Snippet belonging to the correct result.',
+      title: 'The correct result',
++     url: 'https://accounts.google.com/'
+-     url: 'https://example.org/correct'
+    }
+  ]
+
+FAIL nested result wrappers preserve distinct headings without duplicates: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      content: 'First result snippet.',
+      title: 'First organic result',
+      url: 'https://example.org/first'
+    },
+    {
++     content: 'First result snippet.',
++     title: 'First organic result',
++     url: 'https://example.org/first'
++   },
++   {
+      content: 'Second result snippet.',
+      title: 'Second organic result',
+      url: 'https://example.net/second'
+    }
+  ]
+
+FAIL Google tracking q link resolves to the external destination: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      content: 'The tracked destination snippet.',
+      title: 'Tracked organic result',
++     url: 'https://www.google.com/url?q=https%3A%2F%2Fexample.org%2Farticle%3Ftopic%3Drust%26view%3Dfull&sa=U'
+-     url: 'https://example.org/article?topic=rust&view=full'
+    }
+  ]
+
+FAIL empty unsafe malformed and untitled links are not results: Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   {
++     content: '',
++     title: 'Empty destination',
++     url: 'https://www.google.com/search?q=fixture-contract'
++   },
++   {
++     content: '',
++     title: 'Script action',
++     url: 'javascript:void(0)'
++   },
++   {
++     content: '',
++     title: 'Email action',
++     url: 'mailto:reader@example.org'
++   },
++   {
++     content: '',
++     title: 'Inline data',
++     url: 'data:text/plain,not-a-search-result'
++   },
++   {
++     content: '',
++     title: 'Malformed destination',
++     url: 'http://[invalid'
++   },
++   {
++     content: '',
++     title: '',
++     url: 'https://example.org/untitled'
++   },
++   {
++     content: '',
++     title: '   ',
++     url: 'https://example.org/whitespace'
++   }
++ ]
+- []
+
+FAIL provider widgets and unlinked headings are not organic results: Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   {
++     content: '',
++     title: 'Related searches',
++     url: 'https://www.google.com/search?q=related'
++   },
++   {
++     content: '',
++     title: 'Map widget',
++     url: 'https://maps.google.com/'
++   },
++   {
++     content: 'Widget text is not an organic result snippet.',
++     title: 'Knowledge panel heading without a linked title',
++     url: 'https://en.wikipedia.org/wiki/Search_engine'
++   }
++ ]
+- []
+
+1/6 Google DOM fixtures passed

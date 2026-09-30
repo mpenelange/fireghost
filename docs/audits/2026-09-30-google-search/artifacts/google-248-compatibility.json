@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "repoRevision": "69cc7e71483d845166ad246bce74108b3d0529a7",
+  "gateSHA256": "3d3a3daf91839b7da7b755980e57c9ca43b50f1de8402044923e0a6dde9f9b0d",
+  "matrixSHA256": "3d329b7f626f305687c076a933d7a67d1f257c9c6e988ddde4bbd7d15f58d5a7",
+  "endpoints": {
+    "baseline": "http://172.25.0.5:8080",
+    "candidate": "http://172.25.0.9:8080"
+  },
+  "scope": "legacy REST content compatibility; not renderer identity or full-thread completeness",
+  "cases": [
+    {
+      "name": "search-google",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.385
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 8.03
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": false,
+        "reasons": [
+          "candidate comparison ratio below threshold"
+        ],
+        "ratio": 0.0
+      }
+    },
+    {
+      "name": "search-google",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.775
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 5.806
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": false,
+        "reasons": [
+          "candidate comparison ratio below threshold"
+        ],
+        "ratio": 0.0
+      }
+    }
+  ],
+  "metrics": {
+    "baselineBefore": {
+      "search": 0,
+      "scrape": 0
+    },
+    "candidateBefore": {
+      "search": 0,
+      "scrape": 0
+    },
+    "baselineAfter": {
+      "search": 0,
+      "scrape": 0
+    },
+    "candidateAfter": {
+      "search": 0,
+      "scrape": 0
+    }
+  },
+  "reasons": [
+    "cold/search-google/comparison: candidate comparison ratio below threshold",
+    "warm/search-google/comparison: candidate comparison ratio below threshold"
+  ],
+  "passed": false
+}

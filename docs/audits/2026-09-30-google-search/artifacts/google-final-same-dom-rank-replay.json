@@ -1,0 +1,157 @@
+{
+  "scope": "actual public CamofoxSearchClient scoring and merge followed by actual transform_flat(limit5); final warm documents, with identical-extractor cross-document control",
+  "controlDocument": "first246tab returned by browser API, service ownership not inferred from enumeration",
+  "arrays": [
+    {
+      "label": "dom-fireghost-google-246-0-candidate",
+      "rawCount": 6,
+      "mappedCount": 6,
+      "top5TitleHashes": [
+        "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+        "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+        "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+        "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+        "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b"
+      ],
+      "top5UrlHashes": [
+        "1e45b5a169db0ca53cd8062090480a97e4b879d259f8185eaf0ff3724b9dc2ad",
+        "2d0bf2d27201cd7d40777cde13a2d388ebe3e1e18e94d93def664d192494a5cf",
+        "c2d857b54e572a206599fdb026c19a7349b7f15f6d82257c8c6f3c4d8b1c94e3",
+        "7cedb894196846b0332cd37305a677f40962ac195b84ebe9b1135c678ea87bc7",
+        "020a44dd67f4b5fe5ddef6dc275d470cb3f258ee23d511486067f954afb89ccf"
+      ]
+    },
+    {
+      "label": "dom-fireghost-google-246-0-legacy",
+      "rawCount": 6,
+      "mappedCount": 6,
+      "top5TitleHashes": [
+        "09d04a76fec6bf66190046bdaad55dd063a6dd1c332734adc165be3a82606ae9",
+        "04e095cd9c5c652394cd91dee88bcb956f131b105d4784e62b95af2661c7808c",
+        "6eab1432159e3b134f5f3b8536406c12bf240d09cb30f3668915152536459e2f",
+        "8005db898448a804bfca90c544d2ad11fbc64e79588a3296ee4dec87fca2bf7b",
+        "295df5e8b65de12cec0b3dc8f8e3ba2a141f57362586b6a23d3937f15f8bf63b"
+      ],
+      "top5UrlHashes": [
+        "1e45b5a169db0ca53cd8062090480a97e4b879d259f8185eaf0ff3724b9dc2ad",
+        "2d0bf2d27201cd7d40777cde13a2d388ebe3e1e18e94d93def664d192494a5cf",
+        "c2d857b54e572a206599fdb026c19a7349b7f15f6d82257c8c6f3c4d8b1c94e3",
+        "7cedb894196846b0332cd37305a677f40962ac195b84ebe9b1135c678ea87bc7",
+        "020a44dd67f4b5fe5ddef6dc275d470cb3f258ee23d511486067f954afb89ccf"
+      ]
+    },
+    {
+      "label": "dom-fireghost-google-246-1-candidate",
+      "rawCount": 6,
+      "mappedCount": 6,
+      "top5TitleHashes": [
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "bd8f960b0aed588049e60676871a538f93983121079440487392f81fa41d0edb",
+        "9892b01d030cca5d1638dbd08447478046e8f6486474ccc88d7407ddc2dd2d3f",
+        "7b1aaa629b87357f348c56735a71c6741410a987719c147fd21ec821adadb39c",
+        "f9d1c0cc50cd13b7060f412ece3545fa418c402d0d383d049699e7923c0d4ce9"
+      ],
+      "top5UrlHashes": [
+        "9a9871e04a8c6c676b34e9660a99f82b3373cbb045d654085e004a821ab8a031",
+        "411000c9c7713a4bc778109405b8b2a2e191cfeaec7921bc2cb98cbb32fb9c03",
+        "519f073d727d0edcab0f3531790eac1c3c812c6010b368a361bb186a87eaed78",
+        "c2999c9c37e963e85b0321a61f0e718df829056f2566d8c7596595ed15d7b2f2",
+        "7cb5f50e24ac1eb03989659385440f655770826a5afaa81856ac714ffd748531"
+      ]
+    },
+    {
+      "label": "dom-fireghost-google-246-1-legacy",
+      "rawCount": 8,
+      "mappedCount": 8,
+      "top5TitleHashes": [
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "3e7c44f74a79fa0e5169a87ddef5a4a77de9e8998dea2954bc90fd9f0fda5934",
+        "3e7c44f74a79fa0e5169a87ddef5a4a77de9e8998dea2954bc90fd9f0fda5934",
+        "bd8f960b0aed588049e60676871a538f93983121079440487392f81fa41d0edb",
+        "9892b01d030cca5d1638dbd08447478046e8f6486474ccc88d7407ddc2dd2d3f"
+      ],
+      "top5UrlHashes": [
+        "9a9871e04a8c6c676b34e9660a99f82b3373cbb045d654085e004a821ab8a031",
+        "8e80dcabb4d014b6548934121a564b9d761a5616f69e60bcb6955cdb31fed106",
+        "8dd42e4d7aa665dc39c0e5ca7e62ec7f7e5bd8958bc696ff1f1580c206ef7741",
+        "411000c9c7713a4bc778109405b8b2a2e191cfeaec7921bc2cb98cbb32fb9c03",
+        "519f073d727d0edcab0f3531790eac1c3c812c6010b368a361bb186a87eaed78"
+      ]
+    },
+    {
+      "label": "dom-fireghost-google-248-0-candidate",
+      "rawCount": 9,
+      "mappedCount": 9,
+      "top5TitleHashes": [
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a"
+      ],
+      "top5UrlHashes": [
+        "7a96536cff332c0ebd60fc4e26605454f22b9096eaa30efe65c35494745f5be3",
+        "99d7eeac31d68aa006a86cf9d146798a0dacdb3c3fa2d500a7ccb490acf33ef3",
+        "d024a0567be23b3bd7abe6f49f58ada92c9461063ceede38bcc3739fb973cbdf",
+        "952d69926d115846accb495c167e376b8a5dbfeff919fdfd83d47a35b8926306",
+        "4db945073aa91f67b0cd2569f8b141333b57b4bf69d5d3599d21a144e28f3b22"
+      ]
+    },
+    {
+      "label": "dom-fireghost-google-248-0-legacy",
+      "rawCount": 9,
+      "mappedCount": 9,
+      "top5TitleHashes": [
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "e5aa0aa53ee9dc3f86991903fe27c669fcb068c6b0b120596cf5ac50d8398631",
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "d8c3b0023c80c06ee67c9bc2f0b777f894fa4b54ad380fdd8702325d9a7e2fd3",
+        "19b0652b783ceab9222f80098ca9dd056b4e60d82f995290b38ed686ffc1493a"
+      ],
+      "top5UrlHashes": [
+        "7a96536cff332c0ebd60fc4e26605454f22b9096eaa30efe65c35494745f5be3",
+        "99d7eeac31d68aa006a86cf9d146798a0dacdb3c3fa2d500a7ccb490acf33ef3",
+        "d024a0567be23b3bd7abe6f49f58ada92c9461063ceede38bcc3739fb973cbdf",
+        "952d69926d115846accb495c167e376b8a5dbfeff919fdfd83d47a35b8926306",
+        "4db945073aa91f67b0cd2569f8b141333b57b4bf69d5d3599d21a144e28f3b22"
+      ]
+    }
+  ],
+  "sameDocumentComparisons": [
+    {
+      "page": "dom-fireghost-google-246-0",
+      "ratio": 1.0,
+      "baselineTop5": 5,
+      "candidateTop5": 5,
+      "passed": true
+    },
+    {
+      "page": "dom-fireghost-google-246-1",
+      "ratio": 0.75,
+      "baselineTop5": 4,
+      "candidateTop5": 5,
+      "passed": true
+    },
+    {
+      "page": "dom-fireghost-google-248-0",
+      "ratio": 1.0,
+      "baselineTop5": 3,
+      "candidateTop5": 3,
+      "passed": true
+    }
+  ],
+  "crossDocumentComparisons": [
+    {
+      "page": "dom-fireghost-google-246-1",
+      "controlLegacyVersusPageLegacy": 0.0,
+      "controlLegacyVersusPageCandidate": 0.0,
+      "legacyUrlOverlap": 0.0
+    },
+    {
+      "page": "dom-fireghost-google-248-0",
+      "controlLegacyVersusPageLegacy": 0.0,
+      "controlLegacyVersusPageCandidate": 0.0,
+      "legacyUrlOverlap": 0.0
+    }
+  ]
+}

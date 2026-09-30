@@ -1,0 +1,39 @@
+{
+  "sourceCheckoutClean": true,
+  "sourceRevision": "a1f0baf6e73412272dcfac4cf64fe0001765aa7a",
+  "stacks": [
+    {
+      "name": "baseline",
+      "imageId": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+      "health": {
+        "status": "ok",
+        "version": "1.2.0",
+        "package_version": "1.2.0",
+        "revision": "c7a58561821496d33f7d46497665db63002022cd",
+        "build_date": "2026-09-12T03:16:19+00:00"
+      }
+    },
+    {
+      "name": "candidate",
+      "imageId": "sha256:60dfe8b9919dbfdb4e57562cbbcb12805cba681311fbacf1fa5b7cce1d60ce4a",
+      "health": {
+        "status": "ok",
+        "version": "1.2.0-google-candidate",
+        "package_version": "1.2.0",
+        "revision": "a1f0baf6e73412272dcfac4cf64fe0001765aa7a",
+        "build_date": "2026-09-30"
+      }
+    },
+    {
+      "name": "candidate248",
+      "imageId": "sha256:60dfe8b9919dbfdb4e57562cbbcb12805cba681311fbacf1fa5b7cce1d60ce4a",
+      "health": {
+        "status": "ok",
+        "version": "1.2.0-google-candidate",
+        "package_version": "1.2.0",
+        "revision": "a1f0baf6e73412272dcfac4cf64fe0001765aa7a",
+        "build_date": "2026-09-30"
+      }
+    }
+  ]
+}

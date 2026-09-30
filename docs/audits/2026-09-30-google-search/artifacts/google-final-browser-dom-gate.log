@@ -1,0 +1,42 @@
+docker run --rm --memory 1g --memory-swap 1g --cpus 1 \
+	-v "/home/dev/fireghost-google-20260930/source/crw:/source/crw:ro" node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7 sh -ec '\
+	mkdir -p /tmp/crw/crates; \
+	cp -R /source/crw/crates/crw-renderer /source/crw/crates/crw-search /tmp/crw/crates/; \
+	cd /tmp/crw/crates/crw-renderer/tests/pipeline_dom; \
+	npm ci --ignore-scripts --no-audit; \
+	node runner.cjs; \
+	node /tmp/crw/crates/crw-search/tests/google_dom/runner.cjs'
+npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+
+added 50 packages in 2s
+
+7 packages are looking for funding
+  run `npm fund` for details
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+PASS article uses real Readability, keeps links, and preserves live DOM
+PASS article never returns a complete page when Readability finds no content
+PASS modern Reddit keeps exact thread, own bodies, parent links, and deleted markers
+PASS old Reddit preserves nesting without duplicating child bodies or inventing deleted IDs
+PASS link-only and deleted-text posts retain a readable requested title
+PASS one safe modern expansion loads a reply, leaves vote/report/reply actions untouched
+PASS old inline load-more controls expand only one safe action
+PASS post identity mismatch, offsite hosts, and conflicting comment parent IDs fail closed
+PASS block screen differs from valid thread quotations and missing comment hydration
+PASS UTF-8 and escaped oversized content is bounded, structurally valid, explicitly partial
+PASS seen-ID cursor reaches later already-loaded comments across bounded snapshots
+PASS unsafe HTML and external load-more navigation are never exported or clicked
+{"tests":12,"passed":12,"failed":0}
+PASS linked heading preserves its destination and snippet
+PASS preceding decoy anchor cannot replace the linked heading destination
+PASS nested result wrappers preserve distinct headings without duplicates
+PASS Google tracking q link resolves to the external destination
+PASS empty unsafe malformed and untitled links are not results
+PASS provider widgets and unlinked headings are not organic results
+PASS heading owns one child link but ambiguous child links are not guessed
+PASS snippet ascends only single-heading wrappers without borrowing another result
+PASS sitelink headings stay inside their primary result while nested result cards remain distinct
+9/9 Google DOM fixtures passed

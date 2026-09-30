@@ -1,0 +1,56 @@
+   Compiling crw-search v1.2.0 (/work/crw/crates/crw-search)
+    Finished `test` profile [unoptimized] target(s) in 1.66s
+     Running tests/google_navigation_tests.rs (target/debug/deps/google_navigation_tests-78e28e302c3abda2)
+
+running 6 tests
+test challenge_is_classified_only_after_a_new_document_is_observed ... FAILED
+test google_schedules_navigation_and_accepts_only_new_document_rows ... FAILED
+test malformed_or_truncated_navigation_identity_is_rejected_before_polling ... FAILED
+test old_challenge_document_does_not_block_a_fresh_valid_search ... FAILED
+test same_query_old_document_never_establishes_empty_or_nonempty_success ... FAILED
+test wikipedia_keeps_direct_navigation_and_legacy_row_array_extraction ... ok
+
+failures:
+
+---- challenge_is_classified_only_after_a_new_document_is_observed stdout ----
+
+thread 'challenge_is_classified_only_after_a_new_document_is_observed' (42) panicked at crates/crw-search/tests/google_navigation_tests.rs:219:5:
+assertion failed: matches!(client.fetch(&params(SearchEngine::Google)).await,
+    Err(SearchError::Blocked { engine }) if engine == "google")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- google_schedules_navigation_and_accepts_only_new_document_rows stdout ----
+
+thread 'google_schedules_navigation_and_accepts_only_new_document_rows' (43) panicked at crates/crw-search/tests/google_navigation_tests.rs:183:68:
+called `Result::unwrap()` on an `Err` value: Timeout
+
+---- malformed_or_truncated_navigation_identity_is_rejected_before_polling stdout ----
+
+thread 'malformed_or_truncated_navigation_identity_is_rejected_before_polling' (46) panicked at crates/crw-search/tests/google_navigation_tests.rs:256:9:
+assertion failed: matches!(client.fetch(&params(SearchEngine::Google)).await,
+    Err(SearchError::InvalidResponse(_)))
+
+---- old_challenge_document_does_not_block_a_fresh_valid_search stdout ----
+
+thread 'old_challenge_document_does_not_block_a_fresh_valid_search' (47) panicked at crates/crw-search/tests/google_navigation_tests.rs:236:5:
+assertion `left == right` failed
+  left: Some("Old document result")
+ right: Some("Fresh document result")
+
+---- same_query_old_document_never_establishes_empty_or_nonempty_success stdout ----
+
+thread 'same_query_old_document_never_establishes_empty_or_nonempty_success' (48) panicked at crates/crw-search/tests/google_navigation_tests.rs:201:9:
+assertion failed: matches!(client.fetch(&params(SearchEngine::Google)).await,
+    Err(SearchError::Timeout))
+
+
+failures:
+    challenge_is_classified_only_after_a_new_document_is_observed
+    google_schedules_navigation_and_accepts_only_new_document_rows
+    malformed_or_truncated_navigation_identity_is_rejected_before_polling
+    old_challenge_document_does_not_block_a_fresh_valid_search
+    same_query_old_document_never_establishes_empty_or_nonempty_success
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.95s
+
+error: test failed, to rerun pass `-p crw-search --test google_navigation_tests`

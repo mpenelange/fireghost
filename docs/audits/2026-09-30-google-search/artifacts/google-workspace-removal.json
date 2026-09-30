@@ -1,0 +1,9 @@
+{
+  "guestTaskWorkspace": "/home/dev/fireghost-google-20260930",
+  "guestWorkspaceRemovedAndAbsenceVerified": true,
+  "guestCargoTargetsRegistryBinariesProfilesAndArchivesRemoved": true,
+  "localGoogleTemporaryFilesRemoved": true,
+  "localCompiledTargetsCreated": false,
+  "selectedEvidenceTransferredAndChecksumsVerifiedBeforeRemoval": true,
+  "originalCheckoutUnrelatedChangesPreserved": true
+}

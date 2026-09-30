@@ -1,0 +1,23 @@
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+    Finished `test` profile [unoptimized] target(s) in 7.89s
+     Running unittests src/lib.rs (/target/debug/deps/crw_search-57fcb1885d6fee0b)
+
+running 1 test
+test camofox_search::extractor_tests::google_challenge_paths_include_bare_sorry_without_matching_other_routes ... FAILED
+
+failures:
+
+---- camofox_search::extractor_tests::google_challenge_paths_include_bare_sorry_without_matching_other_routes stdout ----
+
+thread 'camofox_search::extractor_tests::google_challenge_paths_include_bare_sorry_without_matching_other_routes' (1044) panicked at crates/crw-search/src/camofox_search.rs:987:13:
+https://www.google.com/sorry
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    camofox_search::extractor_tests::google_challenge_paths_include_bare_sorry_without_matching_other_routes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 88 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p crw-search --lib`
