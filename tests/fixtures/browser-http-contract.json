@@ -5,7 +5,8 @@
   "requiredHealth": {"ok": true, "running": true, "engine": "camoufox"},
   "target": {
     "url": "https://example.com/",
-    "requiredText": ["Example Domain"],
+    "requiredTitle": "Example Domain",
+    "requiredText": ["documentation examples"],
     "minimumTextChars": 40
   },
   "budgets": {

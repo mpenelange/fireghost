@@ -41,7 +41,7 @@ class BrowserHTTPContractGateTests(unittest.TestCase):
         if path.endswith("/wait"):
             return 200, {"ok": True, "ready": True}
         if path.endswith("/evaluate"):
-            result = {"url": "https://example.com/", "title": "Example Domain", "text": "Example Domain " * 10}
+            result = {"url": "https://example.com/", "title": "Example Domain", "text": "This domain is for use in documentation examples without needing permission. Avoid use in operations."}
             if "JSON.stringify" in payload["expression"]:
                 result = json.dumps(result)
             return 200, {"result": result, "truncated": False}
@@ -80,9 +80,41 @@ class BrowserHTTPContractGateTests(unittest.TestCase):
         self.assertTrue(all(call[4] == 262144 for call in self.calls))
         stored = json.dumps(artifact)
         self.assertNotIn("must-not-record-key", stored)
-        self.assertNotIn("Example Domain Example Domain", stored)
+        self.assertNotIn("documentation examples without needing permission", stored)
         self.assertEqual(artifact["runtime_manifest"]["image_reference"], IMAGE)
         self.assertEqual(artifact["runtime_manifest"]["repo_revision"], "test-revision")
+
+    def test_current_example_domain_body_does_not_need_the_title_as_a_heading(self):
+        def request(*args):
+            status, reply = self.requester(*args)
+            if args[3].endswith("/evaluate"):
+                encoded = isinstance(reply["result"], str)
+                snapshot = json.loads(reply["result"]) if encoded else reply["result"]
+                snapshot["title"] = "Example Domain"
+                snapshot["text"] = "This domain is for use in documentation examples without needing permission. Avoid use in operations."
+                reply["result"] = json.dumps(snapshot) if encoded else snapshot
+            return status, reply
+        artifact = self.run_gate(request)
+        self.assertTrue(artifact["passed"], artifact["reasons"])
+        self.assertEqual(len(artifact["evaluations"]), 4, "both encodings must pass in both cycles")
+        self.assertTrue(artifact["cleanup"]["passed"])
+
+    def test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers(self):
+        for title in ["Unexpected Page", "example domain", "Example Domain - challenge"]:
+            with self.subTest(title=title):
+                def request(*args):
+                    status, reply = self.requester(*args)
+                    if args[3].endswith("/evaluate"):
+                        encoded = isinstance(reply["result"], str)
+                        snapshot = json.loads(reply["result"]) if encoded else reply["result"]
+                        snapshot["title"] = title
+                        snapshot["text"] = "Example Domain: This domain is for use in documentation examples without needing permission."
+                        reply["result"] = json.dumps(snapshot) if encoded else snapshot
+                    return status, reply
+                artifact = self.run_gate(request)
+                self.assertFalse(artifact["passed"], "body markers alone must not validate a different page title")
+                self.assertIn("evaluation-title", " ".join(artifact["reasons"]))
+                self.assertTrue(artifact["cleanup"]["passed"])
 
     def test_each_run_uses_a_new_profile(self):
         first = self.run_gate()

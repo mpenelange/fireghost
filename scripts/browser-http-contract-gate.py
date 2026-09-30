@@ -63,6 +63,8 @@ def _validate_fixture(fixture):
     target = fixture.get("target", {})
     if target.get("url") != "https://example.com/":
         raise ValueError("contract target must remain the public example.com control")
+    if target.get("requiredTitle") != "Example Domain":
+        raise ValueError("contract target must require the exact Example Domain title")
     minimum = target.get("minimumTextChars")
     markers = target.get("requiredText")
     if (type(minimum) is not int or not 1 <= minimum <= 1000
@@ -233,6 +235,7 @@ def run_gate(*, endpoint, api_key, expected_version, image_reference, output, fi
                 _expect(isinstance(snapshot, dict), "evaluation-object-shape")
                 text = snapshot.get("text")
                 _expect(snapshot.get("url") == fixture["target"]["url"] and isinstance(snapshot.get("title"), str), "evaluation-identity")
+                _expect(snapshot["title"] == fixture["target"]["requiredTitle"], "evaluation-title")
                 _expect(isinstance(text, str) and len(text) >= fixture["target"]["minimumTextChars"], "evaluation-content-size")
                 _expect(all(marker.casefold() in text.casefold() for marker in fixture["target"]["requiredText"]), "evaluation-required-text")
                 artifact["evaluations"].append({"cycle": cycle, "encoding": encoding, "text_chars": len(text), "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
