@@ -1,0 +1,53 @@
+--- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict (0.00s)
+    --- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict/value= (0.00s)
+        browser_pipeline_test.go:26: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict/value=false (0.00s)
+        browser_pipeline_test.go:26: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict/value=true (0.00s)
+        browser_pipeline_test.go:26: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict/value=TRUE (0.00s)
+        browser_pipeline_test.go:21: invalid opt-in = <nil>
+    --- FAIL: TestBrowserPipelineConfigIsExplicitAndStrict/value=1 (0.00s)
+        browser_pipeline_test.go:21: invalid opt-in = <nil>
+FAIL
+FAIL	web-retrieval/internal/config	0.004s
+--- FAIL: TestBrowserPipelineForwardsPartialResultsWithoutCacheOrCloud (0.00s)
+    browser_pipeline_test.go:64: missing BrowserPipelineEnabled configuration
+--- FAIL: TestBrowserPipelineNeverFallsBackAndPreservesFailureBodies (0.00s)
+    --- FAIL: TestBrowserPipelineNeverFallsBackAndPreservesFailureBodies/OK (0.00s)
+        browser_pipeline_test.go:95: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineNeverFallsBackAndPreservesFailureBodies/Bad_Request (0.00s)
+        browser_pipeline_test.go:95: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineNeverFallsBackAndPreservesFailureBodies/Too_Many_Requests (0.00s)
+        browser_pipeline_test.go:95: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineNeverFallsBackAndPreservesFailureBodies/Bad_Gateway (0.00s)
+        browser_pipeline_test.go:95: missing BrowserPipelineEnabled configuration
+--- FAIL: TestBrowserPipelineMCPSuccessRequiresPipelineAndContent (0.00s)
+    --- FAIL: TestBrowserPipelineMCPSuccessRequiresPipelineAndContent/{"success":true,"data":{"markdown":"ok"}} (0.00s)
+        browser_pipeline_test.go:115: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineMCPSuccessRequiresPipelineAndContent/{"success":true,"data":{"markdown":"ok","metadata":{"pipeline":"generic"}}} (0.00s)
+        browser_pipeline_test.go:115: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineMCPSuccessRequiresPipelineAndContent/{"success":true,"data":{"markdown":"_","metadata":{"pipeline":"browser-v1"}}} (0.00s)
+        browser_pipeline_test.go:115: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineMCPSuccessRequiresPipelineAndContent/{"success":true,"data":{"web":[{"url":"https://example.test"}],"metadata":{"pipeline":"browser-v1"}}} (0.00s)
+        browser_pipeline_test.go:115: missing BrowserPipelineEnabled configuration
+--- FAIL: TestBrowserPipelineToolPublishesTypedInputSchema (0.00s)
+    browser_pipeline_test.go:124: missing BrowserPipelineEnabled configuration
+--- FAIL: TestBrowserPipelineAuthenticationRequestResponseLimitsAndTimeout (0.00s)
+    --- FAIL: TestBrowserPipelineAuthenticationRequestResponseLimitsAndTimeout/auth (0.00s)
+        browser_pipeline_test.go:148: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineAuthenticationRequestResponseLimitsAndTimeout/request_bound (0.00s)
+        browser_pipeline_test.go:148: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineAuthenticationRequestResponseLimitsAndTimeout/response_bound (0.00s)
+        browser_pipeline_test.go:148: missing BrowserPipelineEnabled configuration
+    --- FAIL: TestBrowserPipelineAuthenticationRequestResponseLimitsAndTimeout/timeout (0.00s)
+        browser_pipeline_test.go:148: missing BrowserPipelineEnabled configuration
+--- FAIL: TestBrowserPipelineCoalescesConcurrentRequests (0.00s)
+    browser_pipeline_test.go:162: missing BrowserPipelineEnabled configuration
+FAIL
+FAIL	web-retrieval/internal/router	0.012s
+--- FAIL: TestBrowserPipelineRuntimeWiresOptIn (0.00s)
+    browser_pipeline_test.go:21: runtime did not parse BrowserPipelineEnabled
+FAIL
+FAIL	web-retrieval/cmd/router	0.006s
+FAIL

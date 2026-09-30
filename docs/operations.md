@@ -40,7 +40,11 @@ not prove that every comment was retrieved. Consumers must inspect
 `maxBytes` limits content rather than the complete HTTP envelope. Browser result
 truncation, blocked pages, and a different Reddit thread are errors. Tab cleanup
 is bounded and best effort; a subsequent request must successfully clear its
-own profile's stale tabs before opening another one.
+own profile's stale tabs before opening another one. A blank-tab creation HTTP
+5xx permits one acknowledged reset of that leased profile and one retry within
+the original deadline. Transport failures and timeouts do not trigger that retry.
+Anonymous old Reddit URLs can redirect to login; those responses fail thread
+identity validation. Use a public thread URL that the browser can actually open.
 
 For the isolated KVM test guest on docker0, use
 `ssh -J michael@docker0 dev@192.168.153.10`. Its setup files are under

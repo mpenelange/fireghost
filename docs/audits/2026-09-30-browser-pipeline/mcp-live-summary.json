@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "isError": false,
+  "elapsedMs": 4858,
+  "responseBytes": 94085,
+  "pipeline": "browser-v1",
+  "complete": true,
+  "markdownBytes": 45752
+}

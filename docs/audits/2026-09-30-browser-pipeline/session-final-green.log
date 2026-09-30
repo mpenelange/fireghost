@@ -1,0 +1,47 @@
+info: downloading 2 components
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `test` profile [unoptimized] target(s) in 6.29s
+     Running tests/browser_pipeline_tests.rs (/target/debug/deps/browser_pipeline_tests-6b8aa28a342cb9ca)
+
+running 20 tests
+test article_uses_blank_tab_then_bounded_snapshot_and_always_closes ... ok
+test blocked_or_oversized_article_is_not_returned_as_content ... ok
+test concurrent_jobs_use_at_most_two_reusable_profiles ... ok
+test expired_deadline_never_creates_a_tab ... ok
+test failed_blank_create_resets_only_its_own_session_and_retries_once ... ok
+test missing_comment_identity_is_explicitly_partial_without_inventing_ids ... ok
+test expansion_settles_before_collecting_delayed_comments ... ok
+test overflow_snapshots_drain_late_ids_before_expanding ... ok
+test reddit_accumulates_by_id_preserves_parents_and_reports_partial ... ok
+test navigation_error_and_deadline_both_reap_known_tab ... ok
+test repeated_create_failure_does_not_loop_or_navigate ... ok
+test reddit_limits_keep_existing_items_and_never_claim_complete ... ok
+test reset_requires_explicit_acknowledgement_before_retrying_create ... ok
+test total_comment_payload_respects_max_bytes ... ok
+test unguarded_browser_version_is_refused_before_tab_creation ... ok
+test unreaped_scoped_tab_prevents_opening_another ... ok
+test validates_budgets_and_reddit_identity_before_browser_work ... ok
+test truncated_or_malformed_evaluation_fails_and_closes ... ok
+test verified_thread_can_discuss_a_network_security_block ... ok
+test wrong_thread_identity_is_rejected_and_closed ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s
+
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 18.43s
+     Running tests/browser_pipeline.rs (/target/debug/deps/browser_pipeline-ba06aa0a8a0bb317)
+
+running 4 tests
+test browser_pipeline_rejects_invalid_input_before_browser ... ok
+test browser_pipeline_inherits_auth_and_method_rejection ... ok
+test browser_pipeline_requires_camofox_configuration ... ok
+test browser_pipeline_returns_compacted_article_and_closes_tab ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+    Checking crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Checking crw-crawl v1.2.0 (/src/crates/crw-crawl)
+    Checking crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `dev` profile [unoptimized] target(s) in 11.23s

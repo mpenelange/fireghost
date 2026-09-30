@@ -1,0 +1,9 @@
+{
+  "tools": [
+    "search",
+    "scrape",
+    "browser_scrape"
+  ],
+  "browserUnknownFieldsAllowed": false,
+  "invalidURLIsError": true
+}

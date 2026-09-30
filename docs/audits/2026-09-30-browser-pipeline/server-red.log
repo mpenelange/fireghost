@@ -1,0 +1,166 @@
+ Downloading crates ...
+  Downloaded block-buffer v0.10.4
+  Downloaded bytesize v2.7.0
+  Downloaded anyhow v1.0.104
+  Downloaded expect-json-macros v1.11.0
+  Downloaded crypto-common v0.1.7
+  Downloaded generic-array v0.14.7
+  Downloaded hex v0.4.3
+  Downloaded clap v4.6.7
+  Downloaded clap_lex v1.1.1
+  Downloaded cpufeatures v0.2.17
+  Downloaded inventory v0.3.24
+  Downloaded heck v0.5.0
+  Downloaded matchers v0.2.0
+  Downloaded hashlink v0.10.0
+  Downloaded data-encoding v2.11.1
+  Downloaded digest v0.10.7
+  Downloaded foldhash v0.1.5
+  Downloaded diff v0.1.13
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded clap_derive v4.6.7
+  Downloaded expect-json v1.11.0
+  Downloaded pretty_assertions v1.4.1
+  Downloaded hashbrown v0.15.5
+  Downloaded clap_builder v4.6.7
+  Downloaded reserve-port v2.5.0
+  Downloaded rust-multipart-rfc7578_2 v0.9.0
+  Downloaded axum-test v19.1.1
+  Downloaded sha1 v0.10.7
+  Downloaded sha2 v0.10.9
+  Downloaded sharded-slab v0.1.7
+  Downloaded similar v2.7.0
+  Downloaded thread_local v1.1.10
+  Downloaded strsim v0.11.1
+  Downloaded tokio-tungstenite v0.28.0
+  Downloaded tracing-serde v0.2.0
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded tracing-log v0.2.0
+  Downloaded typetag v0.2.23
+  Downloaded typetag-impl v0.2.23
+  Downloaded tungstenite v0.28.0
+  Downloaded yansi v1.0.1
+  Downloaded yaml-rust2 v0.10.4
+   Compiling tracing-core v0.1.36
+   Compiling generic-array v0.14.7
+   Compiling tracing v0.1.44
+   Compiling h2 v0.4.19
+   Compiling tower v0.5.3
+   Compiling tower-http v0.6.11
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling anstream v1.0.0
+   Compiling chrono v0.4.45
+   Compiling num v0.4.3
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling hyper v1.11.1
+   Compiling lopdf v0.45.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.5
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling reqwest v0.12.28
+   Compiling env_logger v0.11.11
+   Compiling sha1 v0.10.7
+   Compiling fraction v0.15.4
+   Compiling data-encoding v2.11.1
+   Compiling jsonschema v0.28.3
+   Compiling tungstenite v0.28.0
+   Compiling pdf-inspector v1.21.0
+   Compiling tokio-tungstenite v0.28.0
+   Compiling sha2 v0.10.9
+   Compiling axum-core v0.5.6
+   Compiling similar v2.7.0
+   Compiling hex v0.4.3
+   Compiling strsim v0.11.1
+   Compiling typetag v0.2.23
+   Compiling clap_lex v1.1.1
+   Compiling heck v0.5.0
+   Compiling clap_derive v4.6.7
+   Compiling clap_builder v4.6.7
+   Compiling crw-diff v1.2.0 (/src/crates/crw-diff)
+   Compiling axum v0.8.9
+   Compiling tracing-log v0.2.0
+   Compiling tracing-serde v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling matchers v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling typetag-impl v0.2.23
+   Compiling nu-ansi-term v0.50.3
+   Compiling foldhash v0.1.5
+   Compiling inventory v0.3.24
+   Compiling anyhow v1.0.104
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling hashbrown v0.15.5
+   Compiling tracing-subscriber v0.3.23
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling clap v4.6.7
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+   Compiling expect-json-macros v1.11.0
+   Compiling diff v0.1.13
+   Compiling yansi v1.0.1
+   Compiling pretty_assertions v1.4.1
+   Compiling expect-json v1.11.0
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling hashlink v0.10.0
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+   Compiling rust-multipart-rfc7578_2 v0.9.0
+   Compiling reserve-port v2.5.0
+   Compiling bytesize v2.7.0
+   Compiling axum-test v19.1.1
+   Compiling wiremock v0.6.5
+   Compiling yaml-rust2 v0.10.4
+    Finished `test` profile [unoptimized] target(s) in 1m 36s
+     Running tests/browser_pipeline.rs (/target/debug/deps/browser_pipeline-ba06aa0a8a0bb317)
+
+running 3 tests
+test browser_pipeline_rejects_invalid_input_before_browser ... FAILED
+test browser_pipeline_inherits_auth_and_method_rejection ... FAILED
+test browser_pipeline_requires_camofox_configuration ... FAILED
+
+failures:
+
+---- browser_pipeline_rejects_invalid_input_before_browser stdout ----
+
+thread 'browser_pipeline_rejects_invalid_input_before_browser' (1028) panicked at crates/crw-server/tests/browser_pipeline.rs:21:11:
+assertion failed: `(left == right)`: Expected status code to be 400 (Bad Request), received 404 (Not Found), for request POST http://localhost/v2/browser/scrape, with body ''
+
+[1mDiff[0m [31m< left[0m / [32mright >[0m :
+[31m<40[0m[1;48;5;52;31m0[0m
+[32m>40[0m[1;48;5;22;32m4[0m
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- browser_pipeline_inherits_auth_and_method_rejection stdout ----
+
+thread 'browser_pipeline_inherits_auth_and_method_rejection' (1027) panicked at crates/crw-server/tests/browser_pipeline.rs:38:81:
+assertion failed: `(left == right)`: Expected status code to be 401 (Unauthorized), received 404 (Not Found), for request POST http://localhost/v2/browser/scrape, with body ''
+
+[1mDiff[0m [31m< left[0m / [32mright >[0m :
+[31m<40[0m[1;48;5;52;31m1[0m
+[32m>40[0m[1;48;5;22;32m4[0m
+
+
+
+---- browser_pipeline_requires_camofox_configuration stdout ----
+
+thread 'browser_pipeline_requires_camofox_configuration' (1029) panicked at crates/crw-server/tests/browser_pipeline.rs:31:7:
+assertion failed: `(left == right)`: Expected status code to be 503 (Service Unavailable), received 404 (Not Found), for request POST http://localhost/v2/browser/scrape, with body ''
+
+[1mDiff[0m [31m< left[0m / [32mright >[0m :
+[31m<[0m[1;48;5;52;31m5[0m[31m0[0m[1;48;5;52;31m3[0m
+[32m>[0m[1;48;5;22;32m4[0m[32m0[0m[1;48;5;22;32m4[0m
+
+
+
+
+failures:
+    browser_pipeline_inherits_auth_and_method_rejection
+    browser_pipeline_rejects_invalid_input_before_browser
+    browser_pipeline_requires_camofox_configuration
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+error: test failed, to rerun pass `-p crw-server --test browser_pipeline`

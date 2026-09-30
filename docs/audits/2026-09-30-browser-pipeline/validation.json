@@ -1,0 +1,103 @@
+{
+  "branch": "feat/browser-pipeline",
+  "finalCRWRevision": "2bb1773c90d9dd560840822798a723c59acd444d",
+  "CRWHealth": {
+    "active_crawl_jobs": 0,
+    "build_date": "unknown",
+    "package_version": "1.2.0",
+    "revision": "2bb1773c90d9dd560840822798a723c59acd444d",
+    "status": "ok",
+    "version": "1.2.0-browser-pipeline-dev"
+  },
+  "runtimeImages": {
+    "fireghost-crw:browser-pipeline-20260930": {
+      "id": "sha256:0a6c233ca2bf801421a4e499ec13bd866bc14f62ff13baf9115e0350b4cff42c",
+      "digests": [
+        "fireghost-crw@sha256:0a6c233ca2bf801421a4e499ec13bd866bc14f62ff13baf9115e0350b4cff42c"
+      ],
+      "labels": {
+        "org.opencontainers.image.revision": "2bb1773c90d9dd560840822798a723c59acd444d",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.version": "1.2.0-browser-pipeline-dev"
+      }
+    },
+    "fireghost-router:browser-pipeline-20260930": {
+      "id": "sha256:fc99450c1b065ef6e853f59866b728a29fb65aca4e10a5a81b7b590b8701319a",
+      "digests": [
+        "fireghost-router@sha256:fc99450c1b065ef6e853f59866b728a29fb65aca4e10a5a81b7b590b8701319a"
+      ],
+      "labels": {
+        "org.opencontainers.image.revision": "a84c85e6dce5fb1ab38d2c5eda33f78d0ab399c7",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.version": "browser-pipeline-dev"
+      }
+    },
+    "ghcr.io/redf0x1/camofox-browser:2.4.8": {
+      "id": "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+      "digests": [
+        "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55"
+      ],
+      "labels": null
+    }
+  },
+  "tests": {
+    "rust-checks.log": [
+      "test result: ok. 193 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.62s",
+      "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.10s",
+      "test result: ok. 0 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s",
+      "test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s",
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s",
+      "test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s",
+      "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s"
+    ],
+    "session-green.log": [
+      "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.40s",
+      "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s"
+    ],
+    "session-final-green.log": [
+      "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s",
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s"
+    ]
+  },
+  "applianceTestsPassed": 61,
+  "DOMFixturesPassed": 12,
+  "GoChecks": [
+    "gofmt",
+    "go test ./...",
+    "go vet ./...",
+    "go test -race ./..."
+  ],
+  "RustChecks": [
+    "cargo fmt --all --check",
+    "cargo clippy --locked -p crw-renderer -p crw-server --features camofox --all-targets -- -D warnings"
+  ],
+  "allNewBuildsAndTestsInsideKVM": true,
+  "productionDeploymentChanged": false,
+  "browserBaselinePinsChanged": false,
+  "oldRedditLiveRedirect": "https://old.reddit.com/login/?reason=lor2",
+  "completeThreadClaimed": false
+}

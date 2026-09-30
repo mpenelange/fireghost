@@ -1,0 +1,23 @@
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `test` profile [unoptimized] target(s) in 2.59s
+     Running tests/browser_pipeline_tests.rs (/target/debug/deps/browser_pipeline_tests-6b8aa28a342cb9ca)
+
+running 1 test
+test reset_requires_explicit_acknowledgement_before_retrying_create ... FAILED
+
+failures:
+
+---- reset_requires_explicit_acknowledgement_before_retrying_create stdout ----
+
+thread 'reset_requires_explicit_acknowledgement_before_retrying_create' (51) panicked at crates/crw-renderer/tests/browser_pipeline_tests.rs:618:5:
+assertion failed: client.fetch(&request(json!({"url":"https://example.com/article"})),
+            deadline()).await.is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    reset_requires_explicit_acknowledgement_before_retrying_create
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p crw-renderer --test browser_pipeline_tests`

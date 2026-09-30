@@ -1,0 +1,5 @@
+--- FAIL: TestBrowserPipelineToolPublishesTypedInputSchema (0.00s)
+    browser_pipeline_test.go:201: browser pipeline schema accepts unknown fields
+FAIL
+FAIL	web-retrieval/internal/router	0.005s
+FAIL

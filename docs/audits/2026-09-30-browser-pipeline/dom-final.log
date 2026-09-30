@@ -1,0 +1,22 @@
+
+> fireghost-browser-pipeline-dom-fixtures@1.0.0 test
+> node runner.cjs
+
+PASS article uses real Readability, keeps links, and preserves live DOM
+PASS article never returns a complete page when Readability finds no content
+PASS modern Reddit keeps exact thread, own bodies, parent links, and deleted markers
+PASS old Reddit preserves nesting without duplicating child bodies or inventing deleted IDs
+PASS link-only and deleted-text posts retain a readable requested title
+PASS one safe modern expansion loads a reply, leaves vote/report/reply actions untouched
+PASS old inline load-more controls expand only one safe action
+PASS post identity mismatch, offsite hosts, and conflicting comment parent IDs fail closed
+PASS block screen differs from valid thread quotations and missing comment hydration
+PASS UTF-8 and escaped oversized content is bounded, structurally valid, explicitly partial
+PASS seen-ID cursor reaches later already-loaded comments across bounded snapshots
+PASS unsafe HTML and external load-more navigation are never exported or clicked
+{"tests":12,"passed":12,"failed":0}
+npm notice
+npm notice New major version of npm available! 11.19.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice

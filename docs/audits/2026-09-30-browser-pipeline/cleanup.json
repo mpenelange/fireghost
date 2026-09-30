@@ -1,0 +1,81 @@
+{
+  "taskContainersRemoved": 3,
+  "taskNetworkRemoved": true,
+  "taskImagesRemoved": [
+    "fireghost-crw:browser-pipeline-20260930",
+    "fireghost-router:browser-pipeline-20260930",
+    "sha256:1ac5c14ae95371d6f080943d58a3c20f4da2053295deb24c047b876e8dea9a5c",
+    "sha256:916c24d49ca4242444aac6cf9b38fa3a56422a6c8baf04a41caeb9142567e426",
+    "ghcr.io/redf0x1/camofox-browser:2.4.8",
+    "rust:1.98-bookworm",
+    "golang:1.27.1-bookworm",
+    "node:24-bookworm-slim"
+  ],
+  "taskWorkspaceRemoved": true,
+  "runtimeCredentialRemoved": true,
+  "compiledArtifactsRemoved": true,
+  "globalPruneUsed": false,
+  "existingMessagesUnchanged": [
+    {
+      "name": "messages-real20260922-app-1",
+      "id": "dc4f6085636b25eca9918150149d823b8e4b47d722e7afd75dc06aeec2a7f3c0",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "messages-mvpreview20260929-app-1",
+      "id": "d96b0d0b5193475285486d5ccaf40d0fd5a09427b71f621e0d86f0a332f614be",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "messages-mvpreview20260929-database-1",
+      "id": "40b11b0236dbcb758309e21664ee120c72efa7e51575f62773777527b326672d",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "messages-real20260922-database-1",
+      "id": "96ba17a24310abe170829a8c1e0157d480ebf66ba57739bc718f2a55d8e7312f",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "docker-testing-restore-app-1",
+      "id": "d001402fc1eb6e16b5694fe103b27bff7208b59d58f258b33a94948f01ae2da7",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "docker-testing-restore-database-1",
+      "id": "fe445ce5ef8dad27342c19ea787f3e33879776a034f5632a77866b70f67953c4",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "messages-archive-app-1",
+      "id": "a51061862eaeccd138376480454649b3a3057995bdcc0cf98168f145db7870fb",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "messages-archive-database-1",
+      "id": "693e54b323730ee5333192f71696f0b4a0a85ceda626faae40c7e90149170e8f",
+      "running": true,
+      "restartCount": 0
+    }
+  ],
+  "existingVolumeCount": 14,
+  "existingVolumesUnchanged": true,
+  "VMRecreated": false,
+  "hostFirewallChanged": false,
+  "volumeCountBeforeCleanupIncludingTask": 15,
+  "taskVolumesRemoved": [
+    {
+      "name": "04d388b67322cbac68ce964855361b49dafdfeae9db4b4b8faa39fe040a95c37",
+      "createdAt": "2026-09-30T04:25:24Z",
+      "attribution": "Anonymous browser volume contained only two crw-pipeline profiles from the live test runtimes; no existing Messages profiles."
+    }
+  ],
+  "remainingDanglingVolumes": 0
+}

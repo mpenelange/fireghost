@@ -1,0 +1,91 @@
+[
+  {
+    "case": "article",
+    "request": {
+      "url": "https://en.wikipedia.org/wiki/Web_scraping",
+      "timeout": 60000
+    },
+    "status": 200,
+    "elapsedMs": 27723,
+    "responseBytes": 46553,
+    "success": true,
+    "error": null,
+    "metadata": {
+      "pipeline": "browser-v1",
+      "profile": "article",
+      "sourceURL": "https://en.wikipedia.org/wiki/Web_scraping",
+      "url": "https://en.wikipedia.org/wiki/Web_scraping",
+      "title": "Web scraping",
+      "renderedWith": "camofox",
+      "itemsCollected": 0,
+      "reportedTotal": null,
+      "complete": true,
+      "stopReason": "snapshot",
+      "rounds": 1,
+      "elapsedMs": 27673
+    },
+    "markdownBytes": 45752,
+    "comments": 0,
+    "knownCommentIds": 0,
+    "parentLinks": 0,
+    "warnings": []
+  },
+  {
+    "case": "reddit-modern",
+    "request": {
+      "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/",
+      "profile": "redditThread",
+      "timeout": 60000,
+      "maxRounds": 10,
+      "maxItems": 100
+    },
+    "status": 200,
+    "elapsedMs": 14916,
+    "responseBytes": 10328,
+    "success": true,
+    "error": null,
+    "metadata": {
+      "pipeline": "browser-v1",
+      "profile": "redditThread",
+      "sourceURL": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/",
+      "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/comment/nulqvt0/?force-legacy-sct=1",
+      "title": "Selfhosted Kahoot alternative",
+      "renderedWith": "camofox",
+      "itemsCollected": 16,
+      "reportedTotal": 24,
+      "complete": false,
+      "stopReason": "progressStalled",
+      "rounds": 5,
+      "elapsedMs": 14879
+    },
+    "markdownBytes": 3542,
+    "comments": 16,
+    "knownCommentIds": 16,
+    "parentLinks": 16,
+    "warnings": [
+      "partial browser result: progressStalled",
+      "thread completeness cannot be established from loaded browser comments"
+    ]
+  },
+  {
+    "case": "reddit-old",
+    "request": {
+      "url": "https://old.reddit.com/r/selfhosted/comments/opgyga/any_self_hosted_alexas_or_similar/",
+      "profile": "redditThread",
+      "timeout": 60000,
+      "maxRounds": 10,
+      "maxItems": 100
+    },
+    "status": 500,
+    "elapsedMs": 3919,
+    "responseBytes": 122,
+    "success": false,
+    "error": "Renderer error: browser pipeline: reddit_thread_identity_changed",
+    "metadata": null,
+    "markdownBytes": 0,
+    "comments": 0,
+    "knownCommentIds": 0,
+    "parentLinks": 0,
+    "warnings": null
+  }
+]

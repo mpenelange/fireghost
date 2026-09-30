@@ -1,0 +1,43 @@
+{
+  "host": "docker0",
+  "setupDirectory": "/home/michael/docker-testing-setup",
+  "purpose": "Originally provisioned for isolated Messages Docker development",
+  "normalConnection": "ssh -J michael@docker0 dev@192.168.153.10",
+  "guest": {
+    "name": "docker-testing",
+    "vCPU": 4,
+    "memoryMiB": 12288,
+    "address": "192.168.153.10",
+    "network": "static NAT through virbr-docktest",
+    "diskThrottleBytesPerSecond": 62914560
+  },
+  "provisioning": [
+    "key-only dev user with sudo and Docker access",
+    "Docker, Compose, Buildx, Git, tmux, curl, Python",
+    "bounded Docker log rotation"
+  ],
+  "isolation": [
+    "libvirt network filter",
+    "host-scoped nftables table and compatibility forwarding rules",
+    "private/LAN/host-hairpin destinations blocked",
+    "public SSH/HTTP/HTTPS, restricted DNS and NTP allowed",
+    "IPv6 blocked"
+  ],
+  "historicalArtifacts": [
+    "original Ubuntu cloud image and checksums",
+    "cloud-init seed image",
+    "pre-key-recovery-domain.xml",
+    "key-recovery-20260922 offline recovery domain and seed"
+  ],
+  "assessment": "Recovery artifacts and two layers of network isolation explain the apparent complexity. Normal testing needs only the existing dev login and Docker. No recreation or network changes are needed.",
+  "preserved": {
+    "runningMessagesContainers": 8,
+    "existingDockerVolumes": 14,
+    "existingVolumeBytesApprox": 71320000000,
+    "sshCredentialsChanged": false,
+    "hostFirewallChanged": false,
+    "VMRecreated": false
+  },
+  "fireghostWorkspace": "/home/dev/fireghost-browser-pipeline-20260930",
+  "testResourcePrefix": "fg-pipeline-"
+}

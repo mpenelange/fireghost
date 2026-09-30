@@ -1,0 +1,16 @@
+ok  	web-retrieval/cmd/router	0.112s
+ok  	web-retrieval/internal/budget	0.146s
+ok  	web-retrieval/internal/cache	0.085s
+ok  	web-retrieval/internal/config	0.003s
+ok  	web-retrieval/internal/metrics	0.003s
+ok  	web-retrieval/internal/router	0.499s
+ok  	web-retrieval/internal/singleflight	0.056s
+?   	web-retrieval/internal/upstream	[no test files]
+ok  	web-retrieval/cmd/router	1.132s
+ok  	web-retrieval/internal/budget	1.149s
+ok  	web-retrieval/internal/cache	1.098s
+ok  	web-retrieval/internal/config	1.041s
+ok  	web-retrieval/internal/metrics	1.035s
+ok  	web-retrieval/internal/router	1.763s
+ok  	web-retrieval/internal/singleflight	1.079s
+?   	web-retrieval/internal/upstream	[no test files]
