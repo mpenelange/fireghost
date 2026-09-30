@@ -59,18 +59,34 @@ async fn browser_pipeline_inherits_auth_and_method_rejection() {
 
 #[tokio::test]
 async fn browser_pipeline_returns_compacted_article_and_closes_tab() {
-    use wiremock::matchers::{method, path};
+    let upstream = article_browser(None).await;
+    let s = server(&format!(
+        "[renderer.camofox]\nbase_url = {:?}",
+        upstream.uri()
+    ));
+    assert_compact_article(&s).await;
+    upstream.verify().await;
+}
+
+async fn article_browser(api_key: Option<&str>) -> wiremock::MockServer {
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let upstream = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/health"))
+    let mock = |verb: &str, route: &str| {
+        let builder = Mock::given(method(verb)).and(path(route));
+        if let Some(key) = api_key {
+            builder.and(header("Authorization", format!("Bearer {key}")))
+        } else {
+            builder
+        }
+    };
+    mock("GET", "/health")
         .respond_with(
             ResponseTemplate::new(200).set_body_json(json!({"ok":true,"version":"2.4.8"})),
         )
         .mount(&upstream)
         .await;
-    Mock::given(method("GET"))
-        .and(path("/tabs"))
+    mock("GET", "/tabs")
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"running":true,"tabs":[]})))
         .mount(&upstream)
         .await;
@@ -88,22 +104,20 @@ async fn browser_pipeline_returns_compacted_article_and_closes_tab() {
         }).to_string()}),
         ),
     ] {
-        Mock::given(method("POST"))
-            .and(path(route))
+        mock("POST", route)
             .respond_with(ResponseTemplate::new(200).set_body_json(response))
             .mount(&upstream)
             .await;
     }
-    Mock::given(method("DELETE"))
-        .and(path("/tabs/compact-tab"))
+    mock("DELETE", "/tabs/compact-tab")
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true})))
         .expect(1)
         .mount(&upstream)
         .await;
-    let s = server(&format!(
-        "[renderer.camofox]\nbase_url = {:?}",
-        upstream.uri()
-    ));
+    upstream
+}
+
+async fn assert_compact_article(s: &TestServer) {
     let r = s
         .post("/v2/browser/scrape")
         .json(&json!({"url":"https://1.1.1.1/article"}))
@@ -118,5 +132,58 @@ async fn browser_pipeline_returns_compacted_article_and_closes_tab() {
             .unwrap()
             .contains("Useful article content.")
     );
+}
+
+#[tokio::test]
+async fn browser_pipeline_dedicated_endpoint_works_without_legacy_renderer_or_search() {
+    let upstream = article_browser(Some("pipeline-key")).await;
+    let config: AppConfig = toml::from_str(&format!(
+        "[renderer.browser_pipeline]\nbase_url = {:?}\napi_key = \"pipeline-key\"",
+        upstream.uri()
+    ))
+    .unwrap();
+    let state = AppState::new(config).unwrap();
+    assert!(
+        state.search.is_none(),
+        "pipeline endpoint must not enable legacy search"
+    );
+    assert!(
+        !state.renderer.js_renderer_names().contains(&"camofox"),
+        "pipeline endpoint must not join the legacy scrape ladder"
+    );
+    let s = TestServer::new(create_app(state));
+    assert_compact_article(&s).await;
     upstream.verify().await;
+}
+
+#[tokio::test]
+async fn browser_pipeline_dedicated_endpoint_overrides_only_pipeline_browser() {
+    let legacy = wiremock::MockServer::start().await;
+    let dedicated = article_browser(Some("pipeline-key")).await;
+    let config: AppConfig = toml::from_str(&format!(
+        "[search]\nenabled = true\n[renderer.camofox]\nbase_url = {:?}\napi_key = \"legacy-key\"\n[renderer.browser_pipeline]\nbase_url = {:?}\napi_key = \"pipeline-key\"",
+        legacy.uri(), dedicated.uri()
+    ))
+    .unwrap();
+    let state = AppState::new(config).unwrap();
+    assert_eq!(state.search.as_ref().unwrap().base_url(), legacy.uri());
+    assert!(state.renderer.js_renderer_names().contains(&"camofox"));
+    assert_eq!(
+        state
+            .config
+            .renderer
+            .camofox
+            .as_ref()
+            .unwrap()
+            .api_key
+            .as_deref(),
+        Some("legacy-key")
+    );
+    let s = TestServer::new(create_app(state));
+    assert_compact_article(&s).await;
+    dedicated.verify().await;
+    assert!(
+        legacy.received_requests().await.unwrap().is_empty(),
+        "pipeline must never make browser requests against legacy Camofox"
+    );
 }

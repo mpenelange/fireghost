@@ -20,6 +20,40 @@ fn renderer_config_default_values() {
 }
 
 #[test]
+fn browser_pipeline_endpoint_rejects_missing_base_url() {
+    let result =
+        toml::from_str::<AppConfig>("[renderer.browser_pipeline]\napi_key = \"pipeline-key\"");
+    assert!(result.is_err(), "dedicated endpoint requires a base_url");
+}
+
+#[test]
+fn browser_pipeline_endpoint_rejects_wrong_url_type() {
+    let result = toml::from_str::<AppConfig>("[renderer.browser_pipeline]\nbase_url = 248");
+    assert!(
+        result.is_err(),
+        "dedicated endpoint uses the Camofox endpoint schema"
+    );
+}
+
+#[test]
+fn browser_pipeline_configuration_does_not_replace_legacy_camofox() {
+    let config: AppConfig = toml::from_str(
+        r#"
+        [renderer.camofox]
+        base_url = "http://legacy-browser:9377"
+        api_key = "legacy-key"
+        [renderer.browser_pipeline]
+        base_url = "http://pipeline-browser:9377"
+        api_key = "pipeline-key"
+        "#,
+    )
+    .unwrap();
+    let legacy = config.renderer.camofox.unwrap();
+    assert_eq!(legacy.base_url, "http://legacy-browser:9377");
+    assert_eq!(legacy.api_key.as_deref(), Some("legacy-key"));
+}
+
+#[test]
 fn crawler_config_default_values() {
     let config = CrawlerConfig::default();
     assert_eq!(config.max_concurrency, 10);

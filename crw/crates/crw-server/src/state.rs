@@ -222,12 +222,17 @@ impl AppState {
 
         let state = Self {
             #[cfg(feature = "camofox")]
-            browser_pipeline: config.renderer.camofox.as_ref().map(|cf| {
-                Arc::new(crw_renderer::pipeline::BrowserPipelineClient::new(
-                    &cf.base_url,
-                    cf.api_key.clone(),
-                ))
-            }),
+            browser_pipeline: config
+                .renderer
+                .browser_pipeline
+                .as_ref()
+                .or(config.renderer.camofox.as_ref())
+                .map(|cf| {
+                    Arc::new(crw_renderer::pipeline::BrowserPipelineClient::new(
+                        &cf.base_url,
+                        cf.api_key.clone(),
+                    ))
+                }),
             config: Arc::new(config),
             renderer: Arc::new(renderer),
             crawl_jobs: Arc::new(RwLock::new(HashMap::new())),

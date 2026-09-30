@@ -592,6 +592,11 @@ pub struct RendererConfig {
     /// LightPanda. See [`CamofoxEndpoint`].
     #[serde(default)]
     pub camofox: Option<CamofoxEndpoint>,
+    /// Optional dedicated Camofox endpoint for `/v2/browser/scrape`. This keeps
+    /// browser-pipeline upgrades separate from the legacy scrape/search tier.
+    /// When absent, the pipeline uses `camofox` above.
+    #[serde(default)]
+    pub browser_pipeline: Option<CamofoxEndpoint>,
     /// Residential-proxy Chrome tier (opt-in 4th renderer). Same Chromium
     /// browser as `chrome`, but egress routed through a forwarder that adds
     /// upstream proxy auth (e.g. DataImpulse). Tried after Chrome fails —
@@ -835,6 +840,7 @@ impl Default for RendererConfig {
             playwright: None,
             chrome: None,
             camofox: None,
+            browser_pipeline: None,
             chrome_proxy: None,
             chrome_proxy_timeout_ms: None,
             chrome_intercept_resources: false,
