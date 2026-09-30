@@ -237,17 +237,25 @@ class BrowserHTTPContractGateTests(unittest.TestCase):
         connection.close.assert_called_once()
 
     def test_dribbling_response_cannot_renew_the_body_deadline(self):
+        import time
+
         connection = mock.Mock()
         response = mock.Mock(status=200)
         response.getheader.return_value = None
-        response.read1.return_value = b" "
+        def dribble(amount):
+            time.sleep(0.025)
+            return b" "
+        response.read1.side_effect = dribble
         connection.getresponse.return_value = response
         with mock.patch("http.client.HTTPConnection", return_value=connection):
-            with mock.patch("scripts.gate_http.time.monotonic", side_effect=[0, 0, 0.2, 1.1]):
-                with self.assertRaises(TimeoutError):
-                    self.gate._request("http://browser.invalid", "", "GET", "/health", None, 1, 64)
-        self.assertEqual(response.read1.call_count, 1)
-        self.assertEqual(connection.sock.settimeout.call_args_list, [mock.call(1), mock.call(0.8)])
+            started = time.monotonic()
+            with self.assertRaises(TimeoutError):
+                self.gate._request("http://browser.invalid", "", "GET", "/health", None, 0.12, 64)
+            self.assertLess(time.monotonic() - started, 0.24)
+        self.assertGreater(response.read1.call_count, 1, "test must exercise repeated body reads")
+        deadline = time.monotonic() + 0.15
+        while not connection.close.called and time.monotonic() < deadline:
+            time.sleep(0.005)
         connection.close.assert_called_once()
 
 
