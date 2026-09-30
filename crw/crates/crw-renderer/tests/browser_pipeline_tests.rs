@@ -23,11 +23,22 @@ struct Mock {
     tabs: Arc<Mutex<Vec<Value>>>,
 }
 
-async fn create(State(mock): State<Mock>, Json(body): Json<Value>) -> Json<Value> {
-    mock.calls.lock().unwrap().push(("create".into(), body));
+async fn create(State(mock): State<Mock>, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
+    mock.calls
+        .lock()
+        .unwrap()
+        .push(("create".into(), body.clone()));
+    // Camofox's URL guard rejects explicit about:blank. Omitting the URL
+    // creates the blank tab internally, before the separately guarded navigate.
+    if body.get("url").and_then(Value::as_str) == Some("about:blank") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"Only http/https URLs are allowed"})),
+        );
+    }
     let active = mock.active.fetch_add(1, Ordering::SeqCst) + 1;
     mock.peak.fetch_max(active, Ordering::SeqCst);
-    Json(json!({"tabId":"pipeline-tab"}))
+    (StatusCode::OK, Json(json!({"tabId":"pipeline-tab"})))
 }
 async fn navigate(State(mock): State<Mock>, Json(body): Json<Value>) -> Json<Value> {
     mock.calls.lock().unwrap().push(("navigate".into(), body));
@@ -156,7 +167,7 @@ async fn article_uses_blank_tab_then_bounded_snapshot_and_always_closes() {
     assert!(data.metadata.complete);
     assert_eq!(data.metadata.pipeline, "browser-v1");
     let calls = mock.calls.lock().unwrap();
-    assert_eq!(calls.first().unwrap().1["url"], "about:blank");
+    assert!(calls.first().unwrap().1.get("url").is_none());
     assert_eq!(calls[1].0, "navigate");
     assert_eq!(calls.last().unwrap().0, "close");
     assert!(

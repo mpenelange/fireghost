@@ -574,7 +574,9 @@ impl BrowserPipelineClient {
             // scope belongs exclusively to this client and the leased slot.
             self.verify_browser(deadline).await?;
             self.reap_before_create(&user, deadline).await?;
-            let create: Value = self.post("/tabs", json!({"userId":user,"sessionKey":"pipeline","url":"about:blank"}), deadline).await?;
+            // An omitted URL creates a blank tab internally. Explicit
+            // about:blank is rejected by Camofox's destination safety guard.
+            let create: Value = self.post("/tabs", json!({"userId":user,"sessionKey":"pipeline"}), deadline).await?;
             let tab = create.get("tabId").and_then(Value::as_str).filter(|id| safe_tab_id(id))
                 .ok_or_else(|| pipeline_error("create did not return a valid tab ID"))?.to_string();
             cleanup.tab_id = Some(tab.clone());
