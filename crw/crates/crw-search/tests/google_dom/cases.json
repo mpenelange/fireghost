@@ -50,5 +50,14 @@
       {"url":"https://example.org/missing-snippet","title":"Result with no own snippet","content":""},
       {"url":"https://example.net/other-snippet","title":"Another result owns its snippet","content":"This text belongs only to the other result."}
     ]
+  },
+  {
+    "name": "sitelink headings stay inside their primary result while nested result cards remain distinct",
+    "fixture": "primary-with-sitelinks.html",
+    "expected": [
+      {"url":"https://example.org/primary","title":"Primary organic result","content":"The primary result keeps its own snippet."},
+      {"url":"https://example.net/nested-first","title":"First independent nested result","content":"First independent snippet."},
+      {"url":"https://example.com/nested-second","title":"Second independent nested result","content":"Second independent snippet."}
+    ]
   }
 ]

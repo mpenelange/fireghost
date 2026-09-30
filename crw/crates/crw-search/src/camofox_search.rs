@@ -66,7 +66,7 @@ const RENDER_SETTLE: Duration = Duration::from_millis(500);
 /// kept in this one place — Google rewrites its SERP DOM periodically, so this
 /// is the single spot to fix when extraction drifts.
 const GOOGLE_SCRAPE_JS: &str = r#"JSON.stringify((function(){
-    var rows=[],seen=new Set();
+    var rows=[],seen=new Set(),primaryHeadings=[],primary=new Set();
     function destination(anchor){
         var href=(anchor.getAttribute('href')||'').trim();
         if(!href)return null;
@@ -84,7 +84,14 @@ const GOOGLE_SCRAPE_JS: &str = r#"JSON.stringify((function(){
             return url.href;
         }catch(e){return null;}
     }
-    document.querySelectorAll('div.g h3, div.MjjYud h3').forEach(function(heading){
+    document.querySelectorAll('div.g, div.MjjYud').forEach(function(container){
+        var heading=container.querySelector('h3');
+        if(heading&&!primary.has(heading)){
+            primary.add(heading);
+            primaryHeadings.push(heading);
+        }
+    });
+    primaryHeadings.forEach(function(heading){
         var anchor=heading.closest('a[href]');
         if(!anchor){
             var ownLinks=heading.querySelectorAll('a[href]');
@@ -97,7 +104,7 @@ const GOOGLE_SCRAPE_JS: &str = r#"JSON.stringify((function(){
         var container=heading.closest('div.g, div.MjjYud');
         var snippet=null;
         while(container){
-            var headings=container.querySelectorAll('h3');
+            var headings=Array.from(container.querySelectorAll('h3')).filter(function(h){return primary.has(h);});
             if(headings.length!==1||headings[0]!==heading)break;
             snippet=container.querySelector('.VwiC3b, [data-sncf], .st');
             if(snippet)break;
