@@ -1,0 +1,8 @@
+<!doctype html><html><head><title>A readable article fixture</title></head><body>
+<nav><a href="/account">Account navigation</a><a href="/advertising">Advertising</a><a href="/store">Store</a></nav>
+<main><article id="original-story"><h1>A readable article fixture</h1>
+<p>This article explains how a bounded browser extraction keeps useful prose and the links its author supplied. The fixture deliberately contains complete sentences, punctuation, and a substantial paragraph so that the real readability algorithm has article content to distinguish from navigation. The original document must remain available for subsequent harvesting passes, which is why the algorithm receives a detached clone.</p>
+<p>A second paragraph provides the additional context that readers need. A <a href="/guide?chapter=2">relative source guide</a> must remain a useful absolute link, and <a href="https://reference.example/paper">an external reference</a> must retain its destination. Formatting such as <strong>important prose</strong>, <em>emphasis</em>, and <code>literal code</code> is part of the article rather than page chrome.</p>
+<p>The result is a compact representation of the selected article. It does not contain a serialized copy of the complete page, scripts, advertising widgets, or forms. The test checks the actual Mozilla algorithm and the returned HTML rather than recreating the extraction rules in a separate test implementation.</p>
+<script>window.mustNotExport = 'private script';</script></article></main>
+<aside>Unrelated sidebar and sponsor copy.</aside></body></html>

@@ -51,6 +51,10 @@ pub mod egress;
 pub mod health_telemetry;
 pub mod host_limiter;
 pub mod http_only;
+#[cfg(feature = "camofox")]
+pub mod pipeline;
+#[cfg(feature = "camofox")]
+pub mod pipeline_scripts;
 pub mod preference;
 pub mod traits;
 

@@ -22,6 +22,7 @@ type Config struct {
 	MonthlyResetDay                                      int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
 	MCPEnabled                                           bool
+	BrowserPipelineEnabled                               bool
 }
 
 // Parse reads configuration through getenv, making parsing deterministic in tests.
@@ -43,6 +44,16 @@ func Parse(getenv func(string) string) (Config, error) {
 			c.MCPEnabled = false
 		default:
 			return Config{}, fmt.Errorf("invalid MCP_ENABLED: must be true or false")
+		}
+	}
+	if raw := getenv("ROUTER_BROWSER_PIPELINE_ENABLED"); raw != "" {
+		switch raw {
+		case "true":
+			c.BrowserPipelineEnabled = true
+		case "false":
+			c.BrowserPipelineEnabled = false
+		default:
+			return Config{}, fmt.Errorf("invalid ROUTER_BROWSER_PIPELINE_ENABLED: must be true or false")
 		}
 	}
 	stringValues := []struct {

@@ -104,7 +104,7 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 		LocalBaseURL: cfg.LocalURL, CloudBaseURL: cfg.CloudURL, CloudAPIKey: cfg.CloudAPIKey, APIKey: cfg.APIKey,
 		SearchTTL: cfg.SearchTTL, ScrapeTTL: cfg.ScrapeTTL, HTTPTimeout: cfg.HTTPTimeout, SearchEstimatedCredits: cfg.SearchEstimatedCredits,
 		ScrapeEstimatedCredits: cfg.ScrapeEstimatedCredits, MaxRequestBytes: cfg.MaxRequestBytes, MaxResponseBytes: cfg.MaxResponseBytes,
-		MCPEnabled: cfg.MCPEnabled, ServerVersion: version,
+		MCPEnabled: cfg.MCPEnabled, BrowserPipelineEnabled: cfg.BrowserPipelineEnabled, ServerVersion: version,
 	}, router.Dependencies{HTTPClient: client, Cache: fileCache, Budget: ledger, Metrics: registry, FlightGroup: flightpkg.NewWithLimit[cachepkg.Entry](cfg.MaxInflight)}), nil
 }
 

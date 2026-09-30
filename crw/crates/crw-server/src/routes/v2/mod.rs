@@ -8,6 +8,8 @@
 
 pub mod adapters;
 pub mod batch;
+#[cfg(feature = "camofox")]
+pub mod browser;
 pub mod crawl;
 pub mod extract;
 pub mod formats;
@@ -26,7 +28,7 @@ use crate::state::AppState;
 /// All `/v2/*` routes. Merged into `app.rs`'s `api_routes` before the shared
 /// auth + rate-limit layers, so v2 inherits them for free.
 pub fn router() -> Router<AppState> {
-    Router::new()
+    let router = Router::new()
         .route(
             "/v2/scrape",
             post(scrape::scrape).fallback(method_not_allowed),
@@ -93,5 +95,11 @@ pub fn router() -> Router<AppState> {
         .route(
             "/v2/extract/{id}",
             get(extract::get_extract).fallback(method_not_allowed),
-        )
+        );
+    #[cfg(feature = "camofox")]
+    let router = router.route(
+        "/v2/browser/scrape",
+        post(browser::scrape).fallback(method_not_allowed),
+    );
+    router
 }

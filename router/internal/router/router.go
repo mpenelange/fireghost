@@ -34,6 +34,7 @@ type Config struct {
 	MaxRequestBytes        int64
 	MaxResponseBytes       int64
 	MCPEnabled             bool
+	BrowserPipelineEnabled bool
 	ServerVersion          string
 }
 
@@ -102,6 +103,9 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 	}
 	mux.HandleFunc("POST /v2/search", handleOperation("/v2/search"))
 	mux.HandleFunc("POST /v2/scrape", handleOperation("/v2/scrape"))
+	if config.BrowserPipelineEnabled {
+		mux.HandleFunc("POST "+browserPipelinePath, handleOperation(browserPipelinePath))
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		endpoint, measured := metricsEndpoint(r.URL.Path)
 		start := time.Now()
@@ -140,6 +144,14 @@ func newOperationRunner(config Config, dependencies Dependencies, clock func() t
 			cacheableOutcome = func(entry cachepkg.Entry) bool { return successfulScrapeOutcome(entry.Status, requestBody, entry.Body) }
 			executeUpstream = func(executionCtx context.Context) (cachepkg.Entry, error) {
 				return executeScrape(executionCtx, config, dependencies.Budget, registry, local, cloud, contentType, requestBody)
+			}
+		}
+		if path == browserPipelinePath {
+			endpoint = metricspkg.EndpointBrowserScrape
+			ttl = 0
+			cacheableOutcome = func(entry cachepkg.Entry) bool { return successfulBrowserPipelineOutcome(entry.Status, entry.Body) }
+			executeUpstream = func(executionCtx context.Context) (cachepkg.Entry, error) {
+				return executeBrowserPipeline(executionCtx, config, registry, local, contentType, requestBody)
 			}
 		}
 
@@ -231,6 +243,8 @@ func metricsEndpoint(path string) (metricspkg.Endpoint, bool) {
 		return metricspkg.EndpointSearch, true
 	case "/v2/scrape":
 		return metricspkg.EndpointScrape, true
+	case browserPipelinePath:
+		return metricspkg.EndpointBrowserScrape, true
 	case "/health":
 		return metricspkg.EndpointHealth, true
 	case "/metrics":

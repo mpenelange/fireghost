@@ -77,20 +77,21 @@ func serveMCP(w http.ResponseWriter, r *http.Request, config Config, runOperatio
 	case "ping":
 		writeMCPResult(w, request.ID, map[string]any{})
 	case "tools/list":
-		writeMCPResult(w, request.ID, map[string]any{"tools": mcpTools()})
+		writeMCPResult(w, request.ID, map[string]any{"tools": mcpTools(config)})
 	case "tools/call":
-		serveMCPToolCall(w, r, request, runOperation)
+		serveMCPToolCall(w, r, request, config, runOperation)
 	default:
 		writeMCPError(w, request.ID, -32601, "Method not found")
 	}
 }
 
-func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest, runOperation operationRunner) {
+func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest, config Config, runOperation operationRunner) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
-	if len(request.Params) == 0 || json.Unmarshal(request.Params, &params) != nil || (params.Name != "search" && params.Name != "scrape") {
+	if len(request.Params) == 0 || json.Unmarshal(request.Params, &params) != nil ||
+		(params.Name != "search" && params.Name != "scrape" && !(config.BrowserPipelineEnabled && params.Name == "browser_scrape")) {
 		writeMCPError(w, request.ID, -32602, "Invalid params")
 		return
 	}
@@ -102,6 +103,9 @@ func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest
 		return
 	}
 	path := "/v2/" + params.Name
+	if params.Name == "browser_scrape" {
+		path = browserPipelinePath
+	}
 	entry, err := runOperation(r.Context(), path, "application/json", params.Arguments)
 	if err != nil {
 		entry = executionErrorEntry(err)
@@ -114,6 +118,9 @@ func serveMCPToolCall(w http.ResponseWriter, r *http.Request, request mcpRequest
 	succeeded := cacheableSearchResponse(entry.Status, entry.Body)
 	if params.Name == "scrape" {
 		succeeded = successfulScrapeOutcome(entry.Status, params.Arguments, entry.Body)
+	}
+	if params.Name == "browser_scrape" {
+		succeeded = successfulBrowserPipelineOutcome(entry.Status, entry.Body)
 	}
 	isError := err != nil || !succeeded
 	var structured json.RawMessage
@@ -172,14 +179,22 @@ func normalizedServerVersion(version string) string {
 	return version
 }
 
-func mcpTools() []map[string]any {
+func mcpTools(config Config) []map[string]any {
 	schema := func() map[string]any {
 		return map[string]any{"type": "object", "additionalProperties": true}
 	}
-	return []map[string]any{
+	tools := []map[string]any{
 		{"name": "search", "description": "Search the web using the Fireghost local-first retrieval router.", "inputSchema": schema(), "outputSchema": schema()},
 		{"name": "scrape", "description": "Scrape a URL using the Fireghost local-first retrieval router.", "inputSchema": schema(), "outputSchema": schema()},
 	}
+	if config.BrowserPipelineEnabled {
+		tools = append(tools, map[string]any{
+			"name":        "browser_scrape",
+			"description": "Read an article or public Reddit thread through the local browser interaction pipeline. Results may be partial; inspect metadata.complete, stopReason, and warnings.",
+			"inputSchema": browserPipelineInputSchema(), "outputSchema": schema(),
+		})
+	}
+	return tools
 }
 
 func writeMCPResult(w http.ResponseWriter, id json.RawMessage, result any) {

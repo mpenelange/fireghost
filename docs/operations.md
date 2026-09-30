@@ -14,6 +14,41 @@ the 16 MiB upstream response ceiling. MCP request counts and durations use the
 `endpoint="mcp"` metrics label; cache and upstream metrics retain their
 `search` or `scrape` endpoint labels.
 
+`ROUTER_BROWSER_PIPELINE_ENABLED=true` opts into `POST /v2/browser/scrape`
+and, when MCP is enabled, the `browser_scrape` tool. CRW must be built with
+the `camofox` feature and have `[renderer.camofox]` configured, pointing to
+Camofox 2.4.8 or newer with private network targets disabled. The pipeline
+checks the browser version before opening a tab. The deployed 2.4.6 baseline
+pin remains unchanged; enable this feature only with a separately validated
+candidate browser and CRW build. This operation
+uses only the local CRW service, does not cache results, and does not spend
+cloud credits. Existing scrape and search behavior is unchanged.
+
+The request accepts `url`, `profile` (`article` or `redditThread`), `timeout`
+in milliseconds, `maxRounds`, `maxItems`, and `maxBytes`. Defaults are
+`article`, 30000, 20, 200, and 196608 respectively; upper bounds are 60000,
+100, 1000, and 262144. Every budget must be positive. Scripts and arbitrary
+browser actions are not accepted. Article extraction runs Mozilla Readability
+on a cloned document. Reddit extraction collects comments between bounded
+expansion steps, retaining earlier comments when the page replaces DOM nodes.
+
+Results include Markdown, structured Reddit comments when requested, warnings,
+and metadata identifying `browser-v1`, the stop reason, and collected item
+count. Reddit's reported comment count and absence of expansion controls do
+not prove that every comment was retrieved. Consumers must inspect
+`metadata.complete` and warnings; a partial thread is a usable bounded result.
+`maxBytes` limits content rather than the complete HTTP envelope. Browser result
+truncation, blocked pages, and a different Reddit thread are errors. Tab cleanup
+is bounded and best effort; a subsequent request must successfully clear its
+own profile's stale tabs before opening another one.
+
+For the isolated KVM test guest on docker0, use
+`ssh -J michael@docker0 dev@192.168.153.10`. Its setup files are under
+`/home/michael/docker-testing-setup` on the host. The static NAT guest already
+has Docker and permits public HTTPS; normal development needs no firewall or
+SSH recovery changes. Fireghost test resources must use their own names and
+directories and must not remove the existing Messages containers or volumes.
+
 ## Isolated candidate
 
 Run `make staging-up` to create a separate Compose project, network, cache, and browser-profile volume. Its router binds only to `127.0.0.1:33010`, and its router image uses the distinct `monorepo-staging` tag so it cannot replace the production router tag. Validate with `make staging-smoke staging-live-contract`, inspect with `make staging-ps`, and remove its containers and network with `make staging-down`. Production remains on port `33000` throughout.

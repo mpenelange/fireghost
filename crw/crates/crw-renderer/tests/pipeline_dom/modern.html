@@ -1,0 +1,17 @@
+<!doctype html><html><head><title>Scoped thread - Reddit</title></head><body><main>
+<shreddit-post id="t3_abc123" permalink="/r/test/comments/abc123/scoped_thread/" post-title="Scoped thread" author="originalposter" comment-count="5">
+<h1 slot="title">Scoped thread</h1><div slot="text-body"><p>The post body has a <a href="/r/test/wiki/index">community guide</a>.</p></div>
+</shreddit-post><shreddit-comment-tree post-id="t3_abc123">
+<shreddit-comment thingid="t1_parent" parentid="t3_abc123" depth="0" author="alice" permalink="/r/test/comments/abc123/scoped_thread/parent/">
+<div slot="comment"><p>Parent-only prose quotes “blocked by network security” without being a gate screen.</p></div>
+<div slot="children"><shreddit-comment thingid="t1_child" parentid="t1_parent" depth="1" author="bob" permalink="/r/test/comments/abc123/scoped_thread/child/">
+<div slot="comment"><p>Nested-only reply with a <a href="https://reference.example/reply">reference</a>.</p></div>
+</shreddit-comment></div></shreddit-comment>
+<shreddit-comment thingid="t1_removed" parentid="t3_abc123" depth="0" author="[deleted]"><div slot="comment"><p>[removed]</p></div></shreddit-comment>
+<shreddit-comment depth="0" author="[deleted]"><div slot="comment"><p>[deleted]</p></div></shreddit-comment>
+<shreddit-comment thingid="t1_skeleton" depth="0"><span>Loading…</span></shreddit-comment>
+<button id="vote">Vote</button><button id="compose">Reply</button><button id="report">Report</button>
+<button id="load-more">View more replies</button>
+</shreddit-comment-tree>
+<shreddit-post id="t3_recommendation" permalink="/r/other/comments/recommendation/other/" post-title="Unrelated recommendation"><div slot="text-body">Must not be returned.</div></shreddit-post>
+</main></body></html>

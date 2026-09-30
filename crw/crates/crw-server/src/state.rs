@@ -139,6 +139,8 @@ pub struct ExtractRecord {
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
+    #[cfg(feature = "camofox")]
+    pub browser_pipeline: Option<Arc<crw_renderer::pipeline::BrowserPipelineClient>>,
     pub config: Arc<AppConfig>,
     pub renderer: Arc<FallbackRenderer>,
     pub crawl_jobs: Arc<RwLock<HashMap<Uuid, CrawlJob>>>,
@@ -219,6 +221,13 @@ impl AppState {
         let url_filter = Some(Arc::new(url_filter_cfg));
 
         let state = Self {
+            #[cfg(feature = "camofox")]
+            browser_pipeline: config.renderer.camofox.as_ref().map(|cf| {
+                Arc::new(crw_renderer::pipeline::BrowserPipelineClient::new(
+                    &cf.base_url,
+                    cf.api_key.clone(),
+                ))
+            }),
             config: Arc::new(config),
             renderer: Arc::new(renderer),
             crawl_jobs: Arc::new(RwLock::new(HashMap::new())),

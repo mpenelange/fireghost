@@ -1,0 +1,12 @@
+{
+  "source": "Readability.js",
+  "sourceSha256": "e9330028c8a5a4aa7d75147be2605d520f7f213c7b28474947dc0e9c984e9bed",
+  "generated": "Readability.min.js",
+  "generatedSha256": "dcc66b7ac1da023e300c9c8423771b1af2174216392715de7f1e3bf6b5496b5c",
+  "generatedBytes": 32858,
+  "tool": "terser",
+  "toolVersion": "5.39.0",
+  "toolLock": "../../tests/pipeline_dom/package-lock.json",
+  "executionImage": "node:24-bookworm-slim",
+  "command": "node tests/pipeline_dom/node_modules/terser/bin/terser vendor/readability/Readability.js --compress --mangle --comments false --output vendor/readability/Readability.min.js"
+}

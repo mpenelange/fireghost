@@ -1,0 +1,7 @@
+{
+  "name": "fireghost-browser-pipeline-dom-fixtures",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "test": "node runner.cjs" },
+  "devDependencies": { "jsdom": "26.1.0", "terser": "5.39.0" }
+}
