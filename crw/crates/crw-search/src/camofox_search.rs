@@ -917,7 +917,8 @@ fn is_challenge_url(engine: SearchEngine, observed: &str) -> bool {
     match engine {
         SearchEngine::Google => {
             (host == "google.com" || host.ends_with(".google.com"))
-                && (url.path().starts_with("/sorry/")
+                && (url.path() == "/sorry"
+                    || url.path().starts_with("/sorry/")
                     || host.starts_with("consent.")
                     || url.path().starts_with("/consent"))
         }
@@ -976,6 +977,24 @@ fn is_stale_tab(e: &SearchError) -> bool {
 mod extractor_tests {
     use super::*;
     use crw_core::types::SearchEngine;
+
+    #[test]
+    fn google_challenge_paths_include_bare_sorry_without_matching_other_routes() {
+        for url in [
+            "https://www.google.com/sorry",
+            "https://www.google.com/sorry/",
+            "https://www.google.com/sorry/index",
+        ] {
+            assert!(is_challenge_url(SearchEngine::Google, url), "{url}");
+        }
+        for url in [
+            "https://www.google.com/sorry-about-that",
+            "https://www.google.com/search?q=sorry",
+            "https://google.com.example.org/sorry",
+        ] {
+            assert!(!is_challenge_url(SearchEngine::Google, url), "{url}");
+        }
+    }
 
     #[test]
     fn browser_engines_have_dedicated_extractors() {
