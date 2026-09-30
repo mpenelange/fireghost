@@ -4,7 +4,7 @@
 	test-hermes-regression hermes-regression \
 	router-fmt-check router-vet router-race compose-config check-stack-lock build-router build-crw-image \
 	build-images up down ps logs pull smoke live-contract staging-up staging-down staging-ps \
-	staging-smoke staging-live-contract backup restore check-updates
+	staging-smoke staging-live-contract backup restore check-updates browser-contract appliance-compatibility test-live-gates
 
 GO_IMAGE = golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195
 GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
@@ -35,6 +35,9 @@ help:
 	  '  make test-appliance    Run Compose and backup/restore contracts' \
 	  '  make check-updates     Compare reviewed refs with mutable upstreams' \
 	  '  make test-hermes-regression  Run deterministic Hermes gate tests' \
+	  '  make test-live-gates    Run deterministic validation-tool tests' \
+	  '  make browser-contract  Validate a pinned candidate browser HTTP contract' \
+	  '  make appliance-compatibility  Compare isolated baseline/candidate REST behavior' \
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
@@ -64,6 +67,16 @@ test-appliance:
 
 test-hermes-regression:
 	python3 -m unittest discover -s tests/live -p '*_test.py' -v
+
+test-live-gates: test-hermes-regression
+
+browser-contract:
+	@test -n "$(BROWSER_URL)" -a -n "$(EXPECTED_BROWSER_VERSION)" -a -n "$(BROWSER_IMAGE_REFERENCE)" -a -n "$(OUTPUT)" || { printf '%s\n' 'BROWSER_URL, EXPECTED_BROWSER_VERSION, BROWSER_IMAGE_REFERENCE and OUTPUT are required'; exit 2; }
+	python3 scripts/browser-http-contract-gate.py --browser-url "$(BROWSER_URL)" --expected-version "$(EXPECTED_BROWSER_VERSION)" --image-reference "$(BROWSER_IMAGE_REFERENCE)" --repo-revision "$(MONOREPO_REVISION)" --output "$(OUTPUT)"
+
+appliance-compatibility:
+	@test -n "$(BASELINE_URL)" -a -n "$(CANDIDATE_URL)" -a -n "$(OUTPUT)" || { printf '%s\n' 'BASELINE_URL, CANDIDATE_URL and OUTPUT are required'; exit 2; }
+	python3 scripts/appliance-compatibility-gate.py --baseline-url "$(BASELINE_URL)" --candidate-url "$(CANDIDATE_URL)" --output "$(OUTPUT)"
 
 hermes-regression:
 	@test -n "$(OUTPUT)" || { printf '%s\n' 'OUTPUT is required (for example: artifacts/hermes-regression-$$(date -u +%Y%m%dT%H%M%SZ).json)'; exit 2; }

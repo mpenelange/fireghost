@@ -24,6 +24,15 @@ candidate browser and CRW build. This operation
 uses only the local CRW service, does not cache results, and does not spend
 cloud credits. Existing scrape and search behavior is unchanged.
 
+To test a browser update independently, configure `[renderer.browser_pipeline]`
+with its own `base_url` and optional `api_key`. The pipeline prefers this endpoint;
+when absent it uses `[renderer.camofox]`. Legacy search and the scrape renderer
+ladder continue using their original endpoints. The optional
+`dev/compose.browser-pipeline.yaml` assembles a candidate with separate browser
+profiles and the dedicated configuration; the default appliance keeps its pins.
+See [Camofox upgrade validation](browser-upgrade-validation.md) for the contract
+gate, immutable runtime inputs, and regression checks required before promotion.
+
 The request accepts `url`, `profile` (`article` or `redditThread`), `timeout`
 in milliseconds, `maxRounds`, `maxItems`, and `maxBytes`. Defaults are
 `article`, 30000, 20, 200, and 196608 respectively; upper bounds are 60000,

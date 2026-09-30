@@ -1,0 +1,18 @@
+# Renderer ladder: direct HTTP, then LightPanda, then Camofox.
+[renderer]
+mode = "auto"
+
+[renderer.lightpanda]
+ws_url = "ws://lightpanda:9222/"
+
+[renderer.camofox]
+base_url = "http://camofox:9377"
+
+[renderer.browser_pipeline]
+base_url = "http://camofox-pipeline:9377"
+
+[search]
+camofox_pool_size = 4
+# Cold Firefox contexts are intentionally launched one at a time; leave enough
+# room for first-use warm-up while steady-state searches remain much faster.
+timeout_ms = 60000

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "browser": "camofox",
+  "minimumVersion": "2.4.8",
+  "requiredHealth": {"ok": true, "running": true, "engine": "camoufox"},
+  "target": {
+    "url": "https://example.com/",
+    "requiredText": ["Example Domain"],
+    "minimumTextChars": 40
+  },
+  "budgets": {
+    "requestTimeoutSeconds": 15,
+    "totalTimeoutSeconds": 90,
+    "cleanupTimeoutSeconds": 5,
+    "maxResponseBytes": 262144,
+    "maxExpressionBytes": 65536
+  },
+  "cycles": 2,
+  "createServerErrorRecovery": "scopedResetOnce",
+  "evaluations": [
+    {
+      "encoding": "object",
+      "expression": "(()=>({url:location.href,title:document.title,text:document.body.innerText}))()"
+    },
+    {
+      "encoding": "string",
+      "expression": "JSON.stringify({url:location.href,title:document.title,text:document.body.innerText})"
+    }
+  ]
+}

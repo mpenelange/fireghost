@@ -1,0 +1,49 @@
+# Optional isolated browser-pipeline candidate; defaults remain in compose.yaml.
+# Compose 2.24.4+ is required for !override. Use a separate project name.
+name: fireghost-browser-pipeline
+
+services:
+  router:
+    image: fireghost-router:${BROWSER_PIPELINE_ROUTER_VERSION:-browser-pipeline-candidate}
+    build:
+      args:
+        VERSION: ${BROWSER_PIPELINE_ROUTER_VERSION:-browser-pipeline-candidate}
+        REVISION: ${MONOREPO_REVISION:?set MONOREPO_REVISION to the candidate source revision}
+        BUILD_DATE: ${BROWSER_PIPELINE_BUILD_DATE:-unknown}
+    ports: !override
+      - "127.0.0.1:${BROWSER_PIPELINE_ROUTER_HOST_PORT:-33030}:8080"
+    environment:
+      ROUTER_API_KEY: ${ROUTER_API_KEY:?set ROUTER_API_KEY for candidate MCP authentication}
+      MCP_ENABLED: "true"
+      ROUTER_BROWSER_PIPELINE_ENABLED: "true"
+      FIRECRAWL_CLOUD_API_KEY: ""
+      ROUTER_DAILY_CLOUD_CREDITS: "0"
+      ROUTER_MONTHLY_CLOUD_CREDITS: "0"
+      ROUTER_CLOUD_BURST_CREDITS: "0"
+      ROUTER_CLOUD_REFILL_CREDITS_PER_DAY: "0"
+
+  crw:
+    image: fireghost-crw:${BROWSER_PIPELINE_CRW_VERSION:-1.2.0-browser-pipeline-candidate}
+    build:
+      context: ../crw
+      args:
+        CRW_VERSION: ${BROWSER_PIPELINE_CRW_VERSION:-1.2.0-browser-pipeline-candidate}
+        CRW_REVISION: ${MONOREPO_REVISION:?set MONOREPO_REVISION to the candidate source revision}
+        CRW_BUILD_DATE: ${BROWSER_PIPELINE_BUILD_DATE:-unknown}
+        CRW_SOURCE: ${MONOREPO_SOURCE:-https://git.firewire.cc/michael/fireghost}
+    depends_on:
+      camofox-pipeline:
+        condition: service_healthy
+    volumes:
+      - ../deployment/crw.browser-pipeline.toml:/app/config/crw.toml:ro
+
+  camofox-pipeline:
+    extends:
+      file: compose.yaml
+      service: camofox
+    image: ghcr.io/redf0x1/camofox-browser:2.4.8@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55
+    volumes:
+      - camofox-pipeline-profiles:/home/node/.camofox
+
+volumes:
+  camofox-pipeline-profiles:

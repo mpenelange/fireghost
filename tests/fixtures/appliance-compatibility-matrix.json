@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {"name":"static","kind":"scrape","path":"/v2/scrape","body":{"url":"https://example.com/","formats":["markdown"]},"minimumContentChars":100,"minimumCandidateRatio":0.9,"requiredText":["Example Domain"],"timeoutSeconds":65},
+    {"name":"javascript-lightpanda","kind":"scrape","path":"/v2/scrape","body":{"url":"https://quotes.toscrape.com/js/","formats":["markdown"],"renderer":"lightpanda","timeout":60000},"minimumContentChars":500,"minimumCandidateRatio":0.8,"requiredText":["Albert Einstein","J.K. Rowling"],"timeoutSeconds":65},
+    {"name":"javascript-camofox","kind":"scrape","path":"/v2/scrape","body":{"url":"https://quotes.toscrape.com/js/","formats":["markdown"],"renderer":"camofox","timeout":60000},"minimumContentChars":500,"minimumCandidateRatio":0.8,"requiredText":["Albert Einstein","J.K. Rowling"],"timeoutSeconds":65},
+    {"name":"redirect","kind":"scrape","path":"/v2/scrape","body":{"url":"https://httpbin.org/redirect-to?url=https%3A%2F%2Fexample.com%2F","formats":["markdown"],"timeout":60000},"minimumContentChars":100,"minimumCandidateRatio":0.9,"requiredText":["Example Domain"],"timeoutSeconds":65},
+    {"name":"pdf","kind":"scrape","path":"/v2/scrape","body":{"url":"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf","formats":["markdown"]},"minimumContentChars":10,"minimumCandidateRatio":0.9,"requiredText":["Dummy PDF file"],"timeoutSeconds":65},
+    {"name":"search-google","kind":"search","path":"/v2/search","body":{"query":"Python programming language official documentation","limit":5,"engines":["google"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125},
+    {"name":"search-wikipedia","kind":"search","path":"/v2/search","body":{"query":"Python programming language","limit":5,"engines":["wikipedia"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125},
+    {"name":"concurrent-linux","kind":"search","path":"/v2/search","body":{"query":"Linux","limit":5,"engines":["wikipedia"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125,"concurrent":true},
+    {"name":"concurrent-chicago","kind":"search","path":"/v2/search","body":{"query":"Chicago","limit":5,"engines":["wikipedia"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125,"concurrent":true},
+    {"name":"concurrent-rust","kind":"search","path":"/v2/search","body":{"query":"Rust programming language","limit":5,"engines":["wikipedia"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125,"concurrent":true},
+    {"name":"concurrent-docker","kind":"search","path":"/v2/search","body":{"query":"Docker software","limit":5,"engines":["wikipedia"]},"minimumResults":1,"minimumTitleOverlap":0.5,"timeoutSeconds":125,"concurrent":true}
+  ]
+}
