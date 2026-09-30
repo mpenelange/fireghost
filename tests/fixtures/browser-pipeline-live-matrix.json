@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "maxResponseBytes": 1048576,
+  "cases": [
+    {
+      "name": "article-wikipedia",
+      "request": {"url": "https://en.wikipedia.org/wiki/Web_scraping", "profile": "article", "timeout": 60000, "maxRounds": 20, "maxItems": 200, "maxBytes": 262144},
+      "timeoutSeconds": 65,
+      "minimumMarkdownBytes": 1000,
+      "minimumComments": 0
+    },
+    {
+      "name": "reddit-small",
+      "request": {"url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/", "profile": "redditThread", "timeout": 60000, "maxRounds": 20, "maxItems": 200, "maxBytes": 262144},
+      "timeoutSeconds": 65,
+      "minimumMarkdownBytes": 100,
+      "minimumComments": 10
+    },
+    {
+      "name": "reddit-large",
+      "request": {"url": "https://www.reddit.com/r/selfhosted/comments/1opkatt/which_app_you_are_hosting_which_you_feel_others/", "profile": "redditThread", "timeout": 60000, "maxRounds": 30, "maxItems": 400, "maxBytes": 262144},
+      "timeoutSeconds": 65,
+      "minimumMarkdownBytes": 100,
+      "minimumComments": 10
+    },
+    {
+      "name": "reddit-older-modern",
+      "request": {"url": "https://www.reddit.com/r/selfhosted/comments/opgyga/any_self_hosted_alexas_or_similar/", "profile": "redditThread", "timeout": 60000, "maxRounds": 20, "maxItems": 200, "maxBytes": 262144},
+      "timeoutSeconds": 65,
+      "minimumMarkdownBytes": 100,
+      "minimumComments": 1
+    }
+  ]
+}

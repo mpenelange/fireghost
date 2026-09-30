@@ -27,6 +27,14 @@ the contract uses the public `https://example.com/` control and never supplies
 network bypass flags. The default deployed browser pin remains an independent
 deployment decision.
 
+The direct HTTP gate does not validate rejection of private destinations,
+redirects, or page subrequests. Before approving a browser upgrade, retain
+separate negative guard evidence from the isolated runtime: target an owned,
+instrumented private-network sentinel through direct navigation, a redirect, and
+a page subrequest, and verify each is blocked with zero sentinel hits. CRW's
+host-guard unit tests cover its URL checks; they do not prove the upstream
+browser's redirect or subrequest guard.
+
 ## Use a separate pipeline browser
 
 The optional CRW configuration block selects a dedicated browser for
@@ -142,6 +150,22 @@ the router feature enabled only in the validation stack. Inspect partial Reddit
 results, identity and parent links, stop reasons, and cleanup; loaded comments
 must not be reported as the complete public thread. The public example control
 in the HTTP gate deliberately leaves Reddit extraction to those existing tests.
+
+Run the [pipeline live gate](../scripts/browser-pipeline-live-gate.py) inside the
+VM with the candidate router's `ROUTER_API_KEY` in the environment:
+
+```sh
+python3 scripts/browser-pipeline-live-gate.py \
+  --router-url http://127.0.0.1:33030 --include-mcp \
+  --output artifacts/browser-pipeline-live.json
+```
+
+Its [matrix](../tests/fixtures/browser-pipeline-live-matrix.json) covers an article
+and small, large, and older Reddit threads. It checks identity and parent links,
+bounded output and expansion, truthful partial-thread metadata, and optional MCP
+structured output. Public-site failures keep the gate failed; a successful article
+does not establish Reddit compatibility. Evidence contains counts, hashes and
+normalized metadata, never extracted bodies or authors.
 
 Retain the direct contract artifact, legacy REST comparison, cold and warm browser comparison artifacts,
 Hermes/provider evidence, component test logs, and sanitized runtime manifest with

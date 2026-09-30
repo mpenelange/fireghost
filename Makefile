@@ -4,7 +4,7 @@
 	test-hermes-regression hermes-regression \
 	router-fmt-check router-vet router-race compose-config check-stack-lock build-router build-crw-image \
 	build-images up down ps logs pull smoke live-contract staging-up staging-down staging-ps \
-	staging-smoke staging-live-contract backup restore check-updates browser-contract appliance-compatibility test-live-gates
+	staging-smoke staging-live-contract backup restore check-updates browser-contract appliance-compatibility browser-pipeline-live test-live-gates
 
 GO_IMAGE = golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195
 GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
@@ -38,6 +38,7 @@ help:
 	  '  make test-live-gates    Run deterministic validation-tool tests' \
 	  '  make browser-contract  Validate a pinned candidate browser HTTP contract' \
 	  '  make appliance-compatibility  Compare isolated baseline/candidate REST behavior' \
+	  '  make browser-pipeline-live   Check article, Reddit and optional MCP extraction' \
 	  '' \
 	  'Build and operations:' \
 	  '  make build-images      Build local router and CRW images' \
@@ -77,6 +78,10 @@ browser-contract:
 appliance-compatibility:
 	@test -n "$(BASELINE_URL)" -a -n "$(CANDIDATE_URL)" -a -n "$(OUTPUT)" || { printf '%s\n' 'BASELINE_URL, CANDIDATE_URL and OUTPUT are required'; exit 2; }
 	python3 scripts/appliance-compatibility-gate.py --baseline-url "$(BASELINE_URL)" --candidate-url "$(CANDIDATE_URL)" --output "$(OUTPUT)"
+
+browser-pipeline-live:
+	@test -n "$(CANDIDATE_URL)" -a -n "$(OUTPUT)" || { printf '%s\n' 'CANDIDATE_URL and OUTPUT are required'; exit 2; }
+	python3 scripts/browser-pipeline-live-gate.py --router-url "$(CANDIDATE_URL)" --output "$(OUTPUT)" $(if $(filter true,$(INCLUDE_MCP)),--include-mcp,)
 
 hermes-regression:
 	@test -n "$(OUTPUT)" || { printf '%s\n' 'OUTPUT is required (for example: artifacts/hermes-regression-$$(date -u +%Y%m%dT%H%M%SZ).json)'; exit 2; }
