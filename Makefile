@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-router check-crw test test-router test-crw test-appliance \
+.PHONY: help check check-router check-crw test test-router test-crw test-browser-dom test-appliance \
 	test-hermes-regression hermes-regression \
 	router-fmt-check router-vet router-race compose-config check-stack-lock build-router build-crw-image \
 	build-images up down ps logs pull smoke live-contract staging-up staging-down staging-ps \
@@ -8,6 +8,7 @@
 
 GO_IMAGE = golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195
 GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
+NODE_DOM_IMAGE = node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
 COMPOSE = docker compose --project-directory dev -f dev/compose.yaml
 STAGING_PROJECT ?= hermes-web-retrieval-staging
 STAGING_ROUTER_VERSION ?= monorepo-staging
@@ -32,6 +33,7 @@ help:
 	  '  make test              Run all component and appliance tests' \
 	  '  make check-router      Format, vet, test, and race-check the Go router' \
 	  '  make check-crw         Run the CRW workspace checks' \
+	  '  make test-browser-dom  Run source-driven browser and Google DOM fixtures' \
 	  '  make test-appliance    Run Compose and backup/restore contracts' \
 	  '  make check-updates     Compare reviewed refs with mutable upstreams' \
 	  '  make test-hermes-regression  Run deterministic Hermes gate tests' \
@@ -52,7 +54,7 @@ check: check-router check-crw test-appliance test-hermes-regression compose-conf
 
 check-router: router-fmt-check router-vet test-router router-race
 
-check-crw:
+check-crw: test-browser-dom
 	$(CRW_CARGO_ENV) $(MAKE) -C crw check
 
 test: test-router test-crw test-appliance test-hermes-regression
@@ -60,8 +62,18 @@ test: test-router test-crw test-appliance test-hermes-regression
 test-router:
 	$(GO_DOCKER) go test ./...
 
-test-crw:
+test-crw: test-browser-dom
 	$(CRW_CARGO_ENV) $(MAKE) -C crw test
+
+test-browser-dom:
+	docker run --rm --memory 1g --memory-swap 1g --cpus 1 \
+		-v "$(CURDIR)/crw:/source/crw:ro" $(NODE_DOM_IMAGE) sh -ec '\
+		mkdir -p /tmp/crw/crates; \
+		cp -R /source/crw/crates/crw-renderer /source/crw/crates/crw-search /tmp/crw/crates/; \
+		cd /tmp/crw/crates/crw-renderer/tests/pipeline_dom; \
+		npm ci --ignore-scripts --no-audit; \
+		node runner.cjs; \
+		node /tmp/crw/crates/crw-search/tests/google_dom/runner.cjs'
 
 test-appliance:
 	python3 -m unittest discover -s tests/appliance -p '*_test.py' -v

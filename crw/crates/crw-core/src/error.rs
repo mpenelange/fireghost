@@ -38,6 +38,9 @@ pub enum CrwError {
     #[error("{0}")]
     SearchDisabled(String),
 
+    #[error("Search engine '{engine}' blocked the request")]
+    SearchBlocked { engine: String },
+
     #[error("{0}")]
     Internal(String),
 
@@ -61,6 +64,7 @@ impl CrwError {
             CrwError::NotFound(_) => "not_found",
             CrwError::RateLimited => "rate_limited",
             CrwError::SearchDisabled(_) => "search_disabled",
+            CrwError::SearchBlocked { .. } => "search_blocked",
             CrwError::Internal(_) => "internal_error",
             CrwError::Shutdown => "shutdown",
         }

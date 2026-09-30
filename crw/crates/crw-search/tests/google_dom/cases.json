@@ -1,0 +1,54 @@
+[
+  {
+    "name": "linked heading preserves its destination and snippet",
+    "fixture": "linked-heading.html",
+    "expected": [
+      {"url":"https://example.org/guide","title":"A linked result heading","content":"The organic result snippet."},
+      {"url":"https://developers.google.com/search/docs","title":"Google Search documentation","content":"A Google-owned publisher page is a valid organic destination."},
+      {"url":"https://maps.google.com/","title":"Google Maps","content":"An official Maps page can be an organic result."},
+      {"url":"https://www.google.com/maps/place/Chicago/","title":"Chicago on Google Maps","content":"A linked Maps destination is not a provider navigation control."}
+    ]
+  },
+  {
+    "name": "preceding decoy anchor cannot replace the linked heading destination",
+    "fixture": "preceding-decoy.html",
+    "expected": [{"url":"https://example.org/correct","title":"The correct result","content":"Snippet belonging to the correct result."}]
+  },
+  {
+    "name": "nested result wrappers preserve distinct headings without duplicates",
+    "fixture": "nested-wrappers.html",
+    "expected": [
+      {"url":"https://example.org/first","title":"First organic result","content":"First result snippet."},
+      {"url":"https://example.net/second","title":"Second organic result","content":"Second result snippet."}
+    ]
+  },
+  {
+    "name": "Google tracking q link resolves to the external destination",
+    "fixture": "tracking-link.html",
+    "expected": [{"url":"https://example.org/article?topic=rust&view=full","title":"Tracked organic result","content":"The tracked destination snippet."}]
+  },
+  {
+    "name": "empty unsafe malformed and untitled links are not results",
+    "fixture": "invalid-links.html",
+    "expected": []
+  },
+  {
+    "name": "provider widgets and unlinked headings are not organic results",
+    "fixture": "provider-widgets.html",
+    "expected": []
+  },
+  {
+    "name": "heading owns one child link but ambiguous child links are not guessed",
+    "fixture": "heading-child-link.html",
+    "expected": [{"url":"https://example.org/child-link","title":"A heading with its own child link","content":"Snippet for the heading's child link."}]
+  },
+  {
+    "name": "snippet ascends only single-heading wrappers without borrowing another result",
+    "fixture": "nested-snippet.html",
+    "expected": [
+      {"url":"https://example.org/outer-snippet","title":"Heading inside a presentation wrapper","content":"This snippet belongs to the surrounding single-heading card."},
+      {"url":"https://example.org/missing-snippet","title":"Result with no own snippet","content":""},
+      {"url":"https://example.net/other-snippet","title":"Another result owns its snippet","content":"This text belongs only to the other result."}
+    ]
+  }
+]

@@ -65,7 +65,49 @@ const RENDER_SETTLE: Duration = Duration::from_millis(500);
 /// comes back as a string we can parse. Selectors are intentionally broad and
 /// kept in this one place — Google rewrites its SERP DOM periodically, so this
 /// is the single spot to fix when extraction drifts.
-const GOOGLE_SCRAPE_JS: &str = r#"JSON.stringify(Array.from(document.querySelectorAll('div.g, div.MjjYud')).map(function(el){var a=el.querySelector('a[href]');var h=el.querySelector('h3');var s=el.querySelector('.VwiC3b, [data-sncf], .st');return (a&&h)?{url:a.href,title:h.innerText,content:s?s.innerText:''}:null;}).filter(Boolean))"#;
+const GOOGLE_SCRAPE_JS: &str = r#"JSON.stringify((function(){
+    var rows=[],seen=new Set();
+    function destination(anchor){
+        var href=(anchor.getAttribute('href')||'').trim();
+        if(!href)return null;
+        try{
+            var url=new URL(href,document.baseURI);
+            var provider=url.hostname==='google.com'||url.hostname==='www.google.com';
+            if(provider&&url.pathname==='/url'){
+                var target=url.searchParams.get('q')||url.searchParams.get('url');
+                if(!target)return null;
+                url=new URL(target);
+            }
+            if(!/^https?:$/.test(url.protocol)||url.username||url.password)return null;
+            provider=url.hostname==='google.com'||url.hostname==='www.google.com';
+            if(provider&&(['/search','/url','/imgres','/aclk','/preferences','/advanced_search','/setprefs'].includes(url.pathname)||/^\/sorry(\/|$)/.test(url.pathname)))return null;
+            return url.href;
+        }catch(e){return null;}
+    }
+    document.querySelectorAll('div.g h3, div.MjjYud h3').forEach(function(heading){
+        var anchor=heading.closest('a[href]');
+        if(!anchor){
+            var ownLinks=heading.querySelectorAll('a[href]');
+            if(ownLinks.length!==1)return;
+            anchor=ownLinks[0];
+        }
+        var title=(heading.innerText||heading.textContent||'').trim();
+        var url=destination(anchor);
+        if(!title||!url||seen.has(url))return;
+        var container=heading.closest('div.g, div.MjjYud');
+        var snippet=null;
+        while(container){
+            var headings=container.querySelectorAll('h3');
+            if(headings.length!==1||headings[0]!==heading)break;
+            snippet=container.querySelector('.VwiC3b, [data-sncf], .st');
+            if(snippet)break;
+            container=container.parentElement?container.parentElement.closest('div.g, div.MjjYud'):null;
+        }
+        seen.add(url);
+        rows.push({url:url,title:title,content:snippet?(snippet.innerText||snippet.textContent||'').trim():''});
+    });
+    return rows;
+})())"#;
 
 /// Bing SERP extractor. `li.b_algo` rows; `h2 a` for title/url, `.b_caption p`
 /// for the snippet. Bing wraps result links in a `bing.com/ck/a?…&u=a1<base64>`
@@ -157,9 +199,9 @@ struct CamofoxApiResponse {
     #[serde(default = "default_true")]
     ok: bool,
     #[serde(default)]
-    error: Option<String>,
-    #[serde(default)]
     result: Option<serde_json::Value>,
+    #[serde(default)]
+    truncated: bool,
 }
 
 fn default_true() -> bool {
@@ -338,10 +380,7 @@ impl CamofoxSearchClient {
         if !body.ok {
             return Err(SearchError::Upstream {
                 status: 502,
-                body: format!(
-                    "camofox: {operation} rejected: {}",
-                    body.error.as_deref().unwrap_or("unknown upstream error")
-                ),
+                body: format!("camofox: {operation} rejected"),
             });
         }
         Ok(body)
@@ -598,42 +637,90 @@ impl CamofoxSearchClient {
         Self::api_response(navigation, "navigate").await?;
         loop {
             if Instant::now() >= deadline {
-                return Ok(Vec::new());
+                return Err(SearchError::Timeout);
             }
-            match self.current_tab_url(worker, tab_id).await? {
-                None => {
-                    return Err(SearchError::Upstream {
-                        status: 404,
-                        body: "camofox: warm search tab disappeared".to_string(),
-                    });
-                }
-                Some(url) if is_challenge_url(engine, &url) => return Ok(Vec::new()),
-                Some(url) if url_matches_search(engine, &url, &params.q) => break,
-                Some(_) => {
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
-                }
+            if self
+                .tab_matches_search(worker, tab_id, engine, &params.q)
+                .await?
+            {
+                break;
             }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
         }
 
         // Do not call `/wait`: Camofox 2.4.6 can keep that route alive beyond
         // the caller's budget. Extraction polling stays on non-blocking API
-        // calls and treats a slow/challenged engine as an explicit empty result.
+        // calls. Only a successfully decoded empty row array can establish an
+        // empty result; challenges and malformed replies remain explicit errors.
         let remaining = deadline.saturating_duration_since(Instant::now());
         tokio::time::sleep(RENDER_SETTLE.min(remaining)).await;
+        let mut observed_empty = false;
         while Instant::now() < deadline {
-            match self.evaluate_rows(worker, tab_id, engine).await {
-                Ok(rows) if !rows.is_empty() => return Ok(rows),
-                // A dead tab cannot recover through polling. Let fetch's
-                // bounded stale-tab retry replace it before trying again.
-                Err(error) if is_stale_tab(&error) => return Err(error),
-                Ok(_) | Err(_) => {
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
-                }
+            // The tab may redirect during settling or between evaluations.
+            // A previously observed empty array cannot establish this query's
+            // outcome after the browser has moved to a different destination.
+            if !self
+                .tab_matches_search(worker, tab_id, engine, &params.q)
+                .await?
+            {
+                observed_empty = false;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
+                continue;
             }
+            // Evaluation failures propagate to fetch's existing typed error
+            // handling, including its bounded stale-tab retry.
+            let rows = self.evaluate_rows(worker, tab_id, engine).await?;
+            if Instant::now() >= deadline {
+                return Err(SearchError::Timeout);
+            }
+            // A navigation can finish while evaluate is in flight. Neither
+            // rows nor an empty array are accepted without rechecking the
+            // current destination after the reply has been decoded.
+            let matches = self
+                .tab_matches_search(worker, tab_id, engine, &params.q)
+                .await?;
+            if Instant::now() >= deadline {
+                return Err(SearchError::Timeout);
+            }
+            if !matches {
+                observed_empty = false;
+            } else if !rows.is_empty() {
+                return Ok(rows);
+            } else {
+                observed_empty = true;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            tokio::time::sleep(URL_POLL_INTERVAL.min(remaining)).await;
         }
-        Ok(Vec::new())
+        if observed_empty {
+            Ok(Vec::new())
+        } else {
+            Err(SearchError::Timeout)
+        }
+    }
+
+    async fn tab_matches_search(
+        &self,
+        worker: &CamofoxSearchWorker,
+        tab_id: &str,
+        engine: SearchEngine,
+        query: &str,
+    ) -> Result<bool, SearchError> {
+        let url =
+            self.current_tab_url(worker, tab_id)
+                .await?
+                .ok_or_else(|| SearchError::Upstream {
+                    status: 404,
+                    body: "camofox: warm search tab disappeared".to_string(),
+                })?;
+        if is_challenge_url(engine, &url) {
+            return Err(SearchError::Blocked {
+                engine: engine.label().to_string(),
+            });
+        }
+        Ok(url_matches_search(engine, &url, query))
     }
 
     async fn evaluate_rows(
@@ -649,22 +736,22 @@ impl CamofoxSearchClient {
             )
             .await?;
         let body = Self::api_response(eval, "evaluate results").await?;
+        if body.truncated {
+            return Err(SearchError::InvalidResponse(
+                "camofox: truncated search evaluation".into(),
+            ));
+        }
         let raw = match body.result {
             Some(serde_json::Value::String(value)) => value,
-            None | Some(serde_json::Value::Null) => String::new(),
-            Some(other) => {
-                return Err(SearchError::InvalidResponse(format!(
-                    "camofox: evaluate result was not a string: {other}"
-                )));
+            _ => {
+                return Err(SearchError::InvalidResponse(
+                    "camofox: search evaluation must return a JSON row string".into(),
+                ));
             }
         };
 
-        let rows: Vec<ScrapedRow> = if raw.trim().is_empty() {
-            Vec::new()
-        } else {
-            serde_json::from_str(&raw)
-                .map_err(|e| SearchError::InvalidResponse(format!("camofox: scrape JSON: {e}")))?
-        };
+        let rows: Vec<ScrapedRow> = serde_json::from_str(&raw)
+            .map_err(|_| SearchError::InvalidResponse("camofox: invalid search row JSON".into()))?;
 
         let n = rows.len();
         let label = engine.label();
@@ -765,6 +852,7 @@ fn engine_failure_reason(e: &SearchError) -> String {
         SearchError::Timeout => "timed out".to_string(),
         SearchError::Upstream { status, .. } => format!("upstream error (HTTP {status})"),
         SearchError::InvalidResponse(_) => "unreadable response".to_string(),
+        SearchError::Blocked { .. } => "blocked by a challenge or consent page".to_string(),
         _ => "request failed".to_string(),
     }
 }
@@ -878,7 +966,9 @@ fn is_stale_tab(e: &SearchError) -> bool {
     match e {
         SearchError::Upstream { status, .. } => matches!(*status, 404 | 410) || *status >= 500,
         SearchError::Transport(_) => true,
-        SearchError::Timeout | SearchError::InvalidResponse(_) => false,
+        SearchError::Timeout | SearchError::InvalidResponse(_) | SearchError::Blocked { .. } => {
+            false
+        }
     }
 }
 
@@ -1199,5 +1289,395 @@ mod github_api_tests {
             ..Default::default()
         };
         assert!(client.fetch(&params).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+    fn google_params() -> SearxngParams {
+        SearxngParams {
+            q: "diagnostic query".into(),
+            camofox_engines: vec![SearchEngine::Google],
+            ..Default::default()
+        }
+    }
+
+    async fn warm_client(server: &MockServer, observed_url: &str) -> CamofoxSearchClient {
+        warm_client_with_navigation_count(server, observed_url, 1).await
+    }
+
+    async fn warm_client_with_navigation_count(
+        server: &MockServer,
+        observed_url: &str,
+        navigation_count: u64,
+    ) -> CamofoxSearchClient {
+        let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_millis(750));
+        *client.workers[0].tab.lock().await = Some("diagnostic-tab".into());
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/navigate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+            .expect(navigation_count)
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "tabs": [{"tabId": "diagnostic-tab", "url": observed_url}]
+            })))
+            .mount(server)
+            .await;
+        // Deadline failures retain the existing bounded replacement/cleanup
+        // path. Respond promptly so its lifecycle work cannot obscure errors.
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "tabId": "replacement-tab"
+            })))
+            .mount(server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/tabs/diagnostic-tab"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+            .mount(server)
+            .await;
+        client
+    }
+
+    async fn assert_no_row_evaluation(server: &MockServer) {
+        assert!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|request| { !request.url.path().ends_with("/evaluate") })
+        );
+    }
+
+    async fn client_with_url_changed_by_evaluation(
+        server: &MockServer,
+        next_url: &str,
+    ) -> (CamofoxSearchClient, Arc<AtomicBool>) {
+        let target = search_target_url(SearchEngine::Google, &google_params().q);
+        let client = warm_client(server, &target).await;
+        let changed = Arc::new(AtomicBool::new(false));
+        let observed = Arc::clone(&changed);
+        let next_url = next_url.to_string();
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(move |_: &Request| {
+                let url = if observed.load(Ordering::SeqCst) {
+                    &next_url
+                } else {
+                    &target
+                };
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "tabs": [{"tabId": "diagnostic-tab", "url": url}]
+                }))
+            })
+            .with_priority(1)
+            .mount(server)
+            .await;
+        (client, changed)
+    }
+
+    async fn mount_nonempty_evaluation_changing_url(server: &MockServer, changed: Arc<AtomicBool>) {
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(move |_: &Request| {
+                changed.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "ok": true,
+                    "result": "[{\"url\":\"https://example.com/\",\"title\":\"Rows from a moving tab\"}]",
+                    "truncated": false
+                }))
+            })
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn late_navigation_nonempty_evaluation_changes_query() {
+        let server = MockServer::start().await;
+        let (client, changed) = client_with_url_changed_by_evaluation(
+            &server,
+            "https://www.google.com/search?q=previous",
+        )
+        .await;
+        mount_nonempty_evaluation_changing_url(&server, changed).await;
+        assert!(
+            matches!(
+                client.fetch(&google_params()).await,
+                Err(SearchError::Timeout)
+            ),
+            "rows from a tab that changed query must not be accepted"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn late_navigation_nonempty_evaluation_redirects_to_challenge() {
+        let server = MockServer::start().await;
+        let (client, changed) =
+            client_with_url_changed_by_evaluation(&server, "https://www.google.com/sorry/index")
+                .await;
+        mount_nonempty_evaluation_changing_url(&server, changed).await;
+        assert!(
+            matches!(
+                client.fetch(&google_params()).await,
+                Err(SearchError::Blocked { engine }) if engine == "google"
+            ),
+            "a challenge reached during evaluation must not return its rows"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn late_navigation_to_challenge_during_settle_is_blocked() {
+        let server = MockServer::start().await;
+        let client = warm_client(&server, "https://www.google.com/sorry/index").await;
+        let target = search_target_url(SearchEngine::Google, &google_params().q);
+        // Only the first observation matches. The redirect becomes visible
+        // after that match, before extraction, without a timing-based fixture.
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "tabs": [{"tabId": "diagnostic-tab", "url": target}]
+            })))
+            .with_priority(1)
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "result": "[{\"url\":\"https://example.com/\",\"title\":\"Stale row\"}]"
+            })))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client.fetch(&google_params()).await,
+            Err(SearchError::Blocked { engine }) if engine == "google"
+        ));
+        assert_no_row_evaluation(&server).await;
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn late_navigation_to_challenge_after_empty_evaluation_is_blocked() {
+        let server = MockServer::start().await;
+        let (client, changed) =
+            client_with_url_changed_by_evaluation(&server, "https://www.google.com/sorry/index")
+                .await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(move |_: &Request| {
+                changed.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "ok": true, "result": "[]", "truncated": false
+                }))
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client.fetch(&google_params()).await,
+            Err(SearchError::Blocked { engine }) if engine == "google"
+        ));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn late_navigation_changes_query_without_returning_stale_rows() {
+        let server = MockServer::start().await;
+        let (client, changed) = client_with_url_changed_by_evaluation(
+            &server,
+            "https://www.google.com/search?q=previous",
+        )
+        .await;
+        let evaluations = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&evaluations);
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(move |_: &Request| {
+                let first = count.fetch_add(1, Ordering::SeqCst) == 0;
+                changed.store(true, Ordering::SeqCst);
+                let rows = if first {
+                    "[]"
+                } else {
+                    "[{\"url\":\"https://example.com/\",\"title\":\"Previous query row\"}]"
+                };
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "ok": true, "result": rows, "truncated": false
+                }))
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client.fetch(&google_params()).await,
+            Err(SearchError::Timeout)
+        ));
+        assert_eq!(evaluations.load(Ordering::SeqCst), 1);
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn recognized_google_challenges_are_blocked_not_empty_success() {
+        for observed in [
+            "https://www.google.com/sorry/index?continue=search",
+            "https://consent.google.com/m?continue=search",
+        ] {
+            let server = MockServer::start().await;
+            let client = warm_client(&server, observed).await;
+            assert!(
+                matches!(
+                    client.fetch(&google_params()).await,
+                    Err(SearchError::Blocked { engine }) if engine == "google"
+                ),
+                "a known challenge cannot establish a successful empty search"
+            );
+            assert_no_row_evaluation(&server).await;
+            server.verify().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn persistent_previous_query_url_times_out_without_scraping_stale_rows() {
+        let server = MockServer::start().await;
+        let client = warm_client(&server, "https://www.google.com/search?q=previous").await;
+        assert!(
+            matches!(
+                client.fetch(&google_params()).await,
+                Err(SearchError::Timeout)
+            ),
+            "failure to reach this query must not become an empty success"
+        );
+        assert_no_row_evaluation(&server).await;
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn malformed_evaluation_is_invalid_response_not_empty_success() {
+        for reply in [
+            json!({"ok":true,"result":"not row JSON","truncated":false}),
+            json!({"ok":true,"result":{"unexpected":"object"},"truncated":false}),
+            json!({"ok":true,"result":null,"truncated":false}),
+            json!({"ok":true,"truncated":false}),
+            json!({"ok":true,"result":"","truncated":false}),
+        ] {
+            let server = MockServer::start().await;
+            let target = search_target_url(SearchEngine::Google, &google_params().q);
+            let client = warm_client(&server, &target).await;
+            Mock::given(method("POST"))
+                .and(path("/tabs/diagnostic-tab/evaluate"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+                .mount(&server)
+                .await;
+            assert!(
+                matches!(
+                    client.fetch(&google_params()).await,
+                    Err(SearchError::InvalidResponse(_))
+                ),
+                "malformed extraction cannot establish a successful empty search"
+            );
+            server.verify().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn truncated_evaluation_is_rejected_even_when_result_parses() {
+        let server = MockServer::start().await;
+        let target = search_target_url(SearchEngine::Google, &google_params().q);
+        let client = warm_client(&server, &target).await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "result": "[{\"url\":\"https://example.com/\",\"title\":\"Incomplete result\",\"content\":\"\"}]",
+                "truncated": true
+            })))
+            .mount(&server)
+            .await;
+        assert!(
+            matches!(
+                client.fetch(&google_params()).await,
+                Err(SearchError::InvalidResponse(_))
+            ),
+            "truncated data cannot be accepted as complete result rows"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn valid_empty_row_array_remains_a_warned_success() {
+        let server = MockServer::start().await;
+        let target = search_target_url(SearchEngine::Google, &google_params().q);
+        let client = warm_client(&server, &target).await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true, "result": "[]", "truncated": false
+            })))
+            .mount(&server)
+            .await;
+        let result = client.fetch(&google_params()).await.unwrap();
+        assert!(result.results.is_empty());
+        assert_eq!(result.unresponsive_engines.len(), 1);
+        assert_eq!(result.unresponsive_engines[0][0], "google");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn blocked_google_preserves_wikipedia_results_with_a_warning() {
+        let server = MockServer::start().await;
+        let mut params = google_params();
+        params.camofox_engines.push(SearchEngine::Wikipedia);
+        let target = search_target_url(SearchEngine::Wikipedia, &params.q);
+        let client = warm_client_with_navigation_count(&server, &target, 2).await;
+        Mock::given(method("GET"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "tabs": [{
+                    "tabId": "diagnostic-tab",
+                    "url": "https://www.google.com/sorry/index?continue=search"
+                }]
+            })))
+            .with_priority(1)
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/diagnostic-tab/evaluate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "ok": true,
+                "result": "[{\"url\":\"https://en.wikipedia.org/wiki/Python_(programming_language)\",\"title\":\"Python\",\"content\":\"Programming language\"}]",
+                "truncated": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = client.fetch(&params).await.unwrap();
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(result.results[0].engine.as_deref(), Some("wikipedia"));
+        assert_eq!(result.unresponsive_engines.len(), 1);
+        assert_eq!(result.unresponsive_engines[0][0], "google");
+        assert!(
+            result.unresponsive_engines[0][1]
+                .as_str()
+                .unwrap()
+                .contains("blocked")
+        );
+        server.verify().await;
     }
 }

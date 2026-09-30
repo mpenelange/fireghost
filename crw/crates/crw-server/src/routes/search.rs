@@ -1054,6 +1054,18 @@ fn validate_request(req: &SearchRequest, max_limit: u32) -> Result<(), CrwError>
 /// `error_code: "timeout"`; the host is correlated via the startup log instead.
 fn map_search_error(err: SearchError, timeout_ms: u64, base_url: &str) -> CrwError {
     match err {
+        SearchError::Blocked { engine } => {
+            // Only canonical engine labels enter the public error. Never echo
+            // arbitrary browser strings, challenge URLs, or query parameters.
+            let engine = serde_json::from_value::<crw_core::types::SearchEngine>(
+                serde_json::Value::String(engine),
+            )
+            .map(|engine| engine.label())
+            .unwrap_or("unknown");
+            CrwError::SearchBlocked {
+                engine: engine.to_owned(),
+            }
+        }
         SearchError::Timeout => CrwError::Timeout(timeout_ms),
         SearchError::Upstream { status, body } => CrwError::HttpError(format!(
             "SearXNG returned HTTP {status}: {}",
@@ -1443,6 +1455,47 @@ mod tests {
             map_search_error(err, 5000, "http://searxng:8080"),
             CrwError::HttpError(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn map_search_error_blocked_has_typed_502_response() {
+        use axum::response::IntoResponse;
+
+        let error = map_search_error(
+            SearchError::Blocked {
+                engine: "google".into(),
+            },
+            5000,
+            "https://user:secret@browser.invalid/internal?token=private",
+        );
+        let response = AppError(error).into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_GATEWAY);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["success"], false);
+        assert_eq!(body["error_code"], "search_blocked");
+        assert!(body["error"].as_str().unwrap().contains("google"));
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            !text.contains("secret") && !text.contains("private") && !text.contains("internal")
+        );
+    }
+
+    #[test]
+    fn map_search_error_blocked_never_exposes_arbitrary_engine_text() {
+        let error = map_search_error(
+            SearchError::Blocked {
+                engine: "google?token=private\n".repeat(200),
+            },
+            5000,
+            "http://browser.invalid",
+        );
+        assert_eq!(error.error_code(), "search_blocked");
+        assert!(error.to_string().len() <= 160);
+        assert!(!error.to_string().contains("private"));
+        assert!(error.to_string().contains("unknown"));
     }
 
     #[test]

@@ -4,12 +4,18 @@ the actual Rust raw-string script constants; it does not reimplement selection,
 identity, sanitization, or budgeting logic. Rust request-builder/protocol tests
 remain in the component's ordinary test suite.
 
-Run only in the isolated Docker testing VM:
+From the repository root, use the disposable Docker fixture target in the
+isolated testing VM or CI:
 
 ```sh
-npm ci --ignore-scripts
-npm test
+make test-browser-dom
 ```
+
+The target runs both renderer and Google DOM fixtures with a pinned Node image.
+It mounts CRW source read-only, copies only the two fixture-owning crate
+directories, and installs the locked dependencies inside the container. Container
+removal leaves no `node_modules` in the source tree. Both root `make check-crw`
+and `make test-crw` include this target.
 
 The fixtures cover supported DOM shapes and failure semantics. They do not prove
 that all current Reddit variants match these shapes, that a visible snapshot is

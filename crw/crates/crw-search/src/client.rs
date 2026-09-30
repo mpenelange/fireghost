@@ -48,6 +48,8 @@ async fn read_capped(response: reqwest::Response, cap: usize) -> Result<Vec<u8>,
 
 #[derive(Debug, Error)]
 pub enum SearchError {
+    #[error("Search engine '{engine}' blocked the request")]
+    Blocked { engine: String },
     #[error("SearXNG request timed out")]
     Timeout,
     #[error("SearXNG upstream error (status {status}): {body}")]

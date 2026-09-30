@@ -378,7 +378,7 @@ async fn repeated_http_410_is_retried_only_once() {
 }
 
 #[tokio::test]
-async fn google_challenge_page_does_not_return_result_rows() {
+async fn google_challenge_page_returns_blocked_without_evaluating_result_rows() {
     let server = mock_with_rows(json!([
         { "url": "https://a.example", "title": "stale row", "content": "" },
     ]))
@@ -392,9 +392,10 @@ async fn google_challenge_page_does_not_return_result_rows() {
         .mount(&server)
         .await;
     let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(2));
-    let response = client.fetch(&params("challenge")).await.unwrap();
-    assert!(response.results.is_empty());
-    assert_eq!(response.unresponsive_engines.len(), 1);
+    assert!(matches!(
+        client.fetch(&params("challenge")).await,
+        Err(crw_search::SearchError::Blocked { engine }) if engine == "google"
+    ));
     assert!(
         server
             .received_requests()

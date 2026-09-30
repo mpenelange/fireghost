@@ -9,7 +9,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crw_core::error::CrwError;
-use crw_core::types::{ImageResult, SearchData, SearchRequest, SearchResult};
+use crw_core::types::{ImageResult, SearchData, SearchRequest, SearchResponse, SearchResult};
 
 use crate::error::AppError;
 use crate::routes::search::search_inner;
@@ -22,6 +22,10 @@ pub struct V2SearchResponse {
     pub data: V2SearchData,
     pub credits_used: u32,
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -92,12 +96,72 @@ pub async fn search(
         .map_err(|e| CrwError::InvalidRequest(format!("Invalid search request: {e}")))?;
 
     let resp = search_inner(&state, req).await?;
-    let data = resp.data.map(|d| shape(d.results)).unwrap_or_default();
+    Ok(Json(response_from_v1(resp)))
+}
 
-    Ok(Json(V2SearchResponse {
+fn response_from_v1(resp: SearchResponse) -> V2SearchResponse {
+    let (data, warnings) = resp
+        .data
+        .map(|d| (shape(d.results), d.warnings))
+        .unwrap_or_default();
+    V2SearchResponse {
         success: true,
         data,
         credits_used: 0,
         id: Uuid::new_v4().to_string(),
-    }))
+        warning: resp.warning,
+        warnings,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crw_core::types::{ApiResponse, SearchResponseData};
+    use serde_json::json;
+
+    fn v1_response(results: Vec<SearchResult>) -> SearchResponse {
+        ApiResponse::ok(SearchResponseData {
+            results: SearchData::Flat(results),
+            answer: None,
+            citations: Vec::new(),
+            llm_usage: None,
+            warnings: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn v2_response_preserves_partial_engine_warnings_and_enrichment_warning() {
+        let row: SearchResult = serde_json::from_value(json!({
+            "url": "https://example.com/", "title": "Example Domain", "description": "Documentation examples", "position": 1
+        })).unwrap();
+        let mut partial = v1_response(vec![row]);
+        partial.warning = Some("scrape enrichment partially failed".into());
+        partial
+            .data
+            .as_mut()
+            .unwrap()
+            .warnings
+            .push("search engine 'google' blocked the request".into());
+        let serialized = serde_json::to_value(response_from_v1(partial)).unwrap();
+        assert_eq!(serialized["success"], true);
+        assert_eq!(serialized["data"]["web"].as_array().unwrap().len(), 1);
+        assert_eq!(serialized["warning"], "scrape enrichment partially failed");
+        assert_eq!(
+            serialized["warnings"],
+            json!(["search engine 'google' blocked the request"])
+        );
+        assert_eq!(serialized["creditsUsed"], 0);
+        assert!(serialized["id"].as_str().is_some());
+    }
+
+    #[test]
+    fn v2_response_genuine_empty_success_does_not_invent_failure_or_warning_fields() {
+        let serialized = serde_json::to_value(response_from_v1(v1_response(Vec::new()))).unwrap();
+        assert_eq!(serialized["success"], true);
+        assert_eq!(serialized["data"]["web"], json!([]));
+        assert!(serialized.get("warning").is_none());
+        assert!(serialized.get("warnings").is_none());
+        assert!(serialized.get("error_code").is_none());
+    }
 }
