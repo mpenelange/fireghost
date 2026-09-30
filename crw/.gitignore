@@ -8,6 +8,7 @@ bench/results.json
 .DS_Store
 node_modules/
 package-lock.json
+!crates/crw-renderer/tests/pipeline_dom/package-lock.json
 docker-compose.override.yml
 config.local.toml
 .env
