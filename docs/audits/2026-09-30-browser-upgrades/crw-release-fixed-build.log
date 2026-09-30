@@ -1,0 +1,1068 @@
+#0 building with "fg-upgrades-builder-20260930" instance using docker-container driver
+
+#1 [internal] booting buildkit
+#1 starting container buildx_buildkit_fg-upgrades-builder-202609300
+#1 starting container buildx_buildkit_fg-upgrades-builder-202609300 0.4s done
+#1 DONE 0.4s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 4.87kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e
+#3 DONE 0.7s
+
+#4 [internal] load metadata for docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#4 DONE 0.7s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 278B done
+#5 DONE 0.0s
+
+#6 [builder 1/5] FROM docker.io/library/rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e
+#6 resolve docker.io/library/rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e 0.0s done
+#6 DONE 0.0s
+
+#7 [builder 2/5] WORKDIR /app
+#7 CACHED
+
+#8 [stage-1 1/8] FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+#8 resolve docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 0.0s done
+#8 CACHED
+
+#9 [internal] load build context
+#9 transferring context: 4.15MB 0.2s done
+#9 DONE 0.2s
+
+#10 [builder 3/5] RUN set -eux;     case "amd64" in       amd64) RUST_TARGET=x86_64-unknown-linux-gnu;              if [ "amd64" != "amd64" ]; then                apt-get update;                apt-get install -y --no-install-recommends crossbuild-essential-amd64;                rm -rf /var/lib/apt/lists/*;              fi ;;       arm64) RUST_TARGET=aarch64-unknown-linux-gnu;              if [ "amd64" != "arm64" ]; then                apt-get update;                apt-get install -y --no-install-recommends crossbuild-essential-arm64;                rm -rf /var/lib/apt/lists/*;              fi ;;       *) echo "unsupported TARGETARCH=amd64" >&2; exit 1 ;;     esac;     rustup target add "$RUST_TARGET";     echo "$RUST_TARGET" > /rust_target
+#10 0.135 + RUST_TARGET=x86_64-unknown-linux-gnu
+#10 0.135 + [ amd64 != amd64 ]
+#10 0.135 + rustup target add x86_64-unknown-linux-gnu
+#10 0.396 info: component rust-std is up to date
+#10 0.404 + echo x86_64-unknown-linux-gnu
+#10 DONE 0.7s
+
+#11 [stage-1 2/8] RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*
+#11 ...
+
+#12 [builder 4/5] COPY . .
+#12 DONE 0.1s
+
+#11 [stage-1 2/8] RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*
+#11 0.998 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#11 1.112 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#11 1.113 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#11 1.356 Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+#11 1.560 Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+#11 1.568 Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [342 kB]
+#11 2.838 Fetched 9381 kB in 2s (4428 kB/s)
+#11 2.838 Reading package lists...
+#11 3.614 Reading package lists...
+#11 4.387 Building dependency tree...
+#11 4.545 Reading state information...
+#11 4.747 The following additional packages will be installed:
+#11 4.747   libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1 libkrb5-3
+#11 4.748   libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5 librtmp1 libsasl2-2
+#11 4.748   libsasl2-modules-db libssh2-1 libssl3 openssl
+#11 4.750 Suggested packages:
+#11 4.750   krb5-doc krb5-user
+#11 4.750 Recommended packages:
+#11 4.750   krb5-locales libldap-common publicsuffix libsasl2-modules
+#11 4.880 The following NEW packages will be installed:
+#11 4.882   ca-certificates curl libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3
+#11 4.882   libkeyutils1 libkrb5-3 libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5
+#11 4.882   librtmp1 libsasl2-2 libsasl2-modules-db libssh2-1 libssl3 openssl
+#11 4.947 0 upgraded, 18 newly installed, 0 to remove and 1 not upgraded.
+#11 4.947 Need to get 5847 kB of archives.
+#11 4.947 After this operation, 14.8 MB of additional disk space will be used.
+#11 4.947 Get:1 http://deb.debian.org/debian-security bookworm-security/main amd64 libssl3 amd64 3.0.22-1~deb12u1 [2039 kB]
+#11 5.019 Get:2 http://deb.debian.org/debian-security bookworm-security/main amd64 openssl amd64 3.0.22-1~deb12u1 [1442 kB]
+#11 5.035 Get:3 http://deb.debian.org/debian-security bookworm-security/main amd64 ca-certificates all 20250419~deb12u1 [162 kB]
+#11 5.044 Get:4 http://deb.debian.org/debian bookworm/main amd64 libbrotli1 amd64 1.0.9-2+b6 [275 kB]
+#11 5.047 Get:5 http://deb.debian.org/debian bookworm/main amd64 libkrb5support0 amd64 1.20.1-2+deb12u5 [33.2 kB]
+#11 5.048 Get:6 http://deb.debian.org/debian bookworm/main amd64 libk5crypto3 amd64 1.20.1-2+deb12u5 [79.7 kB]
+#11 5.049 Get:7 http://deb.debian.org/debian bookworm/main amd64 libkeyutils1 amd64 1.6.3-2 [8808 B]
+#11 5.050 Get:8 http://deb.debian.org/debian bookworm/main amd64 libkrb5-3 amd64 1.20.1-2+deb12u5 [332 kB]
+#11 5.053 Get:9 http://deb.debian.org/debian bookworm/main amd64 libgssapi-krb5-2 amd64 1.20.1-2+deb12u5 [135 kB]
+#11 5.055 Get:10 http://deb.debian.org/debian bookworm/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10 [20.3 kB]
+#11 5.055 Get:11 http://deb.debian.org/debian bookworm/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10 [59.7 kB]
+#11 5.057 Get:12 http://deb.debian.org/debian bookworm/main amd64 libldap-2.5-0 amd64 2.5.13+dfsg-5 [183 kB]
+#11 5.059 Get:13 http://deb.debian.org/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]
+#11 5.065 Get:14 http://deb.debian.org/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]
+#11 5.066 Get:15 http://deb.debian.org/debian bookworm/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]
+#11 5.067 Get:16 http://deb.debian.org/debian-security bookworm-security/main amd64 libssh2-1 amd64 1.10.0-3+deb12u1 [176 kB]
+#11 5.069 Get:17 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]
+#11 5.074 Get:18 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]
+#11 5.513 debconf: delaying package configuration, since apt-utils is not installed
+#11 5.542 Fetched 5847 kB in 0s (31.8 MB/s)
+#11 5.584 Selecting previously unselected package libssl3:amd64.
+#11 5.584 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6096 files and directories currently installed.)
+#11 5.629 Preparing to unpack .../00-libssl3_3.0.22-1~deb12u1_amd64.deb ...
+#11 5.639 Unpacking libssl3:amd64 (3.0.22-1~deb12u1) ...
+#11 5.830 Selecting previously unselected package openssl.
+#11 5.832 Preparing to unpack .../01-openssl_3.0.22-1~deb12u1_amd64.deb ...
+#11 5.837 Unpacking openssl (3.0.22-1~deb12u1) ...
+#11 5.994 Selecting previously unselected package ca-certificates.
+#11 5.994 Preparing to unpack .../02-ca-certificates_20250419~deb12u1_all.deb ...
+#11 6.003 Unpacking ca-certificates (20250419~deb12u1) ...
+#11 6.091 Selecting previously unselected package libbrotli1:amd64.
+#11 6.093 Preparing to unpack .../03-libbrotli1_1.0.9-2+b6_amd64.deb ...
+#11 6.100 Unpacking libbrotli1:amd64 (1.0.9-2+b6) ...
+#11 6.441 Selecting previously unselected package libkrb5support0:amd64.
+#11 6.441 Preparing to unpack .../04-libkrb5support0_1.20.1-2+deb12u5_amd64.deb ...
+#11 6.446 Unpacking libkrb5support0:amd64 (1.20.1-2+deb12u5) ...
+#11 6.497 Selecting previously unselected package libk5crypto3:amd64.
+#11 6.497 Preparing to unpack .../05-libk5crypto3_1.20.1-2+deb12u5_amd64.deb ...
+#11 6.504 Unpacking libk5crypto3:amd64 (1.20.1-2+deb12u5) ...
+#11 6.558 Selecting previously unselected package libkeyutils1:amd64.
+#11 6.559 Preparing to unpack .../06-libkeyutils1_1.6.3-2_amd64.deb ...
+#11 6.564 Unpacking libkeyutils1:amd64 (1.6.3-2) ...
+#11 6.615 Selecting previously unselected package libkrb5-3:amd64.
+#11 6.617 Preparing to unpack .../07-libkrb5-3_1.20.1-2+deb12u5_amd64.deb ...
+#11 6.623 Unpacking libkrb5-3:amd64 (1.20.1-2+deb12u5) ...
+#11 6.749 Selecting previously unselected package libgssapi-krb5-2:amd64.
+#11 6.750 Preparing to unpack .../08-libgssapi-krb5-2_1.20.1-2+deb12u5_amd64.deb ...
+#11 6.761 Unpacking libgssapi-krb5-2:amd64 (1.20.1-2+deb12u5) ...
+#11 6.850 Selecting previously unselected package libsasl2-modules-db:amd64.
+#11 6.850 Preparing to unpack .../09-libsasl2-modules-db_2.1.28+dfsg-10_amd64.deb ...
+#11 6.865 Unpacking libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#11 6.964 Selecting previously unselected package libsasl2-2:amd64.
+#11 6.966 Preparing to unpack .../10-libsasl2-2_2.1.28+dfsg-10_amd64.deb ...
+#11 6.978 Unpacking libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#11 ...
+
+#13 [builder 5/5] RUN set -eux;     RUST_TARGET="$(cat /rust_target)";     cargo build --locked --release --target "$RUST_TARGET"       -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli;     mkdir -p /out;     cp "target/${RUST_TARGET}/release/crw"        "target/${RUST_TARGET}/release/crw-server"        "target/${RUST_TARGET}/release/crw-mcp" /out/
+#13 0.077 + cat /rust_target
+#13 0.079 + RUST_TARGET=x86_64-unknown-linux-gnu
+#13 0.079 + cargo build --locked --release --target x86_64-unknown-linux-gnu -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli
+#13 1.233     Updating crates.io index
+#13 2.545  Downloading crates ...
+#13 2.639   Downloaded colorchoice v1.0.5
+#13 2.643   Downloaded clap_lex v1.1.1
+#13 2.645   Downloaded crunchy v0.2.4
+#13 2.647   Downloaded crypto-common v0.1.7
+#13 2.649   Downloaded adler2 v2.0.1
+#13 2.652   Downloaded crypto-common v0.2.2
+#13 2.654   Downloaded equivalent v1.0.2
+#13 2.657   Downloaded fnv v1.0.7
+#13 2.658   Downloaded futures-task v0.3.34
+#13 2.661   Downloaded clap_builder v4.6.7
+#13 2.673   Downloaded convert_case v0.6.0
+#13 2.676   Downloaded crossbeam-deque v0.8.8
+#13 2.679   Downloaded cipher v0.5.2
+#13 2.684   Downloaded proc-macro2 v1.0.107
+#13 2.689   Downloaded compression-core v0.4.33
+#13 2.692   Downloaded cpubits v0.1.1
+#13 2.694   Downloaded document-features v0.2.12
+#13 2.697   Downloaded hex v0.4.3
+#13 2.700   Downloaded const-random v0.1.18
+#13 2.703   Downloaded const-random-macro v0.1.16
+#13 2.705   Downloaded cpufeatures v0.2.17
+#13 2.708   Downloaded cssparser-macros v0.6.1
+#13 2.710   Downloaded dirs v6.0.0
+#13 2.713   Downloaded dunce v1.0.5
+#13 2.715   Downloaded hashlink v0.11.1
+#13 2.718   Downloaded precomputed-hash v0.1.1
+#13 2.720   Downloaded dirs-sys v0.5.0
+#13 2.722   Downloaded dtoa-short v0.3.5
+#13 2.724   Downloaded futures-core v0.3.34
+#13 2.727   Downloaded cpufeatures v0.3.1
+#13 2.732   Downloaded defmt-parser v1.0.0
+#13 2.759   Downloaded futures-macro v0.3.34
+#13 2.762   Downloaded futures-sink v0.3.34
+#13 2.764   Downloaded protobuf-support v3.7.2
+#13 2.768   Downloaded ref-cast v1.0.27
+#13 2.779   Downloaded ref-cast-impl v1.0.27
+#13 2.781   Downloaded clap_derive v4.6.7
+#13 2.786   Downloaded crossbeam-epoch v0.9.21
+#13 2.795   Downloaded errno v0.3.14
+#13 2.800   Downloaded futures-io v0.3.34
+#13 2.802   Downloaded generic-array v0.14.7
+#13 2.806   Downloaded heck v0.5.0
+#13 2.812   Downloaded env_filter v2.0.0
+#13 2.818   Downloaded displaydoc v0.2.7
+#13 2.825   Downloaded futf v0.1.5
+#13 2.831   Downloaded fuzzy-matcher v0.3.7
+#13 2.832   Downloaded serde_spanned v0.6.9
+#13 2.835   Downloaded thread_local v1.1.10
+#13 2.837   Downloaded cfg-if v1.0.5
+#13 2.858   Downloaded dlv-list v0.5.2
+#13 2.860   Downloaded ego-tree v0.10.0
+#13 2.863   Downloaded email_address v0.2.9
+#13 2.866   Downloaded event-listener v5.4.2
+#13 2.869   Downloaded fastrand v2.5.0
+#13 2.875   Downloaded crossbeam-utils v0.8.23
+#13 2.877   Downloaded defmt-macros v1.1.1
+#13 2.884   Downloaded deranged v0.5.8
+#13 2.887   Downloaded dialoguer v0.11.0
+#13 2.893   Downloaded digest v0.10.7
+#13 2.896   Downloaded digest v0.11.3
+#13 2.900   Downloaded event-listener-strategy v0.5.4
+#13 2.902   Downloaded find-msvc-tools v0.1.13
+#13 2.905   Downloaded foldhash v0.2.0
+#13 2.907   Downloaded form_urlencoded v1.2.2
+#13 2.909   Downloaded futures-channel v0.3.34
+#13 2.912   Downloaded futures-executor v0.3.34
+#13 2.914   Downloaded cfg_aliases v0.2.2
+#13 2.916   Downloaded cmake v0.1.58
+#13 2.920   Downloaded core_detect v1.0.0
+#13 2.923   Downloaded dashmap v6.2.1
+#13 2.958   Downloaded data-encoding v2.11.1
+#13 2.961   Downloaded either v1.18.0
+#13 2.963   Downloaded env_logger v0.11.11
+#13 2.968   Downloaded erased-serde v0.4.10
+#13 2.974   Downloaded getopts v0.2.24
+#13 2.977   Downloaded rand_core v0.9.5
+#13 2.981   Downloaded sync_wrapper v1.0.2
+#13 2.986   Downloaded tagptr v0.2.0
+#13 2.991   Downloaded clap v4.6.7
+#13 3.011   Downloaded compression-codecs v0.4.43
+#13 3.020   Downloaded console v0.15.11
+#13 3.026   Downloaded crc32fast v1.5.2
+#13 3.058   Downloaded ecb v0.2.1
+#13 3.059   Downloaded fluent-uri v0.3.2
+#13 3.063   Downloaded getrandom v0.2.17
+#13 3.068   Downloaded config v0.15.25
+#13 3.075   Downloaded cookie v0.18.2
+#13 3.080   Downloaded cookie_store v0.22.1
+#13 3.084   Downloaded cssparser v0.36.0
+#13 3.088   Downloaded defmt v1.1.1
+#13 3.097   Downloaded dtoa v1.0.11
+#13 3.100   Downloaded fs_extra v1.3.0
+#13 3.103   Downloaded html5ever v0.38.0
+#13 3.109   Downloaded jobserver v0.1.35
+#13 3.113   Downloaded json5 v0.4.1
+#13 3.116   Downloaded const-oid v0.10.2
+#13 3.120   Downloaded futures v0.3.34
+#13 3.128   Downloaded getrandom v0.3.4
+#13 3.133   Downloaded crossbeam-channel v0.5.17
+#13 3.161   Downloaded derive_more v2.1.1
+#13 3.181   Downloaded html5ever v0.28.0
+#13 3.187   Downloaded scraper v0.25.0
+#13 3.190   Downloaded synstructure v0.14.0
+#13 3.192   Downloaded rustc_version v0.4.1
+#13 3.193   Downloaded fancy-regex v0.14.0
+#13 3.199   Downloaded iana-time-zone v0.1.65
+#13 3.203   Downloaded mime v0.3.17
+#13 3.205   Downloaded serde_spanned v1.1.1
+#13 3.207   Downloaded flate2 v1.1.10
+#13 3.215   Downloaded fraction v0.15.4
+#13 3.224   Downloaded getrandom v0.4.3
+#13 3.230   Downloaded icu_provider v2.3.1
+#13 3.234   Downloaded derive_more-impl v2.1.1
+#13 3.242   Downloaded html5ever v0.36.1
+#13 3.248   Downloaded indicatif v0.17.11
+#13 3.258   Downloaded mime_guess v2.0.5
+#13 3.260   Downloaded num-cmp v0.1.0
+#13 3.262   Downloaded quick-error v1.2.3
+#13 3.263   Downloaded scopeguard v1.2.0
+#13 3.265   Downloaded stable_deref_trait v1.2.1
+#13 3.267   Downloaded string_cache_codegen v0.5.4
+#13 3.268   Downloaded string_cache_codegen v0.6.1
+#13 3.269   Downloaded strsim v0.11.1
+#13 3.271   Downloaded subtle v2.6.1
+#13 3.273   Downloaded thiserror v1.0.69
+#13 3.281   Downloaded cc v1.4.7
+#13 3.287   Downloaded futures-util v0.3.34
+#13 3.307   Downloaded h2 v0.4.19
+#13 3.318   Downloaded hashbrown v0.14.5
+#13 3.325   Downloaded hashbrown v0.16.1
+#13 3.333   Downloaded hashbrown v0.17.1
+#13 3.342   Downloaded hyper-util v0.1.20
+#13 3.351   Downloaded indexmap v2.14.2
+#13 3.361   Downloaded jiff-core v0.1.1
+#13 3.367   Downloaded lol_html v2.9.0
+#13 3.379   Downloaded memchr v2.8.3
+#13 3.388   Downloaded miniz_oxide v0.9.1
+#13 3.391   Downloaded nu-ansi-term v0.50.3
+#13 3.395   Downloaded num v0.4.3
+#13 3.397   Downloaded num-bigint v0.4.8
+#13 3.404   Downloaded num-complex v0.4.6
+#13 3.406   Downloaded num-conv v0.2.2
+#13 3.408   Downloaded num-integer v0.1.47
+#13 3.410   Downloaded pest_generator v2.9.1
+#13 3.412   Downloaded pest_meta v2.9.1
+#13 3.415   Downloaded ppv-lite86 v0.2.21
+#13 3.417   Downloaded psl-types v2.0.11
+#13 3.419   Downloaded rand_chacha v0.9.0
+#13 3.421   Downloaded rand_core v0.10.1
+#13 3.423   Downloaded rand_pcg v0.10.2
+#13 3.425   Downloaded referencing v0.28.3
+#13 3.431   Downloaded rust-ini v0.21.3
+#13 3.433   Downloaded rustc-hash v2.1.3
+#13 3.435   Downloaded rustls-native-certs v0.8.4
+#13 3.437   Downloaded serde_urlencoded v0.7.1
+#13 3.440   Downloaded sha1 v0.10.7
+#13 3.442   Downloaded shell-words v1.1.1
+#13 3.444   Downloaded simdutf8 v0.1.5
+#13 3.447   Downloaded siphasher v1.0.3
+#13 3.458   Downloaded slab v0.4.12
+#13 3.459   Downloaded smallvec v1.16.1
+#13 3.460   Downloaded stringprep v0.1.5
+#13 3.463   Downloaded thiserror v2.0.20
+#13 3.473   Downloaded thiserror-impl v2.0.20
+#13 3.475   Downloaded tinyvec v1.13.3
+#13 3.480   Downloaded tokio-macros v2.7.2
+#13 3.482   Downloaded tokio-rustls v0.26.5
+#13 3.485   Downloaded yoke-derive v0.8.3
+#13 3.486   Downloaded zerofrom v0.1.8
+#13 3.488   Downloaded zerofrom-derive v0.1.8
+#13 3.490   Downloaded brotli-decompressor v5.0.3
+#13 3.499   Downloaded encoding_rs v0.8.41
+#13 3.514   Downloaded htmd v0.5.5
+#13 3.528   Downloaded quote v1.0.47
+#13 3.532   Downloaded rand_core v0.6.4
+#13 3.534   Downloaded rangemap v1.8.0
+#13 3.537   Downloaded rustversion v1.0.23
+#13 3.542   Downloaded serde_path_to_error v0.1.20
+#13 3.544   Downloaded shlex v2.0.1
+#13 3.546   Downloaded sxd_html v0.1.2
+#13 3.549   Downloaded thiserror-impl v1.0.69
+#13 3.558   Downloaded try-lock v0.2.5
+#13 3.558   Downloaded ttf-parser v0.25.1
+#13 3.571   Downloaded url v2.5.8
+#13 3.575   Downloaded version_check v0.9.5
+#13 3.577   Downloaded vsimd v0.8.0
+#13 3.580   Downloaded writeable v0.6.4
+#13 3.584   Downloaded zerocopy v0.8.57
+#13 3.620   Downloaded anstream v1.0.0
+#13 3.621   Downloaded autocfg v1.5.1
+#13 3.624   Downloaded aws-lc-rs v1.18.1
+#13 3.641   Downloaded axum-core v0.5.6
+#13 3.644   Downloaded httparse v1.10.1
+#13 3.648   Downloaded httpdate v1.0.3
+#13 3.658   Downloaded hyper-rustls v0.27.9
+#13 3.660   Downloaded icu_normalizer_data v2.3.0
+#13 3.663   Downloaded matchers v0.2.0
+#13 3.665   Downloaded multer v3.1.0
+#13 3.669   Downloaded multiversion v0.9.0
+#13 3.671   Downloaded multiversion-macros v0.9.0
+#13 3.673   Downloaded percent-encoding v2.3.2
+#13 3.675   Downloaded phf v0.11.3
+#13 3.677   Downloaded rustls-pki-types v1.15.1
+#13 3.681   Downloaded sha2 v0.10.9
+#13 3.684   Downloaded sha2 v0.11.0
+#13 3.690   Downloaded string_cache v0.8.9
+#13 3.693   Downloaded tendril v0.4.3
+#13 3.696   Downloaded tokio v1.53.1
+#13 3.772   Downloaded tokio-tungstenite v0.28.0
+#13 3.775   Downloaded toml_datetime v0.6.11
+#13 3.777   Downloaded tracing-subscriber v0.3.23
+#13 3.790   Downloaded axum v0.8.9
+#13 3.803   Downloaded chacha20 v0.10.2
+#13 3.807   Downloaded http-body v1.1.0
+#13 3.809   Downloaded http-body-util v0.1.5
+#13 3.812   Downloaded hybrid-array v0.4.15
+#13 3.815   Downloaded icu_collections v2.3.0
+#13 3.825   Downloaded icu_locale_core v2.3.0
+#13 3.836   Downloaded icu_properties v2.3.0
+#13 3.842   Downloaded idna_adapter v1.2.2
+#13 3.843   Downloaded litrs v1.0.0
+#13 3.848   Downloaded markup5ever_rcdom v0.38.0+unofficial
+#13 3.849   Downloaded matchit v0.8.4
+#13 3.859   Downloaded md-5 v0.11.0
+#13 3.861   Downloaded mio v1.2.3
+#13 3.871   Downloaded parking_lot_core v0.9.12
+#13 3.875   Downloaded pathdiff v0.2.3
+#13 3.876   Downloaded phf_macros v0.13.1
+#13 3.878   Downloaded phf_shared v0.11.3
+#13 3.879   Downloaded phf_shared v0.13.1
+#13 3.881   Downloaded pin-project-lite v0.2.17
+#13 3.890   Downloaded potential_utf v0.1.6
+#13 3.891   Downloaded powerfmt v0.2.0
+#13 3.893   Downloaded quinn-udp v0.5.15
+#13 3.896   Downloaded semver v1.0.28
+#13 3.900   Downloaded servo_arc v0.4.3
+#13 3.901   Downloaded signal-hook-registry v1.4.8
+#13 3.903   Downloaded spin v0.9.9
+#13 3.907   Downloaded string_cache v0.9.0
+#13 3.909   Downloaded sxd-document v0.3.2
+#13 3.913   Downloaded sxd-xpath v0.4.2
+#13 3.916   Downloaded tempfile v3.27.0
+#13 3.920   Downloaded tendril v0.5.1
+#13 3.923   Downloaded time-core v0.1.9
+#13 3.925   Downloaded time-macros v0.2.32
+#13 3.929   Downloaded tiny-keccak v2.0.2
+#13 3.933   Downloaded tinystr v0.8.4
+#13 3.936   Downloaded typeid v1.0.3
+#13 3.938   Downloaded ucd-trie v0.1.7
+#13 3.940   Downloaded unicase v2.9.0
+#13 3.943   Downloaded unicode-bidi v0.3.18
+#13 3.946   Downloaded web_atoms v0.2.6
+#13 3.948   Downloaded weezl v0.2.1
+#13 3.961   Downloaded xml5ever v0.38.0
+#13 3.967   Downloaded xxhash-rust v0.8.18
+#13 3.968   Downloaded yaml-rust2 v0.11.1
+#13 3.975   Downloaded yoke v0.8.3
+#13 3.977   Downloaded zerotrie v0.2.5
+#13 3.985   Downloaded hyper v1.11.1
+#13 3.994   Downloaded lock_api v0.4.14
+#13 3.997   Downloaded log v0.4.34
+#13 4.003   Downloaded portable-atomic v1.15.0
+#13 4.014   Downloaded zeroize v1.9.0
+#13 4.019   Downloaded rayon-core v1.13.0
+#13 4.022   Downloaded simd-adler32 v0.3.10
+#13 4.025   Downloaded typenum v1.20.1
+#13 4.034   Downloaded zerovec v0.11.8
+#13 4.040   Downloaded idna v1.1.0
+#13 4.046   Downloaded moka v0.12.16
+#13 4.063   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#13 4.066   Downloaded num-iter v0.1.46
+#13 4.067   Downloaded num-rational v0.4.2
+#13 4.070   Downloaded serde-untagged v0.1.9
+#13 4.073   Downloaded sharded-slab v0.1.7
+#13 4.078   Downloaded icu_properties_data v2.3.0
+#13 4.095   Downloaded winnow v1.0.4
+#13 4.112   Downloaded winnow v0.7.15
+#13 4.126   Downloaded pkg-config v0.3.34
+#13 4.128   Downloaded zmij v1.0.23
+#13 4.131   Downloaded toml v0.8.23
+#13 4.135   Downloaded serde_core v1.0.229
+#13 4.141   Downloaded similar v2.7.0
+#13 4.150   Downloaded icu_normalizer v2.3.0
+#13 4.163   Downloaded atomic-waker v1.1.2
+#13 4.165   Downloaded quinn v0.11.12
+#13 4.170   Downloaded rustls-platform-verifier v0.7.0
+#13 4.176   Downloaded rand v0.8.8
+#13 4.181   Downloaded http v1.5.0
+#13 4.187   Downloaded selectors v0.37.0
+#13 4.191   Downloaded ryu v1.0.23
+#13 4.197   Downloaded serde_derive v1.0.229
+#13 4.201   Downloaded socket2 v0.6.5
+#13 4.204   Downloaded tower-layer v0.3.3
+#13 4.205   Downloaded tower-service v0.3.3
+#13 4.207   Downloaded tracing-serde v0.2.0
+#13 4.209   Downloaded bit-set v0.8.0
+#13 4.211   Downloaded inout v0.2.2
+#13 4.212   Downloaded is_terminal_polyfill v1.70.2
+#13 4.214   Downloaded itoa v1.0.18
+#13 4.217   Downloaded lazy_static v1.5.0
+#13 4.219   Downloaded multiversion_no_op v1.0.0
+#13 4.221   Downloaded new_debug_unreachable v1.0.6
+#13 4.223   Downloaded num-traits v0.2.19
+#13 4.226   Downloaded number_prefix v0.4.0
+#13 4.228   Downloaded once_cell v1.21.4
+#13 4.232   Downloaded openssl-probe v0.2.1
+#13 4.233   Downloaded option-ext v0.2.0
+#13 4.235   Downloaded phf v0.13.1
+#13 4.237   Downloaded phf_codegen v0.11.3
+#13 4.238   Downloaded async-trait v0.1.92
+#13 4.244   Downloaded ordered-multimap v0.7.3
+#13 4.247   Downloaded ipnet v2.12.2
+#13 4.250   Downloaded toml_parser v1.1.3+spec-1.1.0
+#13 4.254   Downloaded jsonschema v0.28.3
+#13 4.263   Downloaded selectors v0.33.0
+#13 4.266   Downloaded toml v1.1.6+spec-1.1.0
+#13 4.273   Downloaded block-buffer v0.10.4
+#13 4.274   Downloaded litemap v0.8.3
+#13 4.278   Downloaded toml_edit v0.22.27
+#13 4.284   Downloaded alloc-stdlib v0.2.4
+#13 4.286   Downloaded toml_write v0.1.2
+#13 4.288   Downloaded block-buffer v0.12.1
+#13 4.290   Downloaded zerovec-derive v0.11.6
+#13 4.293   Downloaded want v0.3.1
+#13 4.295   Downloaded anstyle-query v1.1.5
+#13 4.296   Downloaded bytecount v0.6.9
+#13 4.299   Downloaded utf8parse v0.2.2
+#13 4.301   Downloaded uuid-simd v0.8.0
+#13 4.303   Downloaded lru-slab v0.1.3
+#13 4.304   Downloaded mac v0.1.1
+#13 4.305   Downloaded outref v0.5.2
+#13 4.307   Downloaded alloc-no-stdlib v2.0.4
+#13 4.310   Downloaded parking v2.2.1
+#13 4.311   Downloaded tower v0.5.3
+#13 4.327   Downloaded utf8_iter v1.0.4
+#13 4.328   Downloaded anstyle v1.0.14
+#13 4.331   Downloaded bit-vec v0.8.0
+#13 4.333   Downloaded peresil v0.3.0
+#13 4.335   Downloaded phf_codegen v0.13.1
+#13 4.336   Downloaded bitflags v1.3.2
+#13 4.341   Downloaded prometheus v0.14.0
+#13 4.349   Downloaded block-padding v0.4.2
+#13 4.351   Downloaded markup5ever v0.36.1
+#13 4.352   Downloaded borrow-or-share v0.2.4
+#13 4.354   Downloaded bitflags v2.13.2
+#13 4.361   Downloaded chrono v0.4.45
+#13 4.371   Downloaded publicsuffix v2.3.0
+#13 4.375   Downloaded markup5ever v0.13.0
+#13 4.378   Downloaded utf-8 v0.7.6
+#13 4.381   Downloaded uuid v1.26.1
+#13 4.385   Downloaded tracing-log v0.2.0
+#13 4.387   Downloaded typed-arena v1.7.0
+#13 4.389   Downloaded phf_generator v0.11.3
+#13 4.391   Downloaded phf_generator v0.13.1
+#13 4.393   Downloaded markup5ever v0.38.0
+#13 4.394   Downloaded phf_macros v0.11.3
+#13 4.396   Downloaded pest_derive v2.9.1
+#13 4.399   Downloaded untrusted v0.9.0
+#13 4.402   Downloaded nom v8.0.0
+#13 4.410   Downloaded lopdf v0.45.0
+#13 4.426   Downloaded anstyle-parse v1.0.0
+#13 4.429   Downloaded zlib-rs v0.6.8
+#13 4.438   Downloaded arraydeque v0.5.1
+#13 4.439   Downloaded aho-corasick v1.1.5
+#13 4.448   Downloaded rand v0.9.5
+#13 4.454   Downloaded axum-macros v0.5.1
+#13 4.473   Downloaded pest v2.9.1
+#13 4.479   Downloaded unicode-ident v1.0.26
+#13 4.483   Downloaded tracing-attributes v0.1.31
+#13 4.487   Downloaded cbc v0.2.1
+#13 4.490   Downloaded unicode-properties v0.1.4
+#13 4.494   Downloaded parking_lot v0.12.5
+#13 4.497   Downloaded rustls-webpki v0.103.15
+#13 4.502   Downloaded serde v1.0.229
+#13 4.509   Downloaded tracing-core v0.1.36
+#13 4.513   Downloaded ahash v0.8.12
+#13 4.517   Downloaded async-lock v3.4.2
+#13 4.575   Downloaded rand v0.10.2
+#13 4.581   Downloaded jiff v0.2.37
+#13 4.609   Downloaded pdf-inspector v1.21.0
+#13 4.658   Downloaded libc v0.2.189
+#13 4.729   Downloaded protobuf v3.7.2
+#13 4.744   Downloaded allocator-api2 v0.2.21
+#13 4.748   Downloaded base64 v0.22.1
+#13 4.755   Downloaded brotli v8.0.4
+#13 4.777   Downloaded ron v0.12.2
+#13 4.792   Downloaded tungstenite v0.28.0
+#13 4.798   Downloaded bytes v1.12.1
+#13 4.804   Downloaded rayon v1.12.0
+#13 4.819   Downloaded base64 v0.23.1
+#13 4.825   Downloaded reqwest v0.13.5
+#13 4.834   Downloaded serde_json v1.0.151
+#13 4.846   Downloaded reqwest v0.12.28
+#13 4.855   Downloaded aes v0.9.3
+#13 4.861   Downloaded tokio-util v0.7.19
+#13 4.874   Downloaded regex v1.13.1
+#13 4.882   Downloaded unicode-segmentation v1.13.3
+#13 4.886   Downloaded async-compression v0.4.48
+#13 4.898   Downloaded linux-raw-sys v0.12.1
+#13 5.007   Downloaded unicode-normalization v0.1.25
+#13 5.013   Downloaded tower-http v0.6.11
+#13 5.029   Downloaded time v0.3.55
+#13 5.052   Downloaded quinn-proto v0.11.18
+#13 5.063   Downloaded syn v3.0.6
+#13 5.080   Downloaded regex-syntax v0.8.11
+#13 5.091   Downloaded syn v2.0.119
+#13 5.107   Downloaded unicode-width v0.2.2
+#13 5.115   Downloaded rustls v0.23.45
+#13 5.134   Downloaded rustix v1.1.5
+#13 5.187   Downloaded aws-lc-sys v0.45.0
+#13 5.602   Downloaded tracing v0.1.44
+#13 5.625   Downloaded regex-automata v0.4.18
+#13 5.648   Downloaded ring v0.17.14
+#13 5.887    Compiling proc-macro2 v1.0.107
+#13 5.887    Compiling quote v1.0.47
+#13 5.888    Compiling unicode-ident v1.0.26
+#13 5.888    Compiling libc v0.2.189
+#13 ...
+
+#11 [stage-1 2/8] RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*
+#11 7.079 Selecting previously unselected package libldap-2.5-0:amd64.
+#11 7.080 Preparing to unpack .../11-libldap-2.5-0_2.5.13+dfsg-5_amd64.deb ...
+#11 7.093 Unpacking libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#11 7.209 Selecting previously unselected package libnghttp2-14:amd64.
+#11 7.209 Preparing to unpack .../12-libnghttp2-14_1.52.0-1+deb12u3_amd64.deb ...
+#11 7.220 Unpacking libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#11 7.341 Selecting previously unselected package libpsl5:amd64.
+#11 7.343 Preparing to unpack .../13-libpsl5_0.21.2-1_amd64.deb ...
+#11 7.361 Unpacking libpsl5:amd64 (0.21.2-1) ...
+#11 7.510 Selecting previously unselected package librtmp1:amd64.
+#11 7.512 Preparing to unpack .../14-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...
+#11 7.524 Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#11 7.656 Selecting previously unselected package libssh2-1:amd64.
+#11 7.656 Preparing to unpack .../15-libssh2-1_1.10.0-3+deb12u1_amd64.deb ...
+#11 7.669 Unpacking libssh2-1:amd64 (1.10.0-3+deb12u1) ...
+#11 7.789 Selecting previously unselected package libcurl4:amd64.
+#11 7.790 Preparing to unpack .../16-libcurl4_7.88.1-10+deb12u15_amd64.deb ...
+#11 7.801 Unpacking libcurl4:amd64 (7.88.1-10+deb12u15) ...
+#11 7.918 Selecting previously unselected package curl.
+#11 7.919 Preparing to unpack .../17-curl_7.88.1-10+deb12u15_amd64.deb ...
+#11 7.933 Unpacking curl (7.88.1-10+deb12u15) ...
+#11 8.048 Setting up libkeyutils1:amd64 (1.6.3-2) ...
+#11 8.086 Setting up libpsl5:amd64 (0.21.2-1) ...
+#11 8.126 Setting up libbrotli1:amd64 (1.0.9-2+b6) ...
+#11 8.166 Setting up libssl3:amd64 (3.0.22-1~deb12u1) ...
+#11 8.213 Setting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#11 8.263 Setting up libkrb5support0:amd64 (1.20.1-2+deb12u5) ...
+#11 8.307 Setting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#11 8.345 Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#11 8.387 Setting up libk5crypto3:amd64 (1.20.1-2+deb12u5) ...
+#11 8.446 Setting up libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#11 8.469 Setting up libssh2-1:amd64 (1.10.0-3+deb12u1) ...
+#11 8.489 Setting up libkrb5-3:amd64 (1.20.1-2+deb12u5) ...
+#11 8.520 Setting up openssl (3.0.22-1~deb12u1) ...
+#11 8.565 Setting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#11 8.601 Setting up ca-certificates (20250419~deb12u1) ...
+#11 8.981 debconf: unable to initialize frontend: Dialog
+#11 8.981 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#11 8.981 debconf: falling back to frontend: Readline
+#11 8.984 debconf: unable to initialize frontend: Readline
+#11 8.984 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+#11 8.984 debconf: falling back to frontend: Teletype
+#11 11.64 Updating certificates in /etc/ssl/certs...
+#11 16.05 150 added, 0 removed; done.
+#11 17.05 Setting up libgssapi-krb5-2:amd64 (1.20.1-2+deb12u5) ...
+#11 17.08 Setting up libcurl4:amd64 (7.88.1-10+deb12u15) ...
+#11 17.15 Setting up curl (7.88.1-10+deb12u15) ...
+#11 17.18 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#11 17.49 Processing triggers for ca-certificates (20250419~deb12u1) ...
+#11 17.57 Updating certificates in /etc/ssl/certs...
+#11 ...
+
+#13 [builder 5/5] RUN set -eux;     RUST_TARGET="$(cat /rust_target)";     cargo build --locked --release --target "$RUST_TARGET"       -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli;     mkdir -p /out;     cp "target/${RUST_TARGET}/release/crw"        "target/${RUST_TARGET}/release/crw-server"        "target/${RUST_TARGET}/release/crw-mcp" /out/
+#13 7.571    Compiling cfg-if v1.0.5
+#13 7.660    Compiling serde_core v1.0.229
+#13 7.901    Compiling smallvec v1.16.1
+#13 8.984    Compiling scopeguard v1.2.0
+#13 9.366    Compiling serde v1.0.229
+#13 10.89    Compiling syn v3.0.6
+#13 10.96    Compiling syn v2.0.119
+#13 12.16    Compiling memchr v2.8.3
+#13 18.60    Compiling log v0.4.34
+#13 18.69    Compiling parking_lot_core v0.9.12
+#13 19.40    Compiling siphasher v1.0.3
+#13 19.79    Compiling lock_api v0.4.14
+#13 ...
+
+#11 [stage-1 2/8] RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*
+#11 20.85 0 added, 0 removed; done.
+#11 20.85 Running hooks in /etc/ca-certificates/update.d...
+#11 20.86 done.
+#11 ...
+
+#13 [builder 5/5] RUN set -eux;     RUST_TARGET="$(cat /rust_target)";     cargo build --locked --release --target "$RUST_TARGET"       -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli;     mkdir -p /out;     cp "target/${RUST_TARGET}/release/crw"        "target/${RUST_TARGET}/release/crw-server"        "target/${RUST_TARGET}/release/crw-mcp" /out/
+#13 20.38    Compiling once_cell v1.21.4
+#13 20.40    Compiling parking_lot v0.12.5
+#13 22.16    Compiling itoa v1.0.18
+#13 22.16    Compiling pin-project-lite v0.2.17
+#13 23.61    Compiling stable_deref_trait v1.2.1
+#13 23.69    Compiling version_check v0.9.5
+#13 24.01    Compiling synstructure v0.14.0
+#13 24.07    Compiling serde_derive v1.0.229
+#13 24.59    Compiling phf_shared v0.13.1
+#13 24.71    Compiling fastrand v2.5.0
+#13 27.12    Compiling zerofrom-derive v0.1.8
+#13 27.43    Compiling phf_generator v0.13.1
+#13 27.60    Compiling bytes v1.12.1
+#13 28.30    Compiling typenum v1.20.1
+#13 29.91    Compiling futures-core v0.3.34
+#13 30.23    Compiling yoke-derive v0.8.3
+#13 30.71    Compiling zerovec-derive v0.11.6
+#13 32.21    Compiling zerofrom v0.1.8
+#13 32.59    Compiling futures-sink v0.3.34
+#13 32.69    Compiling new_debug_unreachable v1.0.6
+#13 32.70    Compiling displaydoc v0.2.7
+#13 32.79    Compiling jobserver v0.1.35
+#13 33.40    Compiling yoke v0.8.3
+#13 33.59    Compiling find-msvc-tools v0.1.13
+#13 35.53    Compiling zerovec v0.11.8
+#13 35.72    Compiling shlex v2.0.1
+#13 35.91    Compiling futures-channel v0.3.34
+#13 36.10    Compiling cc v1.4.7
+#13 36.29    Compiling phf_codegen v0.13.1
+#13 36.30    Compiling bitflags v2.13.2
+#13 36.57    Compiling errno v0.3.14
+#13 36.76    Compiling signal-hook-registry v1.4.8
+#13 ...
+
+#11 [stage-1 2/8] RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*
+#11 DONE 37.6s
+
+#13 [builder 5/5] RUN set -eux;     RUST_TARGET="$(cat /rust_target)";     cargo build --locked --release --target "$RUST_TARGET"       -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli;     mkdir -p /out;     cp "target/${RUST_TARGET}/release/crw"        "target/${RUST_TARGET}/release/crw-server"        "target/${RUST_TARGET}/release/crw-mcp" /out/
+#13 36.97    Compiling http v1.5.0
+#13 37.38    Compiling futures-macro v0.3.34
+#13 38.00    Compiling tokio-macros v2.7.2
+#13 39.68    Compiling cmake v0.1.58
+#13 40.18    Compiling socket2 v0.6.5
+#13 40.29    Compiling mio v1.2.3
+#13 40.37    Compiling pkg-config v0.3.34
+#13 40.69    Compiling dunce v1.0.5
+#13 40.79    Compiling precomputed-hash v0.1.1
+#13 40.89    Compiling futures-io v0.3.34
+#13 41.18    Compiling rustversion v1.0.23
+#13 41.40    Compiling futures-task v0.3.34
+#13 41.51    Compiling slab v0.4.12
+#13 41.69    Compiling fs_extra v1.3.0
+#13 42.20    Compiling tokio v1.53.1
+#13 42.27    Compiling futures-util v0.3.34
+#13 42.29    Compiling tinystr v0.8.4
+#13 42.47    Compiling aws-lc-sys v0.45.0
+#13 42.88    Compiling tracing-core v0.1.36
+#13 44.69    Compiling litemap v0.8.3
+#13 45.28    Compiling percent-encoding v2.3.2
+#13 45.72    Compiling writeable v0.6.4
+#13 46.46    Compiling icu_locale_core v2.3.0
+#13 49.36    Compiling potential_utf v0.1.6
+#13 49.41    Compiling zerotrie v0.2.5
+#13 49.94    Compiling icu_properties_data v2.3.0
+#13 50.08    Compiling icu_normalizer_data v2.3.0
+#13 50.11    Compiling utf8_iter v1.0.4
+#13 50.28    Compiling zmij v1.0.23
+#13 50.30    Compiling zeroize v1.9.0
+#13 50.51    Compiling httparse v1.10.1
+#13 50.82    Compiling icu_collections v2.3.0
+#13 50.87    Compiling icu_provider v2.3.1
+#13 51.60    Compiling phf_macros v0.13.1
+#13 51.69    Compiling tracing-attributes v0.1.31
+#13 52.81    Compiling foldhash v0.2.0
+#13 53.18    Compiling alloc-no-stdlib v2.0.4
+#13 53.31    Compiling autocfg v1.5.1
+#13 53.66    Compiling serde_json v1.0.151
+#13 53.78    Compiling crc32fast v1.5.2
+#13 53.89    Compiling getrandom v0.4.3
+#13 54.27    Compiling rand_core v0.10.1
+#13 54.31    Compiling aws-lc-rs v1.18.1
+#13 54.57    Compiling num-traits v0.2.19
+#13 54.69    Compiling tracing v0.1.44
+#13 55.11    Compiling alloc-stdlib v0.2.4
+#13 55.60    Compiling phf v0.13.1
+#13 56.47    Compiling http-body v1.1.0
+#13 56.52    Compiling hybrid-array v0.4.15
+#13 56.60    Compiling adler2 v2.0.1
+#13 56.78    Compiling simd-adler32 v0.3.10
+#13 58.02    Compiling miniz_oxide v0.9.1
+#13 61.11    Compiling icu_normalizer v2.3.0
+#13 63.52    Compiling icu_properties v2.3.0
+#13 63.59    Compiling brotli-decompressor v5.0.3
+#13 68.20    Compiling rustls-pki-types v1.15.1
+#13 69.18    Compiling encoding_rs v0.8.41
+#13 69.39    Compiling multiversion-macros v0.9.0
+#13 69.56    Compiling crossbeam-utils v0.8.23
+#13 70.09    Compiling thiserror v2.0.20
+#13 70.76    Compiling tower-service v0.3.3
+#13 70.86    Compiling crunchy v0.2.4
+#13 71.40    Compiling idna_adapter v1.2.2
+#13 71.58    Compiling flate2 v1.1.10
+#13 72.07    Compiling multiversion v0.9.0
+#13 73.37    Compiling form_urlencoded v1.2.2
+#13 73.79    Compiling string_cache_codegen v0.6.1
+#13 74.32    Compiling thiserror-impl v2.0.20
+#13 74.46    Compiling multiversion_no_op v1.0.0
+#13 74.56    Compiling rustls v0.23.45
+#13 74.80    Compiling untrusted v0.9.0
+#13 74.82    Compiling tiny-keccak v2.0.2
+#13 74.91    Compiling simdutf8 v0.1.5
+#13 75.08    Compiling rand_core v0.6.4
+#13 75.30    Compiling core_detect v1.0.0
+#13 75.48    Compiling try-lock v0.2.5
+#13 75.81    Compiling equivalent v1.0.2
+#13 75.87    Compiling want v0.3.1
+#13 75.99    Compiling rand v0.8.8
+#13 77.17    Compiling web_atoms v0.2.6
+#13 78.02    Compiling idna v1.1.0
+#13 80.59    Compiling sync_wrapper v1.0.2
+#13 80.67    Compiling phf_shared v0.11.3
+#13 80.69    Compiling aho-corasick v1.1.5
+#13 81.37    Compiling zerocopy v0.8.57
+#13 82.18    Compiling httpdate v1.0.3
+#13 82.60    Compiling regex-syntax v0.8.11
+#13 89.60    Compiling allocator-api2 v0.2.21
+#13 89.88    Compiling subtle v2.6.1
+#13 90.20    Compiling getrandom v0.3.4
+#13 90.59    Compiling tower-layer v0.3.3
+#13 90.70    Compiling atomic-waker v1.1.2
+#13 90.79    Compiling hyper v1.11.1
+#13 90.89    Compiling hashbrown v0.17.1
+#13 92.51    Compiling getrandom v0.2.17
+#13 93.19    Compiling regex-automata v0.4.18
+#13 96.30    Compiling phf_generator v0.11.3
+#13 97.71    Compiling brotli v8.0.4
+#13 102.4    Compiling crypto-common v0.2.2
+#13 104.1    Compiling http-body-util v0.1.5
+#13 104.3    Compiling string_cache v0.9.0
+#13 104.5    Compiling generic-array v0.14.7
+#13 104.6    Compiling compression-core v0.4.33
+#13 104.7    Compiling ucd-trie v0.1.7
+#13 105.0    Compiling utf-8 v0.7.6
+#13 105.1    Compiling typeid v1.0.3
+#13 106.6    Compiling base64 v0.22.1
+#13 107.6    Compiling ipnet v2.12.2
+#13 109.3    Compiling crossbeam-epoch v0.9.21
+#13 109.7    Compiling mime v0.3.17
+#13 110.0    Compiling thiserror v1.0.69
+#13 110.3    Compiling hyper-util v0.1.20
+#13 110.5    Compiling compression-codecs v0.4.43
+#13 116.8    Compiling pest v2.9.1
+#13 118.8    Compiling const-random-macro v0.1.16
+#13 121.5    Compiling tower v0.5.3
+#13 123.1    Compiling url v2.5.8
+#13 127.6    Compiling thiserror-impl v1.0.69
+#13 130.2    Compiling lazy_static v1.5.0
+#13 130.2    Compiling num-conv v0.2.2
+#13 130.5    Compiling time-core v0.1.9
+#13 130.7    Compiling mac v0.1.1
+#13 130.8    Compiling futf v0.1.5
+#13 130.9    Compiling time-macros v0.2.32
+#13 131.0    Compiling pest_meta v2.9.1
+#13 135.6    Compiling const-random v0.1.18
+#13 135.7    Compiling async-compression v0.4.48
+#13 136.6    Compiling indexmap v2.14.2
+#13 136.9    Compiling block-padding v0.4.2
+#13 137.3    Compiling tokio-util v0.7.19
+#13 137.5    Compiling cookie v0.18.2
+#13 137.8    Compiling deranged v0.5.8
+#13 138.9    Compiling unicase v2.9.0
+#13 138.9    Compiling openssl-probe v0.2.1
+#13 139.5    Compiling powerfmt v0.2.0
+#13 139.7    Compiling erased-serde v0.4.10
+#13 140.5    Compiling hashbrown v0.14.5
+#13 140.7    Compiling mime_guess v2.0.5
+#13 141.2    Compiling time v0.3.55
+#13 141.2    Compiling rustls-native-certs v0.8.4
+#13 142.8    Compiling tower-http v0.6.11
+#13 143.0    Compiling inout v0.2.2
+#13 143.3    Compiling dlv-list v0.5.2
+#13 143.9    Compiling pest_generator v2.9.1
+#13 146.1    Compiling tendril v0.4.3
+#13 146.7    Compiling num-integer v0.1.47
+#13 148.0    Compiling uuid v1.26.1
+#13 148.1    Compiling hashbrown v0.16.1
+#13 149.9    Compiling utf8parse v0.2.2
+#13 150.0    Compiling litrs v1.0.0
+#13 150.3    Compiling winnow v1.0.4
+#13 150.7    Compiling psl-types v2.0.11
+#13 150.8    Compiling dtoa v1.0.11
+#13 151.2    Compiling protobuf v3.7.2
+#13 152.0    Compiling cpufeatures v0.3.1
+#13 152.1    Compiling crossbeam-deque v0.8.8
+#13 152.7    Compiling document-features v0.2.12
+#13 154.5    Compiling dtoa-short v0.3.5
+#13 154.7    Compiling toml_parser v1.1.3+spec-1.1.0
+#13 156.1    Compiling publicsuffix v2.3.0
+#13 156.6    Compiling hashlink v0.11.1
+#13 158.2    Compiling anstyle-parse v1.0.0
+#13 159.2    Compiling pest_derive v2.9.1
+#13 159.2    Compiling ordered-multimap v0.7.3
+#13 160.1    Compiling cipher v0.5.2
+#13 161.1    Compiling block-buffer v0.10.4
+#13 161.4    Compiling crypto-common v0.1.7
+#13 161.5    Compiling protobuf-support v3.7.2
+#13 162.5    Compiling string_cache_codegen v0.5.4
+#13 163.2    Compiling phf_codegen v0.11.3
+#13 163.4    Compiling block-buffer v0.12.1
+#13 163.4    Compiling serde_spanned v0.6.9
+#13 163.6    Compiling toml_datetime v0.6.11
+#13 163.8    Compiling tendril v0.5.1
+#13 164.4    Compiling derive_more-impl v2.1.1
+#13 164.8    Compiling cssparser-macros v0.6.1
+#13 164.9    Compiling serde_spanned v1.1.1
+#13 165.2    Compiling toml_datetime v1.1.1+spec-1.1.0
+#13 166.0    Compiling toml_write v0.1.2
+#13 166.2    Compiling anstyle v1.0.14
+#13 166.8    Compiling rayon-core v1.13.0
+#13 166.8    Compiling colorchoice v1.0.5
+#13 167.2    Compiling arraydeque v0.5.1
+#13 167.7    Compiling ref-cast v1.0.27
+#13 167.8    Compiling is_terminal_polyfill v1.70.2
+#13 167.8    Compiling winnow v0.7.15
+#13 167.9    Compiling anstyle-query v1.1.5
+#13 168.0    Compiling prometheus v0.14.0
+#13 168.1    Compiling const-oid v0.10.2
+#13 168.4    Compiling unicode-segmentation v1.13.3
+#13 169.3    Compiling unicode-width v0.2.2
+#13 170.2    Compiling convert_case v0.6.0
+#13 170.5    Compiling digest v0.11.3
+#13 170.9    Compiling anstream v1.0.0
+#13 172.4    Compiling yaml-rust2 v0.11.1
+#13 174.5    Compiling derive_more v2.1.1
+#13 174.7    Compiling toml_edit v0.22.27
+#13 176.0    Compiling ron v0.12.2
+#13 181.7    Compiling cssparser v0.36.0
+#13 185.5    Compiling toml v1.1.6+spec-1.1.0
+#13 186.1    Compiling markup5ever v0.38.0
+#13 186.9    Compiling markup5ever v0.13.0
+#13 191.0    Compiling serde-untagged v0.1.9
+#13 192.0    Compiling digest v0.10.7
+#13 192.5    Compiling json5 v0.4.1
+#13 197.4    Compiling rust-ini v0.21.3
+#13 198.1    Compiling cookie_store v0.22.1
+#13 201.2    Compiling num-bigint v0.4.8
+#13 202.9    Compiling ppv-lite86 v0.2.21
+#13 203.8    Compiling rand_core v0.9.5
+#13 204.3    Compiling regex v1.13.1
+#13 209.5    Compiling phf_macros v0.11.3
+#13 210.0    Compiling async-trait v0.1.92
+#13 212.4    Compiling ref-cast-impl v1.0.27
+#13 213.3    Compiling ahash v0.8.12
+#13 213.6    Compiling servo_arc v0.4.3
+#13 213.7    Compiling portable-atomic v1.15.0
+#13 214.1    Compiling base64 v0.23.1
+#13 214.6    Compiling fnv v1.0.7
+#13 214.9    Compiling rustc-hash v2.1.3
+#13 215.2    Compiling pathdiff v0.2.3
+#13 215.3    Compiling parking v2.2.1
+#13 215.5    Compiling tinyvec v1.13.3
+#13 215.6    Compiling cpufeatures v0.2.17
+#13 215.6    Compiling ryu v1.0.23
+#13 216.6    Compiling serde_urlencoded v0.7.1
+#13 217.1    Compiling unicode-normalization v0.1.25
+#13 217.1    Compiling event-listener v5.4.2
+#13 217.8    Compiling config v0.15.25
+#13 230.5    Compiling phf v0.11.3
+#13 230.6    Compiling num-rational v0.4.2
+#13 230.8    Compiling rand_chacha v0.9.0
+#13 234.4    Compiling toml v0.8.23
+#13 235.7    Compiling string_cache v0.8.9
+#13 236.1    Compiling chacha20 v0.10.2
+#13 237.3    Compiling num-iter v0.1.46
+#13 237.6    Compiling crw-mcp-proto v1.2.0 (/app/crates/crw-mcp-proto)
+#13 237.7    Compiling num-complex v0.4.6
+#13 239.3    Compiling selectors v0.33.0
+#13 239.9    Compiling selectors v0.37.0
+#13 240.3    Compiling html5ever v0.28.0
+#13 240.8    Compiling iana-time-zone v0.1.65
+#13 241.4    Compiling unicode-properties v0.1.4
+#13 241.8    Compiling jiff-core v0.1.1
+#13 242.4    Compiling peresil v0.3.0
+#13 242.7    Compiling either v1.18.0
+#13 242.7    Compiling typed-arena v1.7.0
+#13 243.1    Compiling bit-vec v0.8.0
+#13 243.3    Compiling cpubits v0.1.1
+#13 243.4    Compiling unicode-bidi v0.3.18
+#13 243.7    Compiling borrow-or-share v0.2.4
+#13 243.9    Compiling fluent-uri v0.3.2
+#13 246.8    Compiling jiff v0.2.37
+#13 248.4    Compiling stringprep v0.1.5
+#13 249.3    Compiling bit-set v0.8.0
+#13 249.6    Compiling aes v0.9.3
+#13 251.8    Compiling rayon v1.12.0
+#13 255.6    Compiling sxd-document v0.3.2
+#13 260.4    Compiling chrono v0.4.45
+#13 263.7    Compiling num v0.4.3
+#13 264.0    Compiling rand v0.10.2
+#13 269.3    Compiling rand v0.9.5
+#13 271.9    Compiling event-listener-strategy v0.5.4
+#13 272.1    Compiling env_filter v2.0.0
+#13 274.1    Compiling html5ever v0.38.0
+#13 276.1    Compiling xml5ever v0.38.0
+#13 276.2    Compiling sha2 v0.11.0
+#13 277.7    Compiling md-5 v0.11.0
+#13 278.7    Compiling ecb v0.2.1
+#13 278.7    Compiling cbc v0.2.1
+#13 278.8    Compiling markup5ever v0.36.1
+#13 278.9    Compiling futures-executor v0.3.34
+#13 279.5    Compiling nom v8.0.0
+#13 279.7    Compiling weezl v0.2.1
+#13 281.4    Compiling rangemap v1.8.0
+#13 282.3    Compiling vsimd v0.8.0
+#13 283.7    Compiling outref v0.5.2
+#13 284.1    Compiling uuid-simd v0.8.0
+#13 284.5    Compiling futures v0.3.34
+#13 284.7    Compiling html5ever v0.36.1
+#13 285.2    Compiling markup5ever_rcdom v0.38.0+unofficial
+#13 286.9    Compiling env_logger v0.11.11
+#13 288.1    Compiling async-lock v3.4.2
+#13 290.7    Compiling lopdf v0.45.0
+#13 290.9    Compiling referencing v0.28.3
+#13 295.4    Compiling fraction v0.15.4
+#13 301.6    Compiling fancy-regex v0.14.0
+#13 303.8    Compiling reqwest v0.12.28
+#13 307.0    Compiling sha1 v0.10.7
+#13 307.7    Compiling getopts v0.2.24
+#13 310.2    Compiling crossbeam-channel v0.5.17
+#13 312.2    Compiling email_address v0.2.9
+#13 313.7    Compiling quick-error v1.2.3
+#13 313.9    Compiling tagptr v0.2.0
+#13 314.3    Compiling data-encoding v2.11.1
+#13 318.3    Compiling option-ext v0.2.0
+#13 318.3    Compiling ego-tree v0.10.0
+#13 319.2    Compiling ttf-parser v0.25.1
+#13 324.1    Compiling bytecount v0.6.9
+#13 324.9    Compiling num-cmp v0.1.0
+#13 325.9    Compiling jsonschema v0.28.3
+#13 337.6    Compiling scraper v0.25.0
+#13 342.9    Compiling rustls-webpki v0.103.15
+#13 350.8    Compiling dirs-sys v0.5.0
+#13 352.4    Compiling moka v0.12.16
+#13 355.2    Compiling sxd-xpath v0.4.2
+#13 357.7    Compiling lol_html v2.9.0
+#13 363.0    Compiling tokio-rustls v0.26.5
+#13 363.8    Compiling hyper-rustls v0.27.9
+#13 364.7    Compiling rustls-platform-verifier v0.7.0
+#13 366.7    Compiling reqwest v0.13.5
+#13 367.4    Compiling tungstenite v0.28.0
+#13 376.6    Compiling crw-core v1.2.0 (/app/crates/crw-core)
+#13 385.5    Compiling sxd_html v0.1.2
+#13 393.6    Compiling htmd v0.5.5
+#13 398.1    Compiling multer v3.1.0
+#13 398.6    Compiling thread_local v1.1.10
+#13 399.1    Compiling xxhash-rust v0.8.18
+#13 399.4    Compiling tokio-tungstenite v0.28.0
+#13 399.7    Compiling dirs v6.0.0
+#13 399.9    Compiling sha2 v0.10.9
+#13 400.5    Compiling dashmap v6.2.1
+#13 402.5    Compiling strsim v0.11.1
+#13 402.6    Compiling heck v0.5.0
+#13 403.1    Compiling clap_lex v1.1.1
+#13 403.9    Compiling hex v0.4.3
+#13 404.1    Compiling similar v2.7.0
+#13 405.0    Compiling spin v0.9.9
+#13 407.5    Compiling crw-diff v1.2.0 (/app/crates/crw-diff)
+#13 407.9    Compiling clap_builder v4.6.7
+#13 409.5    Compiling clap_derive v4.6.7
+#13 413.5    Compiling sharded-slab v0.1.7
+#13 415.4    Compiling axum-core v0.5.6
+#13 415.7    Compiling matchers v0.2.0
+#13 415.9    Compiling tracing-serde v0.2.0
+#13 416.2    Compiling tracing-log v0.2.0
+#13 416.8    Compiling axum-macros v0.5.1
+#13 422.2    Compiling serde_path_to_error v0.1.20
+#13 422.7    Compiling rustix v1.1.5
+#13 423.5    Compiling matchit v0.8.4
+#13 423.8    Compiling nu-ansi-term v0.50.3
+#13 424.9    Compiling tracing-subscriber v0.3.23
+#13 425.3    Compiling axum v0.8.9
+#13 430.4    Compiling clap v4.6.7
+#13 430.4    Compiling crw-search v1.2.0 (/app/crates/crw-search)
+#13 438.3    Compiling linux-raw-sys v0.12.1
+#13 443.4    Compiling console v0.15.11
+#13 447.1    Compiling fuzzy-matcher v0.3.7
+#13 447.3    Compiling tempfile v3.27.0
+#13 448.8    Compiling pdf-inspector v1.21.0
+#13 448.8    Compiling shell-words v1.1.1
+#13 449.0    Compiling number_prefix v0.4.0
+#13 449.6    Compiling indicatif v0.17.11
+#13 449.6    Compiling dialoguer v0.11.0
+#13 541.6    Compiling crw-extract v1.2.0 (/app/crates/crw-extract)
+#13 543.6    Compiling crw-renderer v1.2.0 (/app/crates/crw-renderer)
+#13 557.3    Compiling crw-crawl v1.2.0 (/app/crates/crw-crawl)
+#13 569.7    Compiling crw-server v1.2.0 (/app/crates/crw-server)
+#13 615.9    Compiling crw-cli v1.2.0 (/app/crates/crw-cli)
+#13 615.9    Compiling crw-mcp v1.2.0 (/app/crates/crw-mcp)
+#13 1779.5     Finished `release` profile [optimized] target(s) in 29m 39s
+#13 1779.7 + mkdir -p /out
+#13 1779.7 + cp target/x86_64-unknown-linux-gnu/release/crw target/x86_64-unknown-linux-gnu/release/crw-server target/x86_64-unknown-linux-gnu/release/crw-mcp /out/
+#13 DONE 1782.2s
+
+#14 [stage-1 3/8] COPY --from=builder /out/crw /usr/local/bin/crw
+#14 DONE 0.7s
+
+#15 [stage-1 4/8] COPY --from=builder /out/crw-server /usr/local/bin/crw-server
+#15 DONE 0.6s
+
+#16 [stage-1 5/8] COPY --from=builder /out/crw-mcp /usr/local/bin/crw-mcp
+#16 DONE 0.5s
+
+#17 [stage-1 6/8] COPY config.default.toml /app/config.default.toml
+#17 DONE 0.0s
+
+#18 [stage-1 7/8] COPY config.docker.toml /app/config.docker.toml
+#18 DONE 0.0s
+
+#19 [stage-1 8/8] WORKDIR /app
+#19 DONE 0.0s
+
+#20 exporting to oci image format
+#20 exporting layers
+#20 exporting layers 3.3s done
+#20 exporting manifest sha256:914a2ef289d58e0a1b849647a7ac86e7e19322589c09eb28653d055b37077ee7 0.0s done
+#20 exporting config sha256:78a792219ba2b3a0aacd9772018f3aa9436fd44fe8aadf6affac0bdafedea75d 0.0s done
+#20 sending tarball
+#20 ...
+
+#21 importing to docker
+#21 DONE 0.0s
+
+#20 exporting to oci image format
+#20 sending tarball 3.4s done
+#20 DONE 6.7s

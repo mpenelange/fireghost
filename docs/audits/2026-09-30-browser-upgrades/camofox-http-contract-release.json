@@ -1,0 +1,79 @@
+{
+  "browser_url": "http://172.26.0.2:9377",
+  "budgets": {
+    "cleanupTimeoutSeconds": 5,
+    "maxExpressionBytes": 65536,
+    "maxResponseBytes": 262144,
+    "requestTimeoutSeconds": 15,
+    "totalTimeoutSeconds": 90
+  },
+  "cleanup": {
+    "passed": true
+  },
+  "create_recoveries": 0,
+  "evaluations": [],
+  "http_checks": [
+    {
+      "latency_seconds": 0.004,
+      "operation": "health",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.005,
+      "operation": "initial.list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 3.837,
+      "operation": "cycle-1.create",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.014,
+      "operation": "cycle-1.created-list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 1.095,
+      "operation": "cycle-1.navigate",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.336,
+      "operation": "cycle-1.wait",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.027,
+      "operation": "cycle-1.evaluate-object",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.434,
+      "operation": "cleanup",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "cleanup.list",
+      "status": 200
+    }
+  ],
+  "passed": false,
+  "reasons": [
+    "cycle-1.evaluate-object: evaluation-required-text"
+  ],
+  "runtime_manifest": {
+    "expected_version": "2.4.8",
+    "fixture_sha256": "ecb37b914cebed698138e4f1d661e1bffb2b891dde4a97b6a4dcdd4afca91ed5",
+    "gate_sha256": "536910321b980778e05e5c3ed29e0a27238b3859659886062545238ebaa5a7f1",
+    "image_reference": "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+    "image_reference_provenance": "operator-supplied; verify against container image",
+    "observed_version": "2.4.8",
+    "repo_revision": "06e7ffb47e96d7146a46f9279e99ce533c541a34",
+    "transport_sha256": "3641a5eaac53e28e566867d64f2f168b21f92fd2e8e1ad807a67bbc59c1a20bd"
+  },
+  "schemaVersion": 1,
+  "scope_id": "crw-contract-bdec71da165340f292978ff5d862953f",
+  "timestamp": "2026-09-30T17:15:27.517695+00:00"
+}

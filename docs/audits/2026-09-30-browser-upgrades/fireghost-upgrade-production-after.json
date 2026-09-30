@@ -1,0 +1,30 @@
+[
+  {
+    "name": "web-retrieval-router-1",
+    "containerId": "24b48f99ff935de868f5a6b62998cad04a1af9a64d747d1fe2ccf7d170cf2bb7",
+    "imageId": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "restartCount": 0,
+    "running": true
+  },
+  {
+    "name": "web-retrieval-crw-1",
+    "containerId": "ed1ea057b82dee92121b59322e4f6ce54175d6a0a659b8ff4f0e09ceff9858fd",
+    "imageId": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+    "restartCount": 0,
+    "running": true
+  },
+  {
+    "name": "web-retrieval-camofox-1",
+    "containerId": "b34023e4547ced5359fcc74b72a63ab44d725be11d101faf637d71d4c4a1bd00",
+    "imageId": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "restartCount": 9,
+    "running": true
+  },
+  {
+    "name": "web-retrieval-lightpanda-1",
+    "containerId": "63dfa568d571b5f1170acda587d4f00e4ea97c936e5a550f00fffb47a4d64ab0",
+    "imageId": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+    "restartCount": 0,
+    "running": true
+  }
+]

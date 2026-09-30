@@ -1,0 +1,15 @@
+{
+  "renderer": {
+    "mode": "auto",
+    "camofox": {
+      "base_url": "http://camofox:9377"
+    },
+    "lightpanda": {
+      "ws_url": "ws://lightpanda:9222/"
+    }
+  },
+  "search": {
+    "camofox_pool_size": 4,
+    "timeout_ms": 60000
+  }
+}

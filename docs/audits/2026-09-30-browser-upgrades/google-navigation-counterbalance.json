@@ -1,0 +1,78 @@
+{
+  "browserVersion": "2.4.6",
+  "scope": "two owned profiles; counterbalanced navigation; public external results vary",
+  "cases": [
+    {
+      "order": [
+        "scheduled",
+        "direct"
+      ],
+      "mode": "scheduled",
+      "ackSeconds": 0.133,
+      "queryMatched": false,
+      "challenge": true,
+      "readyState": "interactive",
+      "h3Count": 0,
+      "containerCount": 0,
+      "bodyTextChars": 372,
+      "rows": 0,
+      "truncated": false,
+      "rowHashes": [],
+      "totalSeconds": 1.223
+    },
+    {
+      "order": [
+        "scheduled",
+        "direct"
+      ],
+      "mode": "direct",
+      "ackSeconds": 1.905,
+      "queryMatched": false,
+      "challenge": true,
+      "readyState": "complete",
+      "h3Count": 0,
+      "containerCount": 0,
+      "bodyTextChars": 344,
+      "rows": 0,
+      "truncated": false,
+      "rowHashes": [],
+      "totalSeconds": 1.967
+    },
+    {
+      "order": [
+        "direct",
+        "scheduled"
+      ],
+      "mode": "direct",
+      "ackSeconds": 1.121,
+      "queryMatched": false,
+      "challenge": true,
+      "readyState": "interactive",
+      "h3Count": 0,
+      "containerCount": 0,
+      "bodyTextChars": 372,
+      "rows": 0,
+      "truncated": false,
+      "rowHashes": [],
+      "totalSeconds": 1.178
+    },
+    {
+      "order": [
+        "direct",
+        "scheduled"
+      ],
+      "mode": "scheduled",
+      "ackSeconds": 0.141,
+      "queryMatched": false,
+      "challenge": true,
+      "readyState": "complete",
+      "h3Count": 0,
+      "containerCount": 0,
+      "bodyTextChars": 372,
+      "rows": 0,
+      "truncated": false,
+      "rowHashes": [],
+      "totalSeconds": 0.241
+    }
+  ]
+}

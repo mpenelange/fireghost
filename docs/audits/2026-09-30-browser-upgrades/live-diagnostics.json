@@ -1,0 +1,148 @@
+{
+  "status": 200,
+  "comments": 16,
+  "invalidEdges": [
+    {
+      "child": {
+        "id": "t1_nunhm47",
+        "parentId": "t1_nulqvt0",
+        "depth": 2
+      },
+      "parent": {
+        "id": "t1_nulqvt0",
+        "parentId": "t1_nukobku",
+        "depth": 4
+      }
+    }
+  ],
+  "dom": [
+    {
+      "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/",
+      "nodes": [
+        {
+          "id": "t1_nixvtll",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_nuix5zn",
+          "parentId": "t1_nixvtll",
+          "depth": 1,
+          "ancestorId": "t1_nixvtll"
+        },
+        {
+          "id": "t1_nujaach",
+          "parentId": "t1_nuix5zn",
+          "depth": 2,
+          "ancestorId": "t1_nuix5zn"
+        },
+        {
+          "id": "t1_ntgfgbr",
+          "parentId": "t1_nixvtll",
+          "depth": 1,
+          "ancestorId": "t1_nixvtll"
+        },
+        {
+          "id": "t1_nth0id4",
+          "parentId": "t1_ntgfgbr",
+          "depth": 2,
+          "ancestorId": "t1_ntgfgbr"
+        },
+        {
+          "id": "t1_lykdntc",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lykdxly",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lysbzjl",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lyked24",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lykfpxo",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_pb07y5f",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lyljbby",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_lyn584q",
+          "parentId": "t1_lyljbby",
+          "depth": 1,
+          "ancestorId": "t1_lyljbby"
+        },
+        {
+          "id": "t1_n5l66rt",
+          "parentId": null,
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_n7kcf05",
+          "parentId": "t1_n5l66rt",
+          "depth": 1,
+          "ancestorId": "t1_n5l66rt"
+        }
+      ]
+    },
+    {
+      "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/comment/nulqvt0/",
+      "nodes": [
+        {
+          "id": "t1_nulqvt0",
+          "parentId": "t1_nukobku",
+          "depth": 0,
+          "ancestorId": null
+        },
+        {
+          "id": "t1_nunhm47",
+          "parentId": "t1_nulqvt0",
+          "depth": 1,
+          "ancestorId": "t1_nulqvt0"
+        }
+      ]
+    }
+  ],
+  "example": {
+    "titleIsExampleDomain": true,
+    "textChars": 917,
+    "textSHA256": "0093ff74cfb258dade9c4fd23e0e8f9899d96ec7909ed55deec9c61a16a28146",
+    "markers": {
+      "Example Domain": false,
+      "Access Denied": false,
+      "Forbidden": false,
+      "blocked": false,
+      "Cloudflare": false,
+      "Verify": false,
+      "Bad Gateway": false,
+      "SSL": false,
+      "Proxy": false
+    }
+  }
+}

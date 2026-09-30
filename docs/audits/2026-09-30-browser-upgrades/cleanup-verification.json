@@ -1,0 +1,200 @@
+{
+  "taskProjectsRemoved": true,
+  "removedTaskImages": [
+    "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+    "sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8",
+    "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "sha256:5fab5ba10f3d1252b0381a10cf401c1ac380ce8aef48088135d470515f96ce49",
+    "sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659",
+    "sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277",
+    "sha256:914a2ef289d58e0a1b849647a7ac86e7e19322589c09eb28653d055b37077ee7",
+    "sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e",
+    "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+    "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887"
+  ],
+  "beforeContainers": [
+    {
+      "name": "/messages-real20260922-app-1",
+      "id": "dc4f6085636b25eca9918150149d823b8e4b47d722e7afd75dc06aeec2a7f3c0",
+      "imageId": "sha256:09563cdae92bafa906af354907f08fc0aac8a0b7deafb2a7bf1acf55625b0a15",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-mvpreview20260929-app-1",
+      "id": "d96b0d0b5193475285486d5ccaf40d0fd5a09427b71f621e0d86f0a332f614be",
+      "imageId": "sha256:09563cdae92bafa906af354907f08fc0aac8a0b7deafb2a7bf1acf55625b0a15",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-realrestore20260923-app-1",
+      "id": "b4b2b87e9729974514917897494dbc77ca6b31dc4979ca91a8a84f349868b0a8",
+      "imageId": "sha256:82dddd008c2b7a3bb2c6bb11cfa58a58380de0b539c5791bcd4bb67b7be36cfb",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-mvpreview20260929-database-1",
+      "id": "40b11b0236dbcb758309e21664ee120c72efa7e51575f62773777527b326672d",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-realrestore20260923-database-1",
+      "id": "88d08992f12d479caf9e07f03c16d4ae1ac06909b3b8ee4696eb4adb3cc33c68",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-real20260922-database-1",
+      "id": "96ba17a24310abe170829a8c1e0157d480ebf66ba57739bc718f2a55d8e7312f",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/docker-testing-restore-app-1",
+      "id": "d001402fc1eb6e16b5694fe103b27bff7208b59d58f258b33a94948f01ae2da7",
+      "imageId": "sha256:25d5d59ffed0eb2ebf7f2e8497264ff34e382786431cfd8f133b673ba03fc568",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/docker-testing-restore-database-1",
+      "id": "fe445ce5ef8dad27342c19ea787f3e33879776a034f5632a77866b70f67953c4",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-app-1",
+      "id": "a51061862eaeccd138376480454649b3a3057995bdcc0cf98168f145db7870fb",
+      "imageId": "sha256:f393fabdbbe6492cc2f299883e1b44ae388d2cf952066d5d63a9ff6f49f12b9f",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-dev-postgres-1",
+      "id": "ec6f1de044992411bb00def7f269c6e1fe4cc037b464f5197e84d18624bf2c66",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-dev-dev-1",
+      "id": "833ffa5d43eccc73289ba535fe5deb70d9c74e022fe6a86f9e9a68940e046ec3",
+      "imageId": "sha256:86871428d6f3ead03531327547db5f80a1f18c748fd24d960ec3aec39935bcd1",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-database-1",
+      "id": "693e54b323730ee5333192f71696f0b4a0a85ceda626faae40c7e90149170e8f",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    }
+  ],
+  "afterContainers": [
+    {
+      "name": "/messages-real20260922-app-1",
+      "id": "dc4f6085636b25eca9918150149d823b8e4b47d722e7afd75dc06aeec2a7f3c0",
+      "imageId": "sha256:09563cdae92bafa906af354907f08fc0aac8a0b7deafb2a7bf1acf55625b0a15",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-mvpreview20260929-app-1",
+      "id": "d96b0d0b5193475285486d5ccaf40d0fd5a09427b71f621e0d86f0a332f614be",
+      "imageId": "sha256:09563cdae92bafa906af354907f08fc0aac8a0b7deafb2a7bf1acf55625b0a15",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-realrestore20260923-app-1",
+      "id": "b4b2b87e9729974514917897494dbc77ca6b31dc4979ca91a8a84f349868b0a8",
+      "imageId": "sha256:82dddd008c2b7a3bb2c6bb11cfa58a58380de0b539c5791bcd4bb67b7be36cfb",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-mvpreview20260929-database-1",
+      "id": "40b11b0236dbcb758309e21664ee120c72efa7e51575f62773777527b326672d",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-realrestore20260923-database-1",
+      "id": "88d08992f12d479caf9e07f03c16d4ae1ac06909b3b8ee4696eb4adb3cc33c68",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-real20260922-database-1",
+      "id": "96ba17a24310abe170829a8c1e0157d480ebf66ba57739bc718f2a55d8e7312f",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/docker-testing-restore-app-1",
+      "id": "d001402fc1eb6e16b5694fe103b27bff7208b59d58f258b33a94948f01ae2da7",
+      "imageId": "sha256:25d5d59ffed0eb2ebf7f2e8497264ff34e382786431cfd8f133b673ba03fc568",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/docker-testing-restore-database-1",
+      "id": "fe445ce5ef8dad27342c19ea787f3e33879776a034f5632a77866b70f67953c4",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-app-1",
+      "id": "a51061862eaeccd138376480454649b3a3057995bdcc0cf98168f145db7870fb",
+      "imageId": "sha256:f393fabdbbe6492cc2f299883e1b44ae388d2cf952066d5d63a9ff6f49f12b9f",
+      "running": true,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-dev-postgres-1",
+      "id": "ec6f1de044992411bb00def7f269c6e1fe4cc037b464f5197e84d18624bf2c66",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-dev-dev-1",
+      "id": "833ffa5d43eccc73289ba535fe5deb70d9c74e022fe6a86f9e9a68940e046ec3",
+      "imageId": "sha256:86871428d6f3ead03531327547db5f80a1f18c748fd24d960ec3aec39935bcd1",
+      "running": false,
+      "restartCount": 0
+    },
+    {
+      "name": "/messages-archive-database-1",
+      "id": "693e54b323730ee5333192f71696f0b4a0a85ceda626faae40c7e90149170e8f",
+      "imageId": "sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd",
+      "running": true,
+      "restartCount": 0
+    }
+  ],
+  "existingContainersPreserved": true,
+  "initialImageCount": 10,
+  "finalImageCount": 10,
+  "initialImagesPreserved": true,
+  "extraImages": [],
+  "initialVolumeCount": 14,
+  "finalVolumeCount": 14,
+  "initialVolumesPreserved": true,
+  "extraVolumes": [],
+  "remainingTaskNetworks": [],
+  "remainingTaskBuilders": [],
+  "dockerDiskUsage": "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE\nImages          10        6         7.745GB   7.58GB (97%)\nContainers      12        8         27.12MB   27.02MB (99%)\nLocal Volumes   14        14        71.32GB   0B (0%)\nBuild Cache     81        0         5.985GB   1.905GB\n"
+}

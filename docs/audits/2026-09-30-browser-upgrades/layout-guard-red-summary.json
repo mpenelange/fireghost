@@ -1,0 +1,7 @@
+{
+  "testsRun": 7,
+  "failures": 4,
+  "phase": "RED before exact mapping-key masking",
+  "failureSummary": "Three legitimate mapping-key samples and the tracked overlay were incorrectly classified as obsolete paths; actual obsolete path samples remained rejected.",
+  "originalLogSHA256": "587021177284666ff4a8acac4c21ac7dc55020a63cfdb27b7342f4215a17d2f8"
+}

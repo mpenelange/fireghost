@@ -1,0 +1,48 @@
+test_completed_response_closes_even_when_connection_detaches_socket (gate_http_test.GateHTTPDeadlineTests.test_completed_response_closes_even_when_connection_detaches_socket) ... ERROR
+test_slow_dns_is_bounded_without_sending_a_late_http_request (gate_http_test.GateHTTPDeadlineTests.test_slow_dns_is_bounded_without_sending_a_late_http_request) ... FAIL
+test_trickled_chunk_size_cannot_renew_total_deadline (gate_http_test.GateHTTPDeadlineTests.test_trickled_chunk_size_cannot_renew_total_deadline) ... FAIL
+test_trickled_header_line_cannot_renew_total_deadline (gate_http_test.GateHTTPDeadlineTests.test_trickled_header_line_cannot_renew_total_deadline) ... FAIL
+
+======================================================================
+ERROR: test_completed_response_closes_even_when_connection_detaches_socket (gate_http_test.GateHTTPDeadlineTests.test_completed_response_closes_even_when_connection_detaches_socket)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 136, in test_completed_response_closes_even_when_connection_detaches_socket
+    self.assertEqual(request_bytes(endpoint, "", "GET", "/health", None, 0.5, 1024), (200, b"{}"))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/scripts/gate_http.py", line 71, in request_bytes
+    socket.settimeout(remaining())
+OSError: [Errno 9] Bad file descriptor
+
+======================================================================
+FAIL: test_slow_dns_is_bounded_without_sending_a_late_http_request (gate_http_test.GateHTTPDeadlineTests.test_slow_dns_is_bounded_without_sending_a_late_http_request)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 124, in test_slow_dns_is_bounded_without_sending_a_late_http_request
+    self.assertLess(time.monotonic() - started, 0.24, "DNS must share the caller deadline")
+AssertionError: 0.5005447459989227 not less than 0.24 : DNS must share the caller deadline
+
+======================================================================
+FAIL: test_trickled_chunk_size_cannot_renew_total_deadline (gate_http_test.GateHTTPDeadlineTests.test_trickled_chunk_size_cannot_renew_total_deadline)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 94, in test_trickled_chunk_size_cannot_renew_total_deadline
+    self.assert_trickle_deadline(
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 83, in assert_trickle_deadline
+    self.assertLess(elapsed, 0.32, "caller must return within the total deadline plus scheduling margin")
+AssertionError: 0.5090396080013306 not less than 0.32 : caller must return within the total deadline plus scheduling margin
+
+======================================================================
+FAIL: test_trickled_header_line_cannot_renew_total_deadline (gate_http_test.GateHTTPDeadlineTests.test_trickled_header_line_cannot_renew_total_deadline)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 88, in test_trickled_header_line_cannot_renew_total_deadline
+    self.assert_trickle_deadline(
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/gate_http_test.py", line 83, in assert_trickle_deadline
+    self.assertLess(elapsed, 0.32, "caller must return within the total deadline plus scheduling margin")
+AssertionError: 0.5091897389975202 not less than 0.32 : caller must return within the total deadline plus scheduling margin
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.525s
+
+FAILED (failures=3, errors=1)

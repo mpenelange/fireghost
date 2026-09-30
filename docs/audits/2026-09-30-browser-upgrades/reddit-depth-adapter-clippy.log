@@ -1,0 +1,26 @@
+info: downloading 2 components
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-diff v1.2.0 (/src/crates/crw-diff)
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 38.37s
+     Running tests/browser_pipeline.rs (/target/debug/deps/browser_pipeline-ce3d68722139cba1)
+
+running 6 tests
+test browser_pipeline_dedicated_endpoint_works_without_legacy_renderer_or_search ... ok
+test browser_pipeline_dedicated_endpoint_overrides_only_pipeline_browser ... ok
+test browser_pipeline_rejects_invalid_input_before_browser ... ok
+test browser_pipeline_inherits_auth_and_method_rejection ... ok
+test browser_pipeline_requires_camofox_configuration ... ok
+test browser_pipeline_returns_compacted_article_and_closes_tab ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+    Checking crw-mcp-proto v1.2.0 (/src/crates/crw-mcp-proto)
+    Checking crw-core v1.2.0 (/src/crates/crw-core)
+    Checking crw-extract v1.2.0 (/src/crates/crw-extract)
+    Checking crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `dev` profile [unoptimized] target(s) in 13.47s

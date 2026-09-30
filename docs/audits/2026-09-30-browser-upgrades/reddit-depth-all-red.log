@@ -1,0 +1,55 @@
+   Compiling crw-mcp-proto v1.2.0 (/src/crates/crw-mcp-proto)
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `test` profile [unoptimized] target(s) in 26.00s
+     Running tests/browser_pipeline_tests.rs (/target/debug/deps/browser_pipeline_tests-00c31677426b3549)
+
+running 7 tests
+test reddit_continuation_depths_follow_merged_parent_links ... FAILED
+test reddit_cyclic_parent_links_fail_closed_and_close_the_tab ... FAILED
+test reddit_accumulates_by_id_preserves_parents_and_reports_partial ... ok
+test reddit_limits_keep_existing_items_and_never_claim_complete ... ok
+test reddit_late_parents_resolve_depth_without_inventing_missing_ancestry ... FAILED
+test validates_budgets_and_reddit_identity_before_browser_work ... ok
+test reddit_logical_depth_exceeding_supported_bound_closes_the_tab ... FAILED
+
+failures:
+
+---- reddit_continuation_depths_follow_merged_parent_links stdout ----
+
+thread 'reddit_continuation_depths_follow_merged_parent_links' (1010) panicked at crates/crw-renderer/tests/browser_pipeline_tests.rs:293:5:
+assertion `left == right` failed: known parents define logical depth across views
+  left: Number(2)
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- reddit_cyclic_parent_links_fail_closed_and_close_the_tab stdout ----
+
+thread 'reddit_cyclic_parent_links_fail_closed_and_close_the_tab' (1011) panicked at crates/crw-renderer/tests/browser_pipeline_tests.rs:328:5:
+assertion failed: client.fetch(&reddit_request(json!({"maxRounds":1})),
+            deadline()).await.is_err()
+
+---- reddit_late_parents_resolve_depth_without_inventing_missing_ancestry stdout ----
+
+thread 'reddit_late_parents_resolve_depth_without_inventing_missing_ancestry' (1012) panicked at crates/crw-renderer/tests/browser_pipeline_tests.rs:314:5:
+assertion `left == right` failed
+  left: Number(0)
+ right: 1
+
+---- reddit_logical_depth_exceeding_supported_bound_closes_the_tab stdout ----
+
+thread 'reddit_logical_depth_exceeding_supported_bound_closes_the_tab' (1014) panicked at crates/crw-renderer/tests/browser_pipeline_tests.rs:342:5:
+assertion failed: client.fetch(&reddit_request(json!({"maxRounds":1,"maxItems":300,"maxBytes":262144})),
+            deadline()).await.is_err()
+
+
+failures:
+    reddit_continuation_depths_follow_merged_parent_links
+    reddit_cyclic_parent_links_fail_closed_and_close_the_tab
+    reddit_late_parents_resolve_depth_without_inventing_missing_ancestry
+    reddit_logical_depth_exceeding_supported_bound_closes_the_tab
+
+test result: FAILED. 3 passed; 4 failed; 0 ignored; 0 measured; 17 filtered out; finished in 1.21s
+
+error: test failed, to rerun pass `-p crw-renderer --test browser_pipeline_tests`

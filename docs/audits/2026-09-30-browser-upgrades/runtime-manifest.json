@@ -1,0 +1,365 @@
+{
+  "projects": {
+    "fg-upgrades-baseline-20260930": [
+      {
+        "name": "fg-upgrades-baseline-20260930-router-1",
+        "id": "79901eb911e3ac5c5c324dc1071f033c2fdde4762bbaa860d1a261585f0ad1a4",
+        "image": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+        "configuredImage": "web-retrieval-router:fg-upgrades-baseline",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 268435456,
+          "NanoCpus": 1000000000,
+          "PidsLimit": 128
+        },
+        "ports": {
+          "8080/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "33300"
+            }
+          ]
+        },
+        "configuration": {
+          "ROUTER_BROWSER_PIPELINE_ENABLED": "false",
+          "MCP_ENABLED": "false",
+          "ROUTER_DAILY_CLOUD_CREDITS": "0",
+          "ROUTER_HTTP_TIMEOUT": "125s",
+          "ROUTER_SCRAPE_TTL": "0s",
+          "ROUTER_CLOUD_BURST_CREDITS": "0",
+          "ROUTER_MONTHLY_CLOUD_CREDITS": "0",
+          "ROUTER_SEARCH_TTL": "0s",
+          "ROUTER_CLOUD_REFILL_CREDITS_PER_DAY": "0"
+        },
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "fg-upgrades-baseline-20260930_router-data",
+            "destination": "/data",
+            "writable": true
+          }
+        ]
+      },
+      {
+        "name": "fg-upgrades-baseline-20260930-crw-1",
+        "id": "4a60e56edddc6712a877b06b038149f66579028f31b4de0fe4a13f4d2423fd06",
+        "image": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+        "configuredImage": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 1073741824,
+          "NanoCpus": 2000000000,
+          "PidsLimit": 512
+        },
+        "ports": {
+          "3000/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "bind",
+            "name": null,
+            "destination": "/app/config/crw.toml",
+            "writable": false
+          }
+        ]
+      },
+      {
+        "name": "fg-upgrades-baseline-20260930-lightpanda-1",
+        "id": "b4f27a9d5c7b6a2bd1e47c8262016298c3f0e1d07e22ca5bfa2f86997b9e267d",
+        "image": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+        "configuredImage": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 536870912,
+          "NanoCpus": 1000000000,
+          "PidsLimit": 256
+        },
+        "ports": {
+          "9222/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": []
+      },
+      {
+        "name": "fg-upgrades-baseline-20260930-camofox-1",
+        "id": "19afbeb89612754359267b31aa71ba40752af20723db1874418d21decd8bf7b7",
+        "image": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+        "configuredImage": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 4294967296,
+          "NanoCpus": 3000000000,
+          "PidsLimit": 1024
+        },
+        "ports": {
+          "6080/tcp": null,
+          "9377/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "fg-upgrades-baseline-20260930_camofox-profiles",
+            "destination": "/home/node/.camofox",
+            "writable": true
+          }
+        ]
+      }
+    ],
+    "fg-upgrades-candidate-20260930": [
+      {
+        "name": "fg-upgrades-candidate-20260930-router-1",
+        "id": "e264979b041b66c450d060270f077918795859455f1e7c2e780f70ef18b46c26",
+        "image": "sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659",
+        "configuredImage": "fireghost-router:browser-pipeline-06e7ffb",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 268435456,
+          "NanoCpus": 1000000000,
+          "PidsLimit": 128
+        },
+        "ports": {
+          "8080/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "33310"
+            }
+          ]
+        },
+        "configuration": {
+          "MCP_ENABLED": "true",
+          "ROUTER_BROWSER_PIPELINE_ENABLED": "true",
+          "ROUTER_DAILY_CLOUD_CREDITS": "0",
+          "ROUTER_CLOUD_REFILL_CREDITS_PER_DAY": "0",
+          "ROUTER_SEARCH_TTL": "0s",
+          "ROUTER_MONTHLY_CLOUD_CREDITS": "0",
+          "ROUTER_CLOUD_BURST_CREDITS": "0",
+          "ROUTER_HTTP_TIMEOUT": "125s",
+          "ROUTER_SCRAPE_TTL": "0s"
+        },
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "fg-upgrades-candidate-20260930_router-data",
+            "destination": "/data",
+            "writable": true
+          }
+        ]
+      },
+      {
+        "name": "fg-upgrades-candidate-20260930-crw-1",
+        "id": "585a73ad961a8ee85d05af1f88c37ac196cbc9cc219ab49a90965fa24c55c682",
+        "image": "sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277",
+        "configuredImage": "fireghost-crw:1.2.0-browser-pipeline-06e7ffb",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 1073741824,
+          "NanoCpus": 2000000000,
+          "PidsLimit": 512
+        },
+        "ports": {
+          "3000/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "bind",
+            "name": null,
+            "destination": "/app/config/crw.toml",
+            "writable": false
+          }
+        ]
+      },
+      {
+        "name": "fg-upgrades-candidate-20260930-lightpanda-1",
+        "id": "b9d76b7d64a910da318debea928093048caee2eb77a7fcaf82f18ec5022978a8",
+        "image": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+        "configuredImage": "lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 536870912,
+          "NanoCpus": 1000000000,
+          "PidsLimit": 256
+        },
+        "ports": {
+          "9222/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": []
+      },
+      {
+        "name": "fg-upgrades-candidate-20260930-camofox-pipeline-1",
+        "id": "4568f4b3d4ef1e45edbe82ca626ea3cf395d8eac8e7c2c7cb9bd51e453b908fd",
+        "image": "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+        "configuredImage": "ghcr.io/redf0x1/camofox-browser:2.4.8@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 4294967296,
+          "NanoCpus": 3000000000,
+          "PidsLimit": 1024
+        },
+        "ports": {
+          "6080/tcp": null,
+          "9377/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "fg-upgrades-candidate-20260930_camofox-pipeline-profiles",
+            "destination": "/home/node/.camofox",
+            "writable": true
+          }
+        ]
+      },
+      {
+        "name": "fg-upgrades-candidate-20260930-camofox-1",
+        "id": "7abc0738552f0871c8e25fe83d1cd1964d529ebb6e95b64f5b24ac0aff623834",
+        "image": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+        "configuredImage": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+        "state": "running",
+        "health": "healthy",
+        "oomKilled": false,
+        "restartCount": 0,
+        "limits": {
+          "Memory": 4294967296,
+          "NanoCpus": 3000000000,
+          "PidsLimit": 1024
+        },
+        "ports": {
+          "6080/tcp": null,
+          "9377/tcp": null
+        },
+        "configuration": {},
+        "cloudKeyPresent": false,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "fg-upgrades-candidate-20260930_camofox-profiles",
+            "destination": "/home/node/.camofox",
+            "writable": true
+          }
+        ]
+      }
+    ]
+  },
+  "images": {
+    "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a": {
+      "id": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+      "architecture": "amd64",
+      "repoDigests": [
+        "web-retrieval-router@sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a"
+      ],
+      "labels": {
+        "org.opencontainers.image.created": "2026-09-12T03:16:19+00:00",
+        "org.opencontainers.image.description": "Local-first Firecrawl-compatible router",
+        "org.opencontainers.image.licenses": "NOASSERTION",
+        "org.opencontainers.image.revision": "c7a58561821496d33f7d46497665db63002022cd",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.title": "Fireghost Router",
+        "org.opencontainers.image.version": "1.0.0"
+      }
+    },
+    "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b": {
+      "id": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+      "architecture": "amd64",
+      "repoDigests": [],
+      "labels": {
+        "org.opencontainers.image.created": "2026-09-12T03:16:19+00:00",
+        "org.opencontainers.image.description": "Firecrawl-compatible CRW server with Camofox rendering",
+        "org.opencontainers.image.revision": "c7a58561821496d33f7d46497665db63002022cd",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.title": "Fireghost CRW",
+        "org.opencontainers.image.version": "1.2.0"
+      }
+    },
+    "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887": {
+      "id": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+      "architecture": "amd64",
+      "repoDigests": [
+        "lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887"
+      ],
+      "labels": {}
+    },
+    "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7": {
+      "id": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+      "architecture": "amd64",
+      "repoDigests": [
+        "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7"
+      ],
+      "labels": {}
+    },
+    "sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659": {
+      "id": "sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659",
+      "architecture": "amd64",
+      "repoDigests": [
+        "fireghost-router@sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659"
+      ],
+      "labels": {
+        "org.opencontainers.image.created": "2026-09-30T16:36:22Z",
+        "org.opencontainers.image.description": "Local-first Firecrawl-compatible router",
+        "org.opencontainers.image.licenses": "NOASSERTION",
+        "org.opencontainers.image.revision": "06e7ffb47e96d7146a46f9279e99ce533c541a34",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.title": "Fireghost Router",
+        "org.opencontainers.image.version": "browser-pipeline-06e7ffb"
+      }
+    },
+    "sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277": {
+      "id": "sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277",
+      "architecture": "amd64",
+      "repoDigests": [
+        "fireghost-crw@sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277"
+      ],
+      "labels": {
+        "org.opencontainers.image.created": "2026-09-30T16:36:22Z",
+        "org.opencontainers.image.description": "Firecrawl-compatible CRW server with Camofox rendering",
+        "org.opencontainers.image.revision": "06e7ffb47e96d7146a46f9279e99ce533c541a34",
+        "org.opencontainers.image.source": "https://git.firewire.cc/michael/fireghost",
+        "org.opencontainers.image.title": "Fireghost CRW",
+        "org.opencontainers.image.version": "1.2.0-browser-pipeline-06e7ffb"
+      }
+    },
+    "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55": {
+      "id": "sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+      "architecture": "amd64",
+      "repoDigests": [
+        "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55"
+      ],
+      "labels": {}
+    }
+  }
+}

@@ -1,0 +1,214 @@
+{
+  "cases": [
+    {
+      "elapsed_seconds": 5.43,
+      "name": "article-wikipedia",
+      "passed": true,
+      "profile": "article",
+      "reasons": [],
+      "request_budgets": {
+        "maxBytes": 262144,
+        "maxItems": 200,
+        "maxRounds": 20,
+        "timeout": 60000
+      },
+      "response_bytes": 46552,
+      "status": 200,
+      "summary": {
+        "comments": 0,
+        "content_budget_bytes": 45752,
+        "known_comment_ids": 0,
+        "markdown_bytes": 45752,
+        "markdown_sha256": "1c5b9833ba59aa9d544699a8b59888347b993bee47918b069e449f938f64b676",
+        "metadata": {
+          "complete": true,
+          "elapsed_ms": 5402,
+          "items_collected": 0,
+          "pipeline": "browser-v1",
+          "profile": "article",
+          "rendered_with": "camofox",
+          "reported_total": null,
+          "rounds": 1,
+          "source_url": "https://en.wikipedia.org/wiki/Web_scraping",
+          "stop_reason": "snapshot",
+          "url": "https://en.wikipedia.org/wiki/Web_scraping"
+        },
+        "nullable_deleted_ids": 0,
+        "parent_links": 0,
+        "warning_count": 0
+      },
+      "transport": "rest",
+      "url": "https://en.wikipedia.org/wiki/Web_scraping"
+    },
+    {
+      "elapsed_seconds": 10.316,
+      "name": "reddit-small",
+      "passed": true,
+      "profile": "redditThread",
+      "reasons": [],
+      "request_budgets": {
+        "maxBytes": 262144,
+        "maxItems": 200,
+        "maxRounds": 20,
+        "timeout": 60000
+      },
+      "response_bytes": 10328,
+      "status": 200,
+      "summary": {
+        "comments": 16,
+        "content_budget_bytes": 9634,
+        "known_comment_ids": 16,
+        "markdown_bytes": 3542,
+        "markdown_sha256": "7a9fac78c9f6f71cdd9b5bcd8b88f73a743f61ef5a922ace3a8b79f0ce4fcf50",
+        "metadata": {
+          "complete": false,
+          "elapsed_ms": 10288,
+          "items_collected": 16,
+          "pipeline": "browser-v1",
+          "profile": "redditThread",
+          "rendered_with": "camofox",
+          "reported_total": 24,
+          "rounds": 5,
+          "source_url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/",
+          "stop_reason": "progressStalled",
+          "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/comment/nulqvt0/"
+        },
+        "nullable_deleted_ids": 0,
+        "parent_links": 16,
+        "warning_count": 2
+      },
+      "transport": "rest",
+      "url": "https://www.reddit.com/r/selfhosted/comments/1gxw9z9/selfhosted_kahoot_alternative/"
+    },
+    {
+      "elapsed_seconds": 7.82,
+      "name": "reddit-large",
+      "passed": true,
+      "profile": "redditThread",
+      "reasons": [],
+      "request_budgets": {
+        "maxBytes": 262144,
+        "maxItems": 400,
+        "maxRounds": 30,
+        "timeout": 60000
+      },
+      "response_bytes": 25604,
+      "status": 200,
+      "summary": {
+        "comments": 31,
+        "content_budget_bytes": 24665,
+        "known_comment_ids": 31,
+        "markdown_bytes": 9828,
+        "markdown_sha256": "6f536b2307f6e587677bb63d636bf025557a2cbea3965f4dee019d63bed419c6",
+        "metadata": {
+          "complete": false,
+          "elapsed_ms": 7801,
+          "items_collected": 31,
+          "pipeline": "browser-v1",
+          "profile": "redditThread",
+          "rendered_with": "camofox",
+          "reported_total": 299,
+          "rounds": 4,
+          "source_url": "https://www.reddit.com/r/selfhosted/comments/1opkatt/which_app_you_are_hosting_which_you_feel_others/",
+          "stop_reason": "progressStalled",
+          "url": "https://www.reddit.com/r/selfhosted/comments/1opkatt/comment/nneiwaz/"
+        },
+        "nullable_deleted_ids": 0,
+        "parent_links": 31,
+        "warning_count": 2
+      },
+      "transport": "rest",
+      "url": "https://www.reddit.com/r/selfhosted/comments/1opkatt/which_app_you_are_hosting_which_you_feel_others/"
+    },
+    {
+      "elapsed_seconds": 7.328,
+      "name": "reddit-older-modern",
+      "passed": true,
+      "profile": "redditThread",
+      "reasons": [],
+      "request_budgets": {
+        "maxBytes": 262144,
+        "maxItems": 200,
+        "maxRounds": 20,
+        "timeout": 60000
+      },
+      "response_bytes": 24522,
+      "status": 200,
+      "summary": {
+        "comments": 26,
+        "content_budget_bytes": 23729,
+        "known_comment_ids": 26,
+        "markdown_bytes": 9801,
+        "markdown_sha256": "6d2de38b0435109629d24feb95429ea37986a2d78f42054600ebf18c516dc43b",
+        "metadata": {
+          "complete": false,
+          "elapsed_ms": 7312,
+          "items_collected": 26,
+          "pipeline": "browser-v1",
+          "profile": "redditThread",
+          "rendered_with": "camofox",
+          "reported_total": 45,
+          "rounds": 4,
+          "source_url": "https://www.reddit.com/r/selfhosted/comments/opgyga/any_self_hosted_alexas_or_similar/",
+          "stop_reason": "progressStalled",
+          "url": "https://www.reddit.com/r/selfhosted/comments/opgyga/comment/h654mx2/"
+        },
+        "nullable_deleted_ids": 0,
+        "parent_links": 26,
+        "warning_count": 2
+      },
+      "transport": "rest",
+      "url": "https://www.reddit.com/r/selfhosted/comments/opgyga/any_self_hosted_alexas_or_similar/"
+    },
+    {
+      "elapsed_seconds": 3.26,
+      "name": "article-wikipedia",
+      "passed": true,
+      "profile": "article",
+      "reasons": [],
+      "request_budgets": {
+        "maxBytes": 262144,
+        "maxItems": 200,
+        "maxRounds": 20,
+        "timeout": 60000
+      },
+      "response_bytes": 94115,
+      "status": 200,
+      "summary": {
+        "comments": 0,
+        "content_budget_bytes": 45752,
+        "known_comment_ids": 0,
+        "markdown_bytes": 45752,
+        "markdown_sha256": "1c5b9833ba59aa9d544699a8b59888347b993bee47918b069e449f938f64b676",
+        "metadata": {
+          "complete": true,
+          "elapsed_ms": 3243,
+          "items_collected": 0,
+          "pipeline": "browser-v1",
+          "profile": "article",
+          "rendered_with": "camofox",
+          "reported_total": null,
+          "rounds": 1,
+          "source_url": "https://en.wikipedia.org/wiki/Web_scraping",
+          "stop_reason": "snapshot",
+          "url": "https://en.wikipedia.org/wiki/Web_scraping"
+        },
+        "nullable_deleted_ids": 0,
+        "parent_links": 0,
+        "warning_count": 0
+      },
+      "transport": "mcp",
+      "url": "https://en.wikipedia.org/wiki/Web_scraping"
+    }
+  ],
+  "gate_sha256": "ffa2e1d06b6a3c8c3c1e70be399124320fa5f604e9a3ce81e33193d0d230d153",
+  "matrix_sha256": "c0543dd1a908abcfdb7990370b7d2ce724d67acd2a2ad66be6f3c8ae8b816230",
+  "passed": true,
+  "reasons": [],
+  "repo_revision": "edabf2b0f16b4004f7e531fa27f565fd0b23aad9",
+  "router_url": "http://127.0.0.1:33310",
+  "schemaVersion": 1,
+  "scope": "live browser pipeline content and partial thread contract; no full-thread claim",
+  "timestamp": "2026-09-30T19:55:26.077407+00:00",
+  "transport_sha256": "65fd9254fcb1d1573d6e908bcf4bdb93a5246b10ec0cec79bebdf402da4f22a8"
+}

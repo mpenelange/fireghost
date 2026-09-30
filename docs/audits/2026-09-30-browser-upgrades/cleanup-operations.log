@@ -1,0 +1,86 @@
+ Container fg-upgrades-baseline-20260930-router-1  Stopping
+ Container fg-upgrades-baseline-20260930-router-1  Stopped
+ Container fg-upgrades-baseline-20260930-router-1  Removing
+ Container fg-upgrades-baseline-20260930-router-1  Removed
+ Container fg-upgrades-baseline-20260930-crw-1  Stopping
+ Container fg-upgrades-baseline-20260930-crw-1  Stopped
+ Container fg-upgrades-baseline-20260930-crw-1  Removing
+ Container fg-upgrades-baseline-20260930-crw-1  Removed
+ Container fg-upgrades-baseline-20260930-camofox-1  Stopping
+ Container fg-upgrades-baseline-20260930-lightpanda-1  Stopping
+ Container fg-upgrades-baseline-20260930-lightpanda-1  Stopped
+ Container fg-upgrades-baseline-20260930-lightpanda-1  Removing
+ Container fg-upgrades-baseline-20260930-lightpanda-1  Removed
+ Container fg-upgrades-baseline-20260930-camofox-1  Stopped
+ Container fg-upgrades-baseline-20260930-camofox-1  Removing
+ Container fg-upgrades-baseline-20260930-camofox-1  Removed
+ Volume fg-upgrades-baseline-20260930_router-data  Removing
+ Network fg-upgrades-baseline-20260930_appliance  Removing
+ Volume fg-upgrades-baseline-20260930_camofox-profiles  Removing
+ Volume fg-upgrades-baseline-20260930_router-data  Removed
+ Volume fg-upgrades-baseline-20260930_camofox-profiles  Removed
+ Network fg-upgrades-baseline-20260930_appliance  Removed
+
+ Container fg-upgrades-candidate-20260930-router-1  Stopping
+ Container fg-upgrades-candidate-20260930-router-1  Stopped
+ Container fg-upgrades-candidate-20260930-router-1  Removing
+ Container fg-upgrades-candidate-20260930-router-1  Removed
+ Container fg-upgrades-candidate-20260930-crw-1  Stopping
+ Container fg-upgrades-candidate-20260930-crw-1  Stopped
+ Container fg-upgrades-candidate-20260930-crw-1  Removing
+ Container fg-upgrades-candidate-20260930-crw-1  Removed
+ Container fg-upgrades-candidate-20260930-lightpanda-1  Stopping
+ Container fg-upgrades-candidate-20260930-camofox-1  Stopping
+ Container fg-upgrades-candidate-20260930-camofox-pipeline-1  Stopping
+ Container fg-upgrades-candidate-20260930-lightpanda-1  Stopped
+ Container fg-upgrades-candidate-20260930-lightpanda-1  Removing
+ Container fg-upgrades-candidate-20260930-camofox-pipeline-1  Stopped
+ Container fg-upgrades-candidate-20260930-camofox-pipeline-1  Removing
+ Container fg-upgrades-candidate-20260930-camofox-1  Stopped
+ Container fg-upgrades-candidate-20260930-camofox-1  Removing
+ Container fg-upgrades-candidate-20260930-lightpanda-1  Removed
+ Container fg-upgrades-candidate-20260930-camofox-pipeline-1  Removed
+ Container fg-upgrades-candidate-20260930-camofox-1  Removed
+ Volume fg-upgrades-candidate-20260930_router-data  Removing
+ Volume fg-upgrades-candidate-20260930_camofox-pipeline-profiles  Removing
+ Volume fg-upgrades-candidate-20260930_camofox-profiles  Removing
+ Network fg-upgrades-candidate-20260930_appliance  Removing
+ Volume fg-upgrades-candidate-20260930_router-data  Removed
+ Volume fg-upgrades-candidate-20260930_camofox-pipeline-profiles  Removed
+ Network fg-upgrades-candidate-20260930_appliance  Removed
+ Volume fg-upgrades-candidate-20260930_camofox-profiles  Removed
+
+fg-upgrades-builder-20260930 removed
+
+Untagged: ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55
+Deleted: sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55
+
+Untagged: moby/buildkit:buildx-stable-1
+Untagged: moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+Deleted: sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+
+Untagged: ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7
+Deleted: sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7
+
+Untagged: web-retrieval-router:fg-upgrades-baseline
+Deleted: sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a
+
+Untagged: fireghost-router:browser-pipeline-edabf2b
+Deleted: sha256:5fab5ba10f3d1252b0381a10cf401c1ac380ce8aef48088135d470515f96ce49
+
+Untagged: fireghost-router:browser-pipeline-06e7ffb
+Deleted: sha256:60b3d3ab73ff263132574a82bc4929f2b10fceb822860cf39f737ac7d0870659
+
+Untagged: fireghost-crw:1.2.0-browser-pipeline-06e7ffb
+Deleted: sha256:8dfce800926558e8a1715e2da543eb9c18d69f2b34a32e6a24e9b7c10e412277
+
+Untagged: fireghost-crw:1.2.0-browser-pipeline-edabf2b
+Deleted: sha256:914a2ef289d58e0a1b849647a7ac86e7e19322589c09eb28653d055b37077ee7
+
+Untagged: rust@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e
+Deleted: sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e
+
+Deleted: sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b
+
+Untagged: lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887
+Deleted: sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887

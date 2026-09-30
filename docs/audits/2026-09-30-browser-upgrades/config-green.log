@@ -1,0 +1,242 @@
+info: downloading 2 components
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+    Finished `test` profile [unoptimized] target(s) in 5.85s
+     Running unittests src/lib.rs (/target/debug/deps/crw_core-ed62f7d16f736f27)
+
+running 83 tests
+test config::tests::cdp_tier_count_zero_without_cdp_feature ... ok
+test config::tests::camofox_pool_size_defaults_and_is_clamped ... ok
+test config::tests::crawler_per_host_limiter_defaults ... ok
+test config::tests::default_app_config_enables_auto_extend ... ok
+test config::tests::effective_deadline_auto_extend_disabled_returns_baseline ... ok
+test config::tests::effective_deadline_default_wins_when_higher_than_ladder ... ok
+test config::tests::effective_deadline_explicit_bypasses_auto_extend ... ok
+test config::tests::effective_deadline_skipped_for_http_only_mode ... ok
+test config::tests::effective_proxy_credentials_appends_country_suffix ... ok
+test config::tests::crawler_proxy_empty_env_normalizes_to_none ... ok
+test config::tests::effective_proxy_credentials_invalid_country_uses_global_pool ... ok
+test config::tests::effective_proxy_credentials_no_base_returns_none ... ok
+test config::tests::effective_request_timeout_covers_map_ceiling ... ok
+test config::tests::effective_request_timeout_disabled_returns_baseline ... ok
+test config::tests::effective_request_timeout_respects_operator_override ... ok
+test config::tests::effective_request_timeout_search_sequential_batching ... ok
+test config::tests::env_var_beats_user_config ... ok
+test config::tests::env_var_force_js_alias_works ... ok
+test config::tests::env_var_overrides_toml_defaults ... ok
+test config::tests::env_var_render_js_default_direct ... ok
+test config::tests::env_var_renderer_mode_chrome ... ok
+test config::tests::render_js_default_force_js_alias ... ok
+test config::tests::render_js_default_direct_field ... ok
+test config::tests::renderer_config_default_mode_is_auto ... ok
+test config::tests::renderer_mode_bogus_errors ... ok
+test config::tests::renderer_phase_toggles_default_off_or_safe ... ok
+test config::tests::renderer_mode_parses_variants ... ok
+test config::tests::request_config_defaults_match_plan ... ok
+test config::tests::user_config_file_is_picked_up_by_load ... ok
+test config::tests::user_config_path_honors_override_env ... ok
+test deadline::tests::now_plus_matches_remaining ... ok
+test deadline::tests::fresh_deadline_has_remaining ... ok
+test deadline::tests::zero_ms_is_expired ... ok
+test metrics::tests::change_tracking_metrics_registered ... ok
+test metrics::tests::tier0_chrome_latency_histograms_registered ... ok
+test research_types::tests::paper_result_serializes_firecrawl_shape ... ok
+test research_types::tests::meta_omits_score_and_empty_fields ... ok
+test types::search_engine_tests::search_engine_default_is_google ... ok
+test types::search_engine_tests::search_engine_label ... ok
+test types::search_engine_tests::search_engine_reddit_and_amazon_parse ... ok
+test types::search_engine_tests::search_engine_rejects_unsupported ... ok
+test types::search_engine_tests::search_engine_serde_is_lowercase ... ok
+test types::search_engine_tests::search_request_accepts_comma_separated_engines_string ... ok
+test types::search_engine_tests::search_request_accepts_stringified_engines ... ok
+test types::search_engine_tests::search_request_empty_engines_string_is_none ... ok
+test types::search_engine_tests::search_request_accepts_stringified_sources_and_categories ... ok
+test types::search_engine_tests::search_request_engines_defaults_to_none_and_omitted ... ok
+test types::search_engine_tests::search_request_parses_engines_list ... ok
+test types::tests::chrome_proxy_as_str ... ok
+test types::tests::chrome_proxy_deserializes_from_underscore ... ok
+test types::tests::clear_body_drops_content_keeps_metadata_and_block ... ok
+test types::tests::chrome_proxy_serializes_with_underscore ... ok
+test types::tests::crawl_request_accepts_render_js_snake_case ... ok
+test types::tests::crawl_request_accepts_render_js_camel_case ... ok
+test types::tests::crawl_request_accepts_renderer_field ... ok
+test types::tests::crawl_request_render_fields_optional ... ok
+test types::tests::requested_renderer_chrome_proxy_round_trip ... ok
+test types::tests::requested_renderer_deserializes_lowercase ... ok
+test types::tests::requested_renderer_rejects_unknown ... ok
+test types::tests::resolve_pinned_renderer_auto_returns_none ... ok
+test types::tests::resolve_pinned_renderer_chrome_returns_name ... ok
+test types::tests::resolve_render_js_both_none ... ok
+test types::tests::resolve_render_js_falls_back_to_default ... ok
+test types::tests::resolve_render_js_request_wins_true ... ok
+test types::tests::resolve_render_js_request_wins_false ... ok
+test types::tests::scrape_request_renderer_explicit_null ... ok
+test types::tests::scrape_request_accepts_renderer_field ... ok
+test types::tests::scrape_request_renderer_omitted ... ok
+test url_safety::tests::allows_url_within_length_limit ... ok
+test url_safety::tests::allows_normal_urls ... ok
+test url_safety::tests::blocking_resolved_validation_rejects_denied_literal_ips ... ok
+test url_safety::tests::blocks_ipv4_mapped_ipv6 ... ok
+test url_safety::tests::blocks_extremely_long_urls ... ok
+test url_safety::tests::blocks_ipv6_link_local ... ok
+test url_safety::tests::blocks_ipv6_ula ... ok
+test url_safety::tests::blocks_ipv6_loopback ... ok
+test url_safety::tests::blocks_link_local ... ok
+test url_safety::tests::blocks_localhost ... ok
+test url_safety::tests::blocks_non_http_schemes ... ok
+test url_safety::tests::blocks_zero_ip ... ok
+test url_safety::tests::blocks_private_ips ... ok
+test url_safety::tests::resolved_ips_fail_closed_for_private_or_empty_answers ... ok
+test url_safety::tests::safe_redirect_policy_exists ... ok
+
+test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/config_tests.rs (/target/debug/deps/config_tests-4cdbb6430a428bff)
+
+running 16 tests
+test auth_config_api_keys_comma_separated ... ok
+test app_config_deserialize_empty ... ok
+test auth_config_api_keys_empty ... ok
+test auth_config_api_keys_comma_with_spaces ... ok
+test auth_config_api_keys_json_string ... ok
+test auth_config_default_empty ... ok
+test auth_config_api_keys_toml_array ... ok
+test browser_pipeline_configuration_does_not_replace_legacy_camofox ... ok
+test browser_pipeline_endpoint_rejects_missing_base_url ... ok
+test crawler_config_default_values ... ok
+test browser_pipeline_endpoint_rejects_wrong_url_type ... ok
+test crawler_config_deserialize_partial ... ok
+test renderer_config_default_values ... ok
+test extraction_config_default_values ... ok
+test server_config_default_values ... ok
+test server_config_deserialize_partial ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/error_tests.rs (/target/debug/deps/error_tests-26e4c2b109c9997c)
+
+running 3 tests
+test error_debug_impl ... ok
+test error_display_all_variants ... ok
+test error_from_url_parse_error ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/types_tests.rs (/target/debug/deps/types_tests-7fb52afe0128361e)
+
+running 20 tests
+test api_response_ok_serialization ... ok
+test api_response_err_serialization ... ok
+test change_tracking_format_deserialize_aliases ... ok
+test change_tracking_mode_deserialize_aliases ... ok
+test crawl_request_accepts_limit_alias ... ok
+test change_tracking_result_diff_envelope_shape ... ok
+test crawl_request_default_formats ... ok
+test crawl_start_response_serialization ... ok
+test crawl_status_serde_rename ... ok
+test debug_extraction_camel_case_wire_format ... ok
+test debug_field_round_trip ... ok
+test judgment_wire_shape_matches_firecrawl ... ok
+test map_request_defaults ... ok
+test output_format_serde_roundtrip ... ok
+test page_metadata_skip_serializing_none ... ok
+test parsers_accepts_string_and_object_forms ... ok
+test scrape_data_serializes_debug_extraction_as_camel_case ... ok
+test scrape_data_skip_serializing_none ... ok
+test scrape_request_default_formats ... ok
+test scrape_request_with_all_fields ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests crw_core
+
+running 1 test
+test crates/crw-core/src/lib.rs - (line 12) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.49s; merged doctests compilation took 0.49s
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-diff v1.2.0 (/src/crates/crw-diff)
+   Compiling crw-search v1.2.0 (/src/crates/crw-search)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+   Compiling crw-crawl v1.2.0 (/src/crates/crw-crawl)
+   Compiling crw-server v1.2.0 (/src/crates/crw-server)
+    Finished `test` profile [unoptimized] target(s) in 24.80s
+     Running tests/browser_pipeline.rs (/target/debug/deps/browser_pipeline-ba06aa0a8a0bb317)
+
+running 6 tests
+test browser_pipeline_dedicated_endpoint_works_without_legacy_renderer_or_search ... ok
+test browser_pipeline_dedicated_endpoint_overrides_only_pipeline_browser ... ok
+test browser_pipeline_rejects_invalid_input_before_browser ... ok
+test browser_pipeline_inherits_auth_and_method_rejection ... ok
+test browser_pipeline_requires_camofox_configuration ... ok
+test browser_pipeline_returns_compacted_article_and_closes_tab ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+     Running tests/docker_config_hosts.rs (/target/debug/deps/docker_config_hosts-abd80330ca7df8e1)
+
+running 1 test
+test docker_config_hosts_match_compose_services ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking tracing-core v0.1.36
+    Checking anstream v1.0.0
+    Checking chrono v0.4.45
+    Checking tracing v0.1.44
+    Checking h2 v0.4.19
+    Checking tower v0.5.3
+    Checking tower-http v0.6.11
+    Checking num v0.4.3
+    Checking lopdf v0.45.0
+    Checking hyper v1.11.1
+    Checking hyper-util v0.1.20
+    Checking env_logger v0.11.11
+    Checking fraction v0.15.4
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.13.5
+    Checking reqwest v0.12.28
+    Checking pdf-inspector v1.21.0
+    Checking crw-core v1.2.0 (/src/crates/crw-core)
+    Checking jsonschema v0.28.3
+    Checking axum-core v0.5.6
+    Checking axum v0.8.9
+    Checking crw-extract v1.2.0 (/src/crates/crw-extract)
+    Checking crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Checking wiremock v0.6.5
+    Checking sha2 v0.10.9
+    Checking hex v0.4.3
+    Checking clap_lex v1.1.1
+    Checking strsim v0.11.1
+    Checking similar v2.7.0
+    Checking crw-diff v1.2.0 (/src/crates/crw-diff)
+    Checking clap_builder v4.6.7
+    Checking tracing-serde v0.2.0
+    Checking tracing-log v0.2.0
+    Checking matchers v0.2.0
+    Checking sharded-slab v0.1.7
+    Checking thread_local v1.1.10
+    Checking nu-ansi-term v0.50.3
+    Checking foldhash v0.1.5
+    Checking inventory v0.3.24
+    Checking typetag v0.2.23
+    Checking hashbrown v0.15.5
+    Checking tracing-subscriber v0.3.23
+    Checking clap v4.6.7
+    Checking crw-crawl v1.2.0 (/src/crates/crw-crawl)
+    Checking crw-search v1.2.0 (/src/crates/crw-search)
+    Checking diff v0.1.13
+    Checking yansi v1.0.1
+    Checking pretty_assertions v1.4.1
+    Checking expect-json v1.11.0
+    Checking crw-server v1.2.0 (/src/crates/crw-server)
+    Checking hashlink v0.10.0
+    Checking anyhow v1.0.104
+    Checking rust-multipart-rfc7578_2 v0.9.0
+    Checking reserve-port v2.5.0
+    Checking bytesize v2.7.0
+    Checking axum-test v19.1.1
+    Checking yaml-rust2 v0.10.4
+    Finished `dev` profile [unoptimized] target(s) in 28.40s

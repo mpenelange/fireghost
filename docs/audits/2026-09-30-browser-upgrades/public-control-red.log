@@ -1,0 +1,56 @@
+test_actual_shapes_consecutive_reuse_cleanup_and_safe_manifest (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_actual_shapes_consecutive_reuse_cleanup_and_safe_manifest) ... ok
+test_blank_create_5xx_resets_only_owned_profile_and_retries_once (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_blank_create_5xx_resets_only_owned_profile_and_retries_once) ... ok
+test_cleanup_failure_fails_gate_even_after_good_content (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_cleanup_failure_fails_gate_even_after_good_content) ... ok
+test_current_example_domain_body_does_not_need_the_title_as_a_heading (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_current_example_domain_body_does_not_need_the_title_as_a_heading) ... FAIL
+test_dribbling_response_cannot_renew_the_body_deadline (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_dribbling_response_cannot_renew_the_body_deadline) ... ok
+test_each_run_uses_a_new_profile (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_each_run_uses_a_new_profile) ... ok
+test_evaluation_failure_is_truthful_and_always_cleans_up (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_evaluation_failure_is_truthful_and_always_cleans_up) ... ok
+test_foreign_tab_list_or_unsafe_tab_id_fails_without_unscoped_delete (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_foreign_tab_list_or_unsafe_tab_id_fails_without_unscoped_delete) ... ok
+test_http_transport_bounds_response_and_does_not_follow_redirects (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_http_transport_bounds_response_and_does_not_follow_redirects) ... ok
+test_invalid_fixture_and_unpinned_manifest_fail_before_network (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_invalid_fixture_and_unpinned_manifest_fail_before_network) ... ok
+test_non_json_create_5xx_is_status_evidence_for_scoped_recovery (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_non_json_create_5xx_is_status_evidence_for_scoped_recovery) ... ok
+test_repeated_5xx_or_4xx_does_not_loop (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_repeated_5xx_or_4xx_does_not_loop) ... ok
+test_transport_timeout_does_not_retry_ambiguous_create (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_transport_timeout_does_not_retry_ambiguous_create) ... ok
+test_unknown_health_engine_and_old_version_fail (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_unknown_health_engine_and_old_version_fail) ... ok
+test_wrong_pinned_version_prevents_creation (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_pinned_version_prevents_creation) ... ok
+test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) ... 
+  test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='Unexpected Page') ... FAIL
+  test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='example domain') ... FAIL
+  test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='Example Domain - challenge') ... FAIL
+
+======================================================================
+FAIL: test_current_example_domain_body_does_not_need_the_title_as_a_heading (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_current_example_domain_body_does_not_need_the_title_as_a_heading)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/browser_http_contract_gate_test.py", line 98, in test_current_example_domain_body_does_not_need_the_title_as_a_heading
+    self.assertTrue(artifact["passed"], artifact["reasons"])
+AssertionError: False is not true : ['cycle-1.evaluate-object: evaluation-required-text']
+
+======================================================================
+FAIL: test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='Unexpected Page')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/browser_http_contract_gate_test.py", line 115, in test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers
+    self.assertFalse(artifact["passed"], "body markers alone must not validate a different page title")
+AssertionError: True is not false : body markers alone must not validate a different page title
+
+======================================================================
+FAIL: test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='example domain')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/browser_http_contract_gate_test.py", line 115, in test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers
+    self.assertFalse(artifact["passed"], "body markers alone must not validate a different page title")
+AssertionError: True is not false : body markers alone must not validate a different page title
+
+======================================================================
+FAIL: test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers (browser_http_contract_gate_test.BrowserHTTPContractGateTests.test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers) (title='Example Domain - challenge')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/dev/fireghost-upgrade-validation-20260930/source/tests/live/browser_http_contract_gate_test.py", line 115, in test_wrong_title_is_rejected_even_with_both_old_and_current_body_markers
+    self.assertFalse(artifact["passed"], "body markers alone must not validate a different page title")
+AssertionError: True is not false : body markers alone must not validate a different page title
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.213s
+
+FAILED (failures=4)

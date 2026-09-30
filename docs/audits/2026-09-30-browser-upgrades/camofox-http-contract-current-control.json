@@ -1,0 +1,182 @@
+{
+  "browser_url": "http://172.26.0.2:9377",
+  "budgets": {
+    "cleanupTimeoutSeconds": 5,
+    "maxExpressionBytes": 65536,
+    "maxResponseBytes": 262144,
+    "requestTimeoutSeconds": 15,
+    "totalTimeoutSeconds": 90
+  },
+  "cleanup": {
+    "passed": true
+  },
+  "create_recoveries": 1,
+  "evaluations": [
+    {
+      "cycle": 1,
+      "encoding": "object",
+      "text_chars": 917,
+      "text_sha256": "0093ff74cfb258dade9c4fd23e0e8f9899d96ec7909ed55deec9c61a16a28146"
+    },
+    {
+      "cycle": 1,
+      "encoding": "string",
+      "text_chars": 917,
+      "text_sha256": "0093ff74cfb258dade9c4fd23e0e8f9899d96ec7909ed55deec9c61a16a28146"
+    },
+    {
+      "cycle": 2,
+      "encoding": "object",
+      "text_chars": 917,
+      "text_sha256": "0093ff74cfb258dade9c4fd23e0e8f9899d96ec7909ed55deec9c61a16a28146"
+    },
+    {
+      "cycle": 2,
+      "encoding": "string",
+      "text_chars": 917,
+      "text_sha256": "0093ff74cfb258dade9c4fd23e0e8f9899d96ec7909ed55deec9c61a16a28146"
+    }
+  ],
+  "http_checks": [
+    {
+      "latency_seconds": 0.003,
+      "operation": "health",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "initial.list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 1.863,
+      "operation": "cycle-1.create",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.186,
+      "operation": "cycle-1.created-list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 1.075,
+      "operation": "cycle-1.navigate",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.314,
+      "operation": "cycle-1.wait",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.032,
+      "operation": "cycle-1.evaluate-object",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.032,
+      "operation": "cycle-1.evaluate-string",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.007,
+      "operation": "cycle-1.close",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.004,
+      "operation": "cycle-1.closed-list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.242,
+      "operation": "cycle-2.create",
+      "status": 500
+    },
+    {
+      "latency_seconds": 0.181,
+      "operation": "cycle-2.create-reset",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.001,
+      "operation": "cycle-2.create-reset.list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 1.121,
+      "operation": "cycle-2.create-retry",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.008,
+      "operation": "cycle-2.created-list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 1.246,
+      "operation": "cycle-2.navigate",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.339,
+      "operation": "cycle-2.wait",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.024,
+      "operation": "cycle-2.evaluate-object",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.027,
+      "operation": "cycle-2.evaluate-string",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.005,
+      "operation": "cycle-2.close",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "cycle-2.closed-list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.296,
+      "operation": "session-reset",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "session-reset.list",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "cleanup",
+      "status": 200
+    },
+    {
+      "latency_seconds": 0.002,
+      "operation": "cleanup.list",
+      "status": 200
+    }
+  ],
+  "passed": true,
+  "reasons": [],
+  "runtime_manifest": {
+    "expected_version": "2.4.8",
+    "fixture_sha256": "813d2000fe005c026766d8e5b02797a92e8a4ee8203b7d068fe55fc0e76d0159",
+    "gate_sha256": "e66ab2ee1952a3df20639f6d0b05e50df336875674c0db2e523699d0b4f7698f",
+    "image_reference": "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+    "image_reference_provenance": "operator-supplied; verify against container image",
+    "observed_version": "2.4.8",
+    "repo_revision": "06e7ffb47e96d7146a46f9279e99ce533c541a34",
+    "transport_sha256": "65fd9254fcb1d1573d6e908bcf4bdb93a5246b10ec0cec79bebdf402da4f22a8"
+  },
+  "schemaVersion": 1,
+  "scope_id": "crw-contract-6db476f812b74523b5ba36f5362c2b96",
+  "timestamp": "2026-09-30T17:26:56.572917+00:00"
+}

@@ -1,0 +1,740 @@
+{
+  "schemaVersion": 1,
+  "repoRevision": "06e7ffb47e96d7146a46f9279e99ce533c541a34",
+  "gateSHA256": "3d3a3daf91839b7da7b755980e57c9ca43b50f1de8402044923e0a6dde9f9b0d",
+  "matrixSHA256": "a2ed9a43e0f0648d15193321052dbb8b70cdfc1d0cf08371cc26e341d7887f30",
+  "endpoints": {
+    "baseline": "http://127.0.0.1:33300",
+    "candidate": "http://127.0.0.1:33310"
+  },
+  "scope": "legacy REST content compatibility; not renderer identity or full-thread completeness",
+  "cases": [
+    {
+      "name": "static",
+      "kind": "scrape",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 16.45
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 12.045
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "javascript-lightpanda",
+      "kind": "scrape",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 9.007
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 8.563
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "javascript-camofox",
+      "kind": "scrape",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 2.827
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 3.145
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "redirect",
+      "kind": "scrape",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 11.703
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 12.112
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "pdf",
+      "kind": "scrape",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 18,
+        "contentSHA256": "0cff37b3c9ab819483d4d449c7a481066bf00e17a6d292dbcaf474065fa4805b",
+        "originStatus": 200,
+        "elapsedSeconds": 0.084
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 18,
+        "contentSHA256": "0cff37b3c9ab819483d4d449c7a481066bf00e17a6d292dbcaf474065fa4805b",
+        "originStatus": 200,
+        "elapsedSeconds": 0.086
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "search-google",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": false,
+        "reasons": [
+          "too few search results"
+        ],
+        "status": 200,
+        "resultCount": 0,
+        "elapsedSeconds": 60.005
+      },
+      "candidate": {
+        "passed": false,
+        "reasons": [
+          "too few search results"
+        ],
+        "status": 200,
+        "resultCount": 0,
+        "elapsedSeconds": 3.072
+      },
+      "comparison": {
+        "baselineValid": false,
+        "passed": false,
+        "reasons": [
+          "comparison unavailable: invalid baseline"
+        ]
+      }
+    },
+    {
+      "name": "search-wikipedia",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.391
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.885
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-linux",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.111
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.418
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-chicago",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.242
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.42
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-rust",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.402
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.542
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-docker",
+      "kind": "search",
+      "phase": "cold",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.17
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.398
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 0.8
+      }
+    },
+    {
+      "name": "static",
+      "kind": "scrape",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 10.659
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 10.552
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "javascript-lightpanda",
+      "kind": "scrape",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 8.467
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 8.504
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "javascript-camofox",
+      "kind": "scrape",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 2.634
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 1472,
+        "contentSHA256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "originStatus": 200,
+        "elapsedSeconds": 17.225
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "redirect",
+      "kind": "scrape",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 13.219
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 976,
+        "contentSHA256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "originStatus": 200,
+        "elapsedSeconds": 12.136
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "pdf",
+      "kind": "scrape",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 18,
+        "contentSHA256": "0cff37b3c9ab819483d4d449c7a481066bf00e17a6d292dbcaf474065fa4805b",
+        "originStatus": 200,
+        "elapsedSeconds": 0.054
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "contentChars": 18,
+        "contentSHA256": "0cff37b3c9ab819483d4d449c7a481066bf00e17a6d292dbcaf474065fa4805b",
+        "originStatus": 200,
+        "elapsedSeconds": 0.085
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "search-google",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": false,
+        "reasons": [
+          "too few search results"
+        ],
+        "status": 200,
+        "resultCount": 0,
+        "elapsedSeconds": 0.801
+      },
+      "candidate": {
+        "passed": false,
+        "reasons": [
+          "too few search results"
+        ],
+        "status": 200,
+        "resultCount": 0,
+        "elapsedSeconds": 1.673
+      },
+      "comparison": {
+        "baselineValid": false,
+        "passed": false,
+        "reasons": [
+          "comparison unavailable: invalid baseline"
+        ]
+      }
+    },
+    {
+      "name": "search-wikipedia",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.371
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.581
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-linux",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.184
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.573
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-chicago",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.39
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.642
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-rust",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.61
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.566
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 0.8
+      }
+    },
+    {
+      "name": "concurrent-docker",
+      "kind": "search",
+      "phase": "warm",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.127
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.405
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-linux",
+      "kind": "search",
+      "phase": "concurrent",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 1.197
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.558
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-chicago",
+      "kind": "search",
+      "phase": "concurrent",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 5.962
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 6.288
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    },
+    {
+      "name": "concurrent-rust",
+      "kind": "search",
+      "phase": "concurrent",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 8.914
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.863
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 0.8
+      }
+    },
+    {
+      "name": "concurrent-docker",
+      "kind": "search",
+      "phase": "concurrent",
+      "baseline": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 3.843
+      },
+      "candidate": {
+        "passed": true,
+        "reasons": [],
+        "status": 200,
+        "resultCount": 5,
+        "elapsedSeconds": 2.74
+      },
+      "comparison": {
+        "baselineValid": true,
+        "passed": true,
+        "reasons": [],
+        "ratio": 1.0
+      }
+    }
+  ],
+  "metrics": {
+    "baselineBefore": {
+      "search": 0,
+      "scrape": 0
+    },
+    "candidateBefore": {
+      "search": 0,
+      "scrape": 0
+    },
+    "baselineAfter": {
+      "search": 0,
+      "scrape": 0
+    },
+    "candidateAfter": {
+      "search": 0,
+      "scrape": 0
+    }
+  },
+  "reasons": [
+    "cold/search-google/baseline: too few search results",
+    "cold/search-google/candidate: too few search results",
+    "cold/search-google/comparison: comparison unavailable: invalid baseline",
+    "warm/search-google/baseline: too few search results",
+    "warm/search-google/candidate: too few search results",
+    "warm/search-google/comparison: comparison unavailable: invalid baseline"
+  ],
+  "passed": false
+}
