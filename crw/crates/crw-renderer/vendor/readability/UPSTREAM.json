@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/mozilla/readability",
+  "revision": "ab4027a8b37669745016869a37a504727992b2ba",
+  "files": {
+    "Readability.js": "e9330028c8a5a4aa7d75147be2605d520f7f213c7b28474947dc0e9c984e9bed",
+    "LICENSE.md": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "NOTICE": "21d526d361caf2b1ca578820ef1113982da5c094878a26bdd7ad555f84946f54"
+  }
+}
