@@ -28,7 +28,7 @@
       "timeoutMs": 60000,
       "minimumMarkdownChars": 500,
       "minimumCandidateRatio": 0.8,
-      "requiredText": ["Albert Einstein", "Next"],
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
       "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
     },
     {
@@ -38,7 +38,7 @@
       "timeoutMs": 60000,
       "minimumMarkdownChars": 500,
       "minimumCandidateRatio": 0.8,
-      "requiredText": ["Albert Einstein", "Next"],
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
       "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
     },
     {

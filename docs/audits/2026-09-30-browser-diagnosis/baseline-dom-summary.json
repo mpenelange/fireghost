@@ -1,0 +1,55 @@
+{
+  "url": "https://www.reddit.com/r/selfhosted/",
+  "started": "2026-09-30T02:46:38.654Z",
+  "snapshots": [
+    {
+      "stage": "created",
+      "status": 200,
+      "ms": 786,
+      "document": {
+        "ready": "interactive",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 601012,
+        "bodyTextLength": 6752,
+        "postCount": 3,
+        "postLinks": 12
+      }
+    },
+    {
+      "stage": "waited",
+      "status": 200,
+      "ms": 36,
+      "document": {
+        "ready": "complete",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 1163713,
+        "bodyTextLength": 34549,
+        "postCount": 27,
+        "postLinks": 75
+      }
+    },
+    {
+      "stage": "settled",
+      "status": 200,
+      "ms": 38,
+      "document": {
+        "ready": "complete",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 1163713,
+        "bodyTextLength": 34549,
+        "postCount": 27,
+        "postLinks": 75
+      }
+    }
+  ],
+  "outerHTMLResponse": {
+    "status": 200,
+    "ms": 76,
+    "ok": true,
+    "truncated": true,
+    "resultLength": 50,
+    "hasBodyTag": false,
+    "hasClosingHtmlTag": false,
+    "diagnostic": "[Truncated: result was 1201774 bytes, max 1048576]"
+  }
+}

@@ -45,15 +45,6 @@ async fn create_tab_stalls(Json(_body): Json<Value>) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "tabId": "tab-slow" })))
 }
 
-async fn evaluate(Path(_id): Path<String>, Json(_body): Json<Value>) -> Json<Value> {
-    Json(json!({
-        "ok": true,
-        "result": RENDERED_HTML,
-        "resultType": "string",
-        "truncated": false,
-    }))
-}
-
 async fn close_tab(Path(_id): Path<String>, Json(_body): Json<Value>) -> Json<Value> {
     Json(json!({ "ok": true }))
 }
@@ -63,10 +54,26 @@ async fn health() -> Json<Value> {
 }
 
 async fn spawn_camofox_mock() -> String {
+    spawn_camofox_mock_with_evaluation(json!({
+        "ok": true,
+        "result": RENDERED_HTML,
+        "resultType": "string",
+        "truncated": false,
+    }))
+    .await
+}
+
+async fn spawn_camofox_mock_with_evaluation(evaluation: Value) -> String {
     let app = Router::new()
         .route("/tabs", post(create_tab))
         .route("/tabs/{id}/wait", post(wait))
-        .route("/tabs/{id}/evaluate", post(evaluate))
+        .route(
+            "/tabs/{id}/evaluate",
+            post(move || {
+                let evaluation = evaluation.clone();
+                async move { Json(evaluation) }
+            }),
+        )
         .route("/tabs/{id}", delete(close_tab))
         .route("/health", get(health));
 
@@ -99,6 +106,43 @@ async fn fetch_returns_evaluated_html() {
         result.html
     );
     assert_eq!(result.rendered_with.as_deref(), Some("camofox"));
+}
+
+#[tokio::test]
+async fn fetch_rejects_truncated_evaluation_placeholder() {
+    // Camofox replaces oversized outerHTML with this diagnostic string. It is
+    // not page content, even though evaluation returned HTTP 200 and ok:true.
+    let base = spawn_camofox_mock_with_evaluation(json!({
+        "ok": true,
+        "result": "[Truncated: result was 1201774 bytes, max 1048576]",
+        "resultType": "string",
+        "truncated": true,
+    }))
+    .await;
+    let renderer = CamofoxRenderer::new("camofox", &base, None, Duration::from_secs(10));
+
+    let result = renderer
+        .fetch("https://example.com", &HashMap::new(), None, deadline())
+        .await;
+
+    assert!(
+        matches!(&result, Err(crw_core::error::CrwError::RendererError(message)) if message.contains("truncated")),
+        "truncated evaluation must fail instead of scraping its diagnostic: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn fetch_accepts_short_html_without_optional_truncation_field() {
+    let html = "<html><body>Hi</body></html>";
+    let base = spawn_camofox_mock_with_evaluation(json!({"ok": true, "result": html})).await;
+    let renderer = CamofoxRenderer::new("camofox", &base, None, Duration::from_secs(10));
+
+    let result = renderer
+        .fetch("https://example.com", &HashMap::new(), None, deadline())
+        .await
+        .expect("complete short HTML must remain valid when truncated is omitted");
+
+    assert_eq!(result.html, html);
 }
 
 #[tokio::test]

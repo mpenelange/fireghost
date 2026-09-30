@@ -144,6 +144,7 @@ def run_gate(*, production_url, candidate_url, api_key, output, matrix,
         },
         "matrix_schema_version": matrix["schemaVersion"],
         "cases": [],
+        "checks": {},
         "reasons": [],
     }
     for case in matrix["cases"]:
@@ -156,6 +157,9 @@ def run_gate(*, production_url, candidate_url, api_key, output, matrix,
                 "minimum_candidate_ratio": case["minimumCandidateRatio"],
             },
         }
+        checks = {identity: {"passed": False, "reasons": []}
+                  for identity in ("production", "candidate", "comparison")}
+        record["checks"] = checks
         raw = {}
         timeout = case.get("timeoutMs", 60000) / 1000
         payload = {
@@ -171,21 +175,40 @@ def run_gate(*, production_url, candidate_url, api_key, output, matrix,
                 summary, markdown = _summary(reply, time.monotonic() - started)
                 record[identity] = summary
                 raw[identity] = markdown
-                artifact["reasons"].extend(
-                    _semantic_reasons(case, identity, summary, markdown)
-                )
+                checks[identity]["reasons"].extend(
+                    _semantic_reasons(case, identity, summary, markdown))
             except Exception as exc:
                 record[identity] = {"error": type(exc).__name__}
-                artifact["reasons"].append(_failure(case, identity, exc))
+                checks[identity]["reasons"].append(_failure(case, identity, exc))
+            checks[identity]["passed"] = not checks[identity]["reasons"]
+        checks["comparison"]["baseline_valid"] = checks["production"]["passed"]
+        comparison_reasons = checks["comparison"]["reasons"]
         if "production" in raw and "candidate" in raw:
             production_size = len(raw["production"])
             ratio = len(raw["candidate"]) / production_size if production_size else 0.0
             record["comparison"] = {"markdown_size_ratio": round(ratio, 4)}
             if ratio < case["minimumCandidateRatio"]:
-                artifact["reasons"].append(
+                comparison_reasons.append(
                     f'{case["name"]}: candidate markdown size ratio {ratio:.3f} is below threshold'
                 )
+        else:
+            comparison_reasons.append(f'{case["name"]}: markdown size comparison unavailable')
+        if not checks["production"]["passed"]:
+            comparison_reasons.append(
+                f'{case["name"]}: production checks failed; size comparison has no valid baseline'
+            )
+        checks["comparison"]["passed"] = not comparison_reasons
+        for check in checks.values():
+            artifact["reasons"].extend(check["reasons"])
         artifact["cases"].append(record)
+    artifact["checks"] = {
+        identity: {
+            "passed": all(case["checks"][identity]["passed"] for case in artifact["cases"]),
+            "reasons": [reason for case in artifact["cases"]
+                        for reason in case["checks"][identity]["reasons"]],
+        }
+        for identity in ("production", "candidate", "comparison")
+    }
     artifact["passed"] = not artifact["reasons"]
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8") as handle:
@@ -209,6 +232,8 @@ def main():
         matrix=matrix,
     )
     print(f"Browser regression gate: {'PASS' if artifact['passed'] else 'FAIL'}; artifact={args.output}")
+    for identity, check in artifact["checks"].items():
+        print(f"{identity.capitalize()} checks: {'PASS' if check['passed'] else 'FAIL'}")
     for reason in artifact["reasons"]:
         print(f"- {reason}")
     raise SystemExit(0 if artifact["passed"] else 1)

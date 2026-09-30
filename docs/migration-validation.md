@@ -142,8 +142,23 @@ handling, and the existing Camofox real-world Reddit workload. Because these
 are live sites, production is tested immediately before the candidate and acts
 as the behavioral control; retain the artifact with the update review.
 
+Artifacts and CLI output report production, candidate, and comparison checks
+separately. A production failure leaves the gate failed and marks the relative
+comparison as lacking a valid baseline, even when candidate checks pass or the
+size ratio meets its threshold. Request failures retain evidence from the other
+side and mark the comparison unavailable. All original failure reasons and
+thresholds remain enforced; a failed control cannot establish a browser regression.
+The JavaScript cases require two rendered authors, Albert Einstein and
+J.K. Rowling. Pagination text such as `Next` belongs to navigation removed by
+the default main-content extraction and is not a content marker.
+
 For an upstream release, run the matrix once with a cold candidate and again
-after the first pass for warm/profile-reuse evidence, then inspect container
+after the first pass for warm/profile-reuse evidence. Set `ROUTER_SCRAPE_TTL=0s`
+on both isolated validation routers before these runs: the default 24-hour scrape
+cache would otherwise serve cached responses, and request fields such as
+`storeInCache` or `maxAge` do not bypass the router cache. This setting belongs
+only to the isolated validation stacks; preserve the frozen production deployment.
+The browser gate does not itself prove cache bypass. Then inspect container
 restart, OOM, memory, and PID data separately. A pass is required in addition
 to the Hermes gate, staging smoke/live-contract checks, component tests, and
 appliance tests. Any browser-specific incident URL should first be added as a
