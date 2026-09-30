@@ -13,6 +13,7 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 #[derive(Clone)]
 struct Browser {
     url: Arc<Mutex<String>>,
+    origin: Arc<Mutex<u64>>,
     challenge_google: bool,
 }
 
@@ -28,18 +29,48 @@ impl Respond for Browser {
                 } else {
                     destination.into()
                 };
+                *self.origin.lock().unwrap() += 100;
                 json!({"ok": true, "url": &*observed})
             }
             ("GET", "/tabs") => {
                 json!({"ok": true, "tabs": [{"tabId": "search-tab", "url": &*observed}]})
             }
             ("POST", "/tabs/search-tab/evaluate") => {
+                let body: Value = request.body_json().unwrap();
+                let expression = body["expression"].as_str().unwrap();
+                if let Some(at) = expression.find("location.assign(") {
+                    let destination = serde_json::Deserializer::from_str(
+                        &expression[at + "location.assign(".len()..],
+                    )
+                    .into_iter::<String>()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                    *observed =
+                        if self.challenge_google && destination.contains("google.com/search") {
+                            "https://www.google.com/sorry/index?continue=private-query".into()
+                        } else {
+                            destination
+                        };
+                    let mut origin = self.origin.lock().unwrap();
+                    let previous = *origin;
+                    *origin += 100;
+                    return ResponseTemplate::new(200).set_body_json(json!({
+                        "ok":true,"result":previous,"truncated":false
+                    }));
+                }
                 let rows = if observed.contains("en.wikipedia.org") {
                     json!([{"url": "https://en.wikipedia.org/wiki/Rust_(programming_language)", "title": "Rust (programming language)", "content": "Rust is a programming language."}])
                 } else {
                     json!([])
                 };
-                json!({"ok": true, "result": rows.to_string(), "truncated": false})
+                let result = if expression.contains("timeOrigin") {
+                    json!({"url":&*observed,"timeOrigin":*self.origin.lock().unwrap(),"rows":rows})
+                        .to_string()
+                } else {
+                    rows.to_string()
+                };
+                json!({"ok": true, "result": result, "truncated": false})
             }
             _ => panic!("unexpected mock-browser route"),
         };
@@ -59,6 +90,7 @@ async fn test_app(challenge_google: bool) -> (TestServer, MockServer) {
         .await;
     let browser = Browser {
         url: Arc::new(Mutex::new("about:blank".into())),
+        origin: Arc::new(Mutex::new(100)),
         challenge_google,
     };
     for (verb, route) in [

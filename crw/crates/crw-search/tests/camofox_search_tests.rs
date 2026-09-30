@@ -1,6 +1,6 @@
 //! Behavioural tests for the Camofox-backed browser search client. A wiremock
-//! server emulates the bounded REST flow (create warm tab → navigate →
-//! observe `/tabs` → evaluate result rows).
+//! server emulates Google's scheduled fresh-document protocol and other
+//! engines' direct navigation, followed by bounded result evaluation.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,6 +77,7 @@ impl Respond for ConcurrencyProbe {
 #[derive(Clone)]
 struct BrowserHarness {
     urls: Arc<Mutex<HashMap<String, String>>>,
+    origins: Arc<Mutex<HashMap<String, u64>>>,
     rows: String,
     navigation_delay: Duration,
     active: Arc<AtomicUsize>,
@@ -92,6 +93,7 @@ impl BrowserHarness {
     fn with_delay(rows: serde_json::Value, navigation_delay: Duration) -> Self {
         Self {
             urls: Arc::new(Mutex::new(HashMap::new())),
+            origins: Arc::new(Mutex::new(HashMap::new())),
             rows: serde_json::to_string(&rows).unwrap(),
             navigation_delay,
             active: Arc::new(AtomicUsize::new(0)),
@@ -109,13 +111,44 @@ impl BrowserHarness {
     }
 }
 
+fn scheduled_destination(request: &Request) -> Option<String> {
+    let body = request.body_json::<serde_json::Value>().ok()?;
+    let expression = body["expression"].as_str()?;
+    let marker = "location.assign(";
+    let at = expression.find(marker)? + marker.len();
+    serde_json::Deserializer::from_str(&expression[at..])
+        .into_iter::<String>()
+        .next()?
+        .ok()
+}
+
+fn is_google_scheduler(request: &Request) -> bool {
+    scheduled_destination(request).is_some()
+}
+
+fn is_google_harvest(request: &Request) -> bool {
+    request.body_json::<serde_json::Value>().is_ok_and(|body| {
+        body["expression"].as_str().is_some_and(|expression| {
+            expression.starts_with("JSON.stringify") && expression.contains("timeOrigin")
+        })
+    })
+}
+
 impl Respond for BrowserHarness {
     fn respond(&self, request: &Request) -> ResponseTemplate {
         let body: serde_json::Value = request.body_json().unwrap();
-        if request.url.path().ends_with("/navigate") {
+        let scheduled = scheduled_destination(request);
+        if request.url.path().ends_with("/navigate") || scheduled.is_some() {
             let tab_id = request.url.path().split('/').nth(2).unwrap().to_string();
-            let target = body["url"].as_str().unwrap().to_string();
-            self.urls.lock().unwrap().insert(tab_id, target);
+            let target = scheduled
+                .clone()
+                .unwrap_or_else(|| body["url"].as_str().unwrap().to_string());
+            self.urls.lock().unwrap().insert(tab_id.clone(), target);
+            let mut origins = self.origins.lock().unwrap();
+            let origin = origins.entry(tab_id).or_insert(100);
+            let previous = *origin;
+            *origin += 100;
+            drop(origins);
             self.navigation_calls.fetch_add(1, Ordering::SeqCst);
             let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
             self.max_active.fetch_max(active, Ordering::SeqCst);
@@ -127,11 +160,22 @@ impl Respond for BrowserHarness {
             });
             ResponseTemplate::new(200)
                 .set_delay(delay)
-                .set_body_json(json!({ "ok": true, "result": true }))
+                .set_body_json(json!({ "ok": true, "result": if scheduled.is_some() { json!(previous) } else { json!(true) }, "truncated": false }))
         } else {
+            let result = if is_google_harvest(request) {
+                let tab_id = request.url.path().split('/').nth(2).unwrap();
+                json!({
+                    "url":self.urls.lock().unwrap()[tab_id],
+                    "timeOrigin":self.origins.lock().unwrap()[tab_id],
+                    "rows":serde_json::from_str::<serde_json::Value>(&self.rows).unwrap()
+                })
+                .to_string()
+            } else {
+                self.rows.clone()
+            };
             ResponseTemplate::new(200).set_body_json(json!({
                 "ok": true,
-                "result": self.rows.clone(),
+                "result": result,
                 "resultType": "string",
                 "truncated": false
             }))
@@ -339,7 +383,8 @@ async fn navigation_http_409_is_reported_without_recreation() {
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(is_google_scheduler)
         .respond_with(
             ResponseTemplate::new(409).set_body_json(json!({ "error": "navigation_in_progress" })),
         )
@@ -364,7 +409,8 @@ async fn repeated_http_410_is_retried_only_once() {
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/tabs/destroyed/navigate"))
+        .and(path("/tabs/destroyed/evaluate"))
+        .and(is_google_scheduler)
         .respond_with(ResponseTemplate::new(410).set_body_json(json!({ "error": "tab_timeout" })))
         .expect(2)
         .mount(&server)
@@ -378,11 +424,24 @@ async fn repeated_http_410_is_retried_only_once() {
 }
 
 #[tokio::test]
-async fn google_challenge_page_returns_blocked_without_evaluating_result_rows() {
+async fn google_challenge_page_rejects_rows_after_fresh_document_confirmation() {
     let server = mock_with_rows(json!([
         { "url": "https://a.example", "title": "stale row", "content": "" },
     ]))
     .await;
+    Mock::given(method("POST"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(is_google_harvest)
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok":true,"result":json!({
+                "url":"https://www.google.com/sorry/index","timeOrigin":200,
+                "rows":[{"url":"https://a.example","title":"stale row","content":""}]
+            }).to_string(),"truncated":false
+        })))
+        .with_priority(1)
+        .expect(1)
+        .mount(&server)
+        .await;
     Mock::given(method("GET"))
         .and(path("/tabs"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -396,14 +455,19 @@ async fn google_challenge_page_returns_blocked_without_evaluating_result_rows() 
         client.fetch(&params("challenge")).await,
         Err(crw_search::SearchError::Blocked { engine }) if engine == "google"
     ));
-    assert!(
-        server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .all(|request| { !request.url.path().ends_with("/evaluate") })
+    let requests = server.received_requests().await.unwrap();
+    let evaluations: Vec<_> = requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/evaluate"))
+        .collect();
+    assert_eq!(
+        evaluations.len(),
+        2,
+        "only the scheduler and fresh challenge frame are evaluated"
     );
+    assert!(is_google_scheduler(evaluations[0]));
+    assert!(is_google_harvest(evaluations[1]));
+    server.verify().await;
 }
 
 #[tokio::test]
@@ -470,7 +534,7 @@ async fn timed_out_navigation_rotates_tab_before_bounded_cleanup() {
 }
 
 #[tokio::test]
-async fn browser_search_uses_bounded_navigation_without_wait_route() {
+async fn google_search_uses_bounded_scheduler_and_fresh_frame_without_wait_route() {
     let server = mock_with_rows(json!([
         { "url": "https://a.example", "title": "A", "content": "" },
     ]))
@@ -481,14 +545,24 @@ async fn browser_search_uses_bounded_navigation_without_wait_route() {
     let requests = server.received_requests().await.unwrap();
     let navigation = requests
         .iter()
-        .find(|request| request.url.path().ends_with("/navigate"))
-        .expect("navigate protocol is required; evaluation cannot schedule navigation reliably");
+        .find(|request| is_google_scheduler(request))
+        .expect("Google navigation is scheduled from the warm document");
     let body: serde_json::Value = navigation.body_json().unwrap();
-    assert_eq!(body["url"], "https://www.google.com/search?q=bounded");
+    assert_eq!(
+        scheduled_destination(navigation).as_deref(),
+        Some("https://www.google.com/search?q=bounded")
+    );
+    assert!(
+        body["timeout"]
+            .as_u64()
+            .is_some_and(|timeout| timeout > 0 && timeout <= 3000)
+    );
+    assert!(requests.iter().any(is_google_harvest));
     assert!(
         requests
             .iter()
-            .all(|request| !request.url.path().ends_with("/wait"))
+            .all(|request| !request.url.path().ends_with("/wait")
+                && !request.url.path().ends_with("/navigate"))
     );
 }
 
@@ -501,7 +575,8 @@ async fn rejects_http_200_navigation_response_with_ok_false() {
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(is_google_scheduler)
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": false,
             "error": "window is null"
@@ -641,7 +716,8 @@ async fn recreates_tab_and_retries_after_stale_failure() {
     // tab-1 is dead: navigation returns 500 (the upstream
     // "window is null" shape).
     Mock::given(method("POST"))
-        .and(path("/tabs/tab-1/navigate"))
+        .and(path("/tabs/tab-1/evaluate"))
+        .and(is_google_scheduler)
         .respond_with(ResponseTemplate::new(500))
         .with_priority(1)
         .mount(&server)
