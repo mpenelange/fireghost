@@ -349,6 +349,29 @@ impl BrowserPipelineClient {
         request: reqwest::RequestBuilder,
         deadline: Deadline,
     ) -> CrwResult<T> {
+        let (status, bytes) = self.response(request, deadline).await?;
+        let value = Self::decode_response(status, &bytes)?;
+        if deadline.expired() {
+            return Err(timeout_error(deadline));
+        }
+        Ok(value)
+    }
+
+    fn decode_response<T: serde::de::DeserializeOwned>(
+        status: reqwest::StatusCode,
+        bytes: &[u8],
+    ) -> CrwResult<T> {
+        if !status.is_success() {
+            return Err(pipeline_error(format!("browser API returned {status}")));
+        }
+        serde_json::from_slice(bytes).map_err(|_| pipeline_error("malformed browser response"))
+    }
+
+    async fn response(
+        &self,
+        request: reqwest::RequestBuilder,
+        deadline: Deadline,
+    ) -> CrwResult<(reqwest::StatusCode, Vec<u8>)> {
         let budget = deadline.remaining();
         if budget.is_zero() {
             return Err(timeout_error(deadline));
@@ -357,12 +380,7 @@ impl BrowserPipelineClient {
             let mut response = self.auth(request).send().await.map_err(|error| {
                 pipeline_error(format!("request failed: {}", error.without_url()))
             })?;
-            if !response.status().is_success() {
-                return Err(pipeline_error(format!(
-                    "browser API returned {}",
-                    response.status()
-                )));
-            }
+            let status = response.status();
             if response
                 .content_length()
                 .is_some_and(|length| length > RESPONSE_LIMIT as u64)
@@ -380,11 +398,41 @@ impl BrowserPipelineClient {
                 }
                 bytes.extend_from_slice(&chunk);
             }
-            serde_json::from_slice(&bytes).map_err(|_| pipeline_error("malformed browser response"))
+            Ok((status, bytes))
         };
         tokio::time::timeout(budget, operation)
             .await
             .map_err(|_| timeout_error(deadline))?
+    }
+
+    async fn create_blank(&self, user: &str, deadline: Deadline) -> CrwResult<Value> {
+        let create = || {
+            self.http
+                .post(format!("{}/tabs", self.base_url))
+                .json(&json!({"userId":user,"sessionKey":"pipeline"}))
+        };
+        let mut response = self.response(create(), deadline).await?;
+        if response.0.is_server_error() {
+            // Firefox can close the last-tab context just after tab deletion.
+            // Reset only this exclusively leased profile, await its teardown,
+            // then retry blank creation once under the original deadline.
+            let reset: Value = self
+                .decode(
+                    self.http
+                        .delete(format!("{}/sessions/{user}", self.base_url))
+                        .json(&json!({"userId":user})),
+                    deadline,
+                )
+                .await?;
+            if reset.get("ok") != Some(&Value::Bool(true)) {
+                return Err(pipeline_error("scoped session reset failed"));
+            }
+            response = self.response(create(), deadline).await?;
+        }
+        if deadline.expired() {
+            return Err(timeout_error(deadline));
+        }
+        Self::decode_response(response.0, &response.1)
     }
 
     async fn evaluate<T: serde::de::DeserializeOwned>(
@@ -576,7 +624,7 @@ impl BrowserPipelineClient {
             self.reap_before_create(&user, deadline).await?;
             // An omitted URL creates a blank tab internally. Explicit
             // about:blank is rejected by Camofox's destination safety guard.
-            let create: Value = self.post("/tabs", json!({"userId":user,"sessionKey":"pipeline"}), deadline).await?;
+            let create = self.create_blank(&user, deadline).await?;
             let tab = create.get("tabId").and_then(Value::as_str).filter(|id| safe_tab_id(id))
                 .ok_or_else(|| pipeline_error("create did not return a valid tab ID"))?.to_string();
             cleanup.tab_id = Some(tab.clone());

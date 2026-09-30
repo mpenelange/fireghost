@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -21,6 +21,8 @@ struct Mock {
     peak: Arc<AtomicUsize>,
     version: Arc<Mutex<String>>,
     tabs: Arc<Mutex<Vec<Value>>>,
+    create_failures: Arc<AtomicUsize>,
+    reset_ack: Arc<Mutex<Value>>,
 }
 
 async fn create(State(mock): State<Mock>, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
@@ -34,6 +36,18 @@ async fn create(State(mock): State<Mock>, Json(body): Json<Value>) -> (StatusCod
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({"error":"Only http/https URLs are allowed"})),
+        );
+    }
+    if mock
+        .create_failures
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+            remaining.checked_sub(1)
+        })
+        .is_ok()
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Browser.newPage delayedStartupPromise window is null"})),
         );
     }
     let active = mock.active.fetch_add(1, Ordering::SeqCst) + 1;
@@ -94,6 +108,13 @@ async fn health(State(mock): State<Mock>) -> Json<Value> {
 async fn tabs(State(mock): State<Mock>) -> Json<Value> {
     Json(json!({"tabs":mock.tabs.lock().unwrap().clone()}))
 }
+async fn reset_session(State(mock): State<Mock>, Path(user): Path<String>) -> Json<Value> {
+    mock.calls
+        .lock()
+        .unwrap()
+        .push(("reset".into(), json!({"userId":user})));
+    Json(mock.reset_ack.lock().unwrap().clone())
+}
 async fn mock(evaluations: Vec<Value>) -> (BrowserPipelineClient, Mock) {
     let mock = Mock {
         calls: Arc::default(),
@@ -103,6 +124,8 @@ async fn mock(evaluations: Vec<Value>) -> (BrowserPipelineClient, Mock) {
         peak: Arc::default(),
         version: Arc::new(Mutex::new("2.4.8".into())),
         tabs: Arc::default(),
+        create_failures: Arc::default(),
+        reset_ack: Arc::new(Mutex::new(json!({"ok":true}))),
     };
     let app = Router::new()
         .route("/health", get(health))
@@ -111,6 +134,7 @@ async fn mock(evaluations: Vec<Value>) -> (BrowserPipelineClient, Mock) {
         .route("/tabs/pipeline-tab/wait", post(wait))
         .route("/tabs/pipeline-tab/evaluate", post(evaluate))
         .route("/tabs/pipeline-tab", delete(close))
+        .route("/sessions/{userId}", delete(reset_session))
         .with_state(mock.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -360,6 +384,8 @@ async fn exceptional_mock(navigation_failure: bool) -> (BrowserPipelineClient, M
         peak: Arc::default(),
         version: Arc::new(Mutex::new("2.4.8".into())),
         tabs: Arc::default(),
+        create_failures: Arc::default(),
+        reset_ack: Arc::new(Mutex::new(json!({"ok":true}))),
     };
     let app = Router::new()
         .route("/health", get(health))
@@ -567,4 +593,83 @@ async fn overflow_snapshots_drain_late_ids_before_expanding() {
             .contains("t1_first")
     );
     assert!(!data.metadata.complete);
+}
+
+#[tokio::test]
+async fn failed_blank_create_resets_only_its_own_session_and_retries_once() {
+    let (client, mock) = mock(vec![envelope(article())]).await;
+    mock.create_failures.store(1, Ordering::SeqCst);
+    let data = client
+        .fetch(
+            &request(json!({"url":"https://example.com/article"})),
+            deadline(),
+        )
+        .await
+        .unwrap();
+    assert!(data.markdown.contains("Complete small page."));
+    let calls = mock.calls.lock().unwrap();
+    assert_eq!(calls[0].0, "create");
+    assert_eq!(calls[1].0, "reset");
+    assert_eq!(calls[2].0, "create");
+    assert_eq!(calls[0].1["userId"], calls[1].1["userId"]);
+    assert_eq!(calls[0].1["userId"], calls[2].1["userId"]);
+    assert!(calls[2].1.get("url").is_none());
+    assert_eq!(calls.last().unwrap().0, "close");
+}
+
+#[tokio::test]
+async fn repeated_create_failure_does_not_loop_or_navigate() {
+    let (client, mock) = mock(vec![envelope(article())]).await;
+    mock.create_failures.store(5, Ordering::SeqCst);
+    assert!(
+        client
+            .fetch(
+                &request(json!({"url":"https://example.com/article"})),
+                deadline()
+            )
+            .await
+            .is_err()
+    );
+    let calls = mock.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(action, _)| action == "create")
+            .count(),
+        2
+    );
+    assert_eq!(
+        calls.iter().filter(|(action, _)| action == "reset").count(),
+        1
+    );
+    assert!(!calls.iter().any(|(action, _)| action == "navigate"));
+}
+
+#[tokio::test]
+async fn reset_requires_explicit_acknowledgement_before_retrying_create() {
+    let (client, mock) = mock(vec![envelope(article())]).await;
+    mock.create_failures.store(1, Ordering::SeqCst);
+    *mock.reset_ack.lock().unwrap() = json!({});
+    assert!(
+        client
+            .fetch(
+                &request(json!({"url":"https://example.com/article"})),
+                deadline()
+            )
+            .await
+            .is_err()
+    );
+    let calls = mock.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(action, _)| action == "create")
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls.iter().filter(|(action, _)| action == "reset").count(),
+        1
+    );
+    assert!(!calls.iter().any(|(action, _)| action == "navigate"));
 }
