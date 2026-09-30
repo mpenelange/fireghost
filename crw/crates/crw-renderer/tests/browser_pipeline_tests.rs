@@ -264,6 +264,137 @@ async fn reddit_accumulates_by_id_preserves_parents_and_reports_partial() {
 }
 
 #[tokio::test]
+async fn reddit_continuation_depths_follow_merged_parent_links() {
+    let mut initial = Vec::new();
+    for depth in 0..5 {
+        let id = format!("t1_parent{depth}");
+        let parent = if depth == 0 {
+            "t3_abc123".to_string()
+        } else {
+            format!("t1_parent{}", depth - 1)
+        };
+        let mut item = comment(&id, &parent, "Initial loaded comment.");
+        item["depth"] = json!(depth);
+        initial.push(item);
+    }
+    // The continuation promotes an existing depth-four comment to view depth
+    // zero. A newly observed child is view-relative depth two, not logical five.
+    let mut continued_parent = initial[4].clone();
+    continued_parent["depth"] = json!(0);
+    let mut child = comment("t1_continued", "t1_parent4", "Reply in the continuation.");
+    child["depth"] = json!(2);
+    let mut continuation = thread(json!([continued_parent, child]), 0);
+    continuation["url"] = json!(
+        "https://www.reddit.com/r/selfhosted/comments/abc123/comment/parent4/?force-legacy-sct=1"
+    );
+    let (client, _) = mock(vec![
+        envelope(thread(json!(initial), 1)),
+        envelope(json!({"clicked":1,"scrolled":false,"postId":"t3_abc123","error":null})),
+        envelope(continuation),
+    ])
+    .await;
+    let data = client
+        .fetch(&reddit_request(json!({"maxRounds":2})), deadline())
+        .await
+        .unwrap();
+    let rows = data.json.as_ref().unwrap()["comments"].as_array().unwrap();
+    assert_eq!(rows.len(), 6);
+    assert_eq!(rows[4]["depth"], 4);
+    assert_eq!(
+        rows[5]["depth"], 5,
+        "known parents define logical depth across views"
+    );
+    assert_eq!(rows[5]["parentId"], "t1_parent4");
+    assert!(!data.metadata.complete);
+}
+
+#[tokio::test]
+async fn reddit_late_parents_resolve_depth_without_inventing_missing_ancestry() {
+    let mut child = comment("t1_child", "t1_lateparent", "Child loaded first.");
+    child["depth"] = json!(0);
+    let mut unknown = comment(
+        "t1_partial",
+        "t1_unloaded",
+        "An unloaded parent remains explicit.",
+    );
+    unknown["depth"] = json!(7);
+    let mut parent = comment("t1_lateparent", "t3_abc123", "Parent loaded later.");
+    parent["depth"] = json!(9);
+    let deleted = json!({"id":null,"parentId":"t1_lateparent","permalink":null,"author":null,"depth":0,"bodyHtml":"<p>[deleted]</p>"});
+    let (client, _) = mock(vec![
+        envelope(thread(json!([child, unknown]), 1)),
+        envelope(json!({"clicked":1,"scrolled":false,"postId":"t3_abc123","error":null})),
+        envelope(thread(json!([parent, deleted]), 0)),
+    ])
+    .await;
+    let data = client
+        .fetch(&reddit_request(json!({"maxRounds":2})), deadline())
+        .await
+        .unwrap();
+    let rows = data.json.as_ref().unwrap()["comments"].as_array().unwrap();
+    assert_eq!(rows[0]["depth"], 1);
+    assert_eq!(
+        rows[1]["depth"], 7,
+        "unloaded ancestry keeps its observed depth"
+    );
+    assert_eq!(rows[1]["parentId"], "t1_unloaded");
+    assert_eq!(
+        rows[2]["depth"], 0,
+        "verified post parent establishes root depth"
+    );
+    assert!(rows[3]["id"].is_null());
+    assert_eq!(
+        rows[3]["depth"], 1,
+        "deleted markers keep known parent relationships"
+    );
+}
+
+#[tokio::test]
+async fn reddit_cyclic_parent_links_fail_closed_and_close_the_tab() {
+    let (client, mocked) = mock(vec![envelope(thread(
+        json!([
+            comment("t1_cyclea", "t1_cycleb", "Malformed relationship A."),
+            comment("t1_cycleb", "t1_cyclea", "Malformed relationship B."),
+        ]),
+        0,
+    ))])
+    .await;
+    assert!(
+        client
+            .fetch(&reddit_request(json!({"maxRounds":1})), deadline())
+            .await
+            .is_err()
+    );
+    assert_eq!(mocked.calls.lock().unwrap().last().unwrap().0, "close");
+}
+
+#[tokio::test]
+async fn reddit_logical_depth_exceeding_supported_bound_closes_the_tab() {
+    let mut items = Vec::new();
+    for depth in 0..258 {
+        let id = format!("t1_depth{depth}");
+        let parent = if depth == 0 {
+            "t3_abc123".to_string()
+        } else {
+            format!("t1_depth{}", depth - 1)
+        };
+        // View-relative depth can stay small even while merged ancestry grows.
+        items.push(comment(&id, &parent, "Loaded reply."));
+    }
+    let (client, mocked) = mock(vec![envelope(thread(json!(items), 0))]).await;
+    assert!(
+        client
+            .fetch(
+                &reddit_request(json!({"maxRounds":1,"maxItems":300,"maxBytes":262144})),
+                deadline()
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(mocked.calls.lock().unwrap().last().unwrap().0, "close");
+}
+
+#[tokio::test]
 async fn reddit_limits_keep_existing_items_and_never_claim_complete() {
     for budget in [json!({"maxItems":1}), json!({"maxRounds":1})] {
         let (client, _) = mock(vec![envelope(thread(

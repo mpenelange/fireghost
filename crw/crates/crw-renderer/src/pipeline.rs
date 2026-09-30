@@ -8,7 +8,7 @@ use crw_core::Deadline;
 use crw_core::error::{CrwError, CrwResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use url::Url;
 
@@ -219,7 +219,76 @@ fn check_thread(url: &str, post_id: Option<&str>, expected: &str) -> CrwResult<(
     Ok(())
 }
 
-fn comment_output(post: &str, comments: &[CollectedComment]) -> (String, Value) {
+fn comment_depths(comments: &[CollectedComment], expected_thread: &str) -> CrwResult<Vec<usize>> {
+    let known: HashMap<_, _> = comments
+        .iter()
+        .enumerate()
+        .filter_map(|(index, comment)| comment.id.as_deref().map(|id| (id, index)))
+        .collect();
+    let post_id = format!("t3_{expected_thread}");
+    let mut depths = vec![None; comments.len()];
+    let mut visiting = vec![false; comments.len()];
+    for start in 0..comments.len() {
+        let mut chain = Vec::new();
+        let mut current = start;
+        loop {
+            if depths[current].is_some() {
+                break;
+            }
+            if visiting[current] {
+                return Err(pipeline_error("comments contain cyclic parent links"));
+            }
+            visiting[current] = true;
+            chain.push(current);
+            let comment = &comments[current];
+            if comment.parent_id.as_deref() == Some(post_id.as_str()) {
+                depths[current] = Some(0);
+                break;
+            }
+            if let Some(parent) = comment.parent_id.as_deref().and_then(|id| known.get(id)) {
+                current = *parent;
+            } else {
+                // Unloaded ancestry remains explicit. A continuation's view
+                // depth is only replaced when a collected parent proves it.
+                depths[current] = Some(comment.depth);
+                break;
+            }
+        }
+        for index in chain.into_iter().rev() {
+            let depth = if let Some(depth) = depths[index] {
+                depth
+            } else {
+                let parent = comments[index]
+                    .parent_id
+                    .as_deref()
+                    .and_then(|id| known.get(id))
+                    .and_then(|parent| depths[*parent])
+                    .ok_or_else(|| pipeline_error("comment parent depth could not be resolved"))?;
+                parent
+                    .checked_add(1)
+                    .ok_or_else(|| pipeline_error("comment depth exceeds supported bound"))?
+            };
+            if depth > 256 {
+                return Err(pipeline_error("comment depth exceeds supported bound"));
+            }
+            depths[index] = Some(depth);
+            visiting[index] = false;
+        }
+    }
+    depths
+        .into_iter()
+        .map(|depth| depth.ok_or_else(|| pipeline_error("comment depth could not be resolved")))
+        .collect()
+}
+
+fn comment_output(
+    post: &str,
+    comments: &[CollectedComment],
+    expected_thread: &str,
+) -> CrwResult<(String, Value)> {
+    // Resolve the merged graph before budgeting JSON. Later continuation
+    // views can reset DOM depths and introduce previously unloaded parents.
+    let depths = comment_depths(comments, expected_thread)?;
     let mut markdown = post.to_string();
     for comment in comments {
         markdown.push_str("\n\n");
@@ -231,10 +300,16 @@ fn comment_output(post: &str, comments: &[CollectedComment]) -> (String, Value) 
         }
         markdown.push_str(&comment.markdown);
     }
-    (
-        markdown,
-        json!({"post":{"markdown":post},"comments":comments}),
-    )
+    let rows: Vec<_> = comments
+        .iter()
+        .zip(depths)
+        .map(|(comment, depth)| {
+            let mut row = json!(comment);
+            row["depth"] = json!(depth);
+            row
+        })
+        .collect();
+    Ok((markdown, json!({"post":{"markdown":post},"comments":rows})))
 }
 
 fn content_bytes(markdown: &str, structured: &Value) -> usize {
@@ -391,7 +466,11 @@ impl BrowserPipelineClient {
                 };
                 break;
             }
-            let (initial_md, initial_json) = comment_output(&post, &comments);
+            let (initial_md, initial_json) = comment_output(
+                &post,
+                &comments,
+                expected_thread.as_deref().unwrap_or_default(),
+            )?;
             if content_bytes(&initial_md, &initial_json) > request.max_bytes {
                 return Err(pipeline_error("post exceeds maxBytes"));
             }
@@ -431,7 +510,11 @@ impl BrowserPipelineClient {
                     depth: item.depth,
                     markdown,
                 });
-                let (markdown, structured) = comment_output(&post, &comments);
+                let (markdown, structured) = comment_output(
+                    &post,
+                    &comments,
+                    expected_thread.as_deref().unwrap_or_default(),
+                )?;
                 if content_bytes(&markdown, &structured) > request.max_bytes {
                     comments.pop();
                     stop = "maxBytes";
@@ -515,7 +598,11 @@ impl BrowserPipelineClient {
             warnings.push(
                 "thread completeness cannot be established from loaded browser comments".into(),
             );
-            let (markdown, structured) = comment_output(&post, &comments);
+            let (markdown, structured) = comment_output(
+                &post,
+                &comments,
+                expected_thread.as_deref().unwrap_or_default(),
+            )?;
             (markdown, Some(structured))
         } else {
             (post, None)
