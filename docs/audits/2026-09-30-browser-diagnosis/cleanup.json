@@ -1,0 +1,53 @@
+{
+  "dateUTC": "2026-09-30",
+  "scope": "Task-owned regression and browser-diagnosis artifacts on docker0; local temporary build/diagnostic files.",
+  "removed": {
+    "validationContainers": 15,
+    "volumes": 9,
+    "networks": 4,
+    "images": 5,
+    "temporaryBaselineImageTag": 1,
+    "rustTargetApproxGiB": 16,
+    "standaloneDebugServerApproxMiB": 100,
+    "buildCacheReportedGB": 3.0809,
+    "taskBuildHistoryRecords": 3,
+    "localTemporaryFiles": 14,
+    "localTemporaryDirectories": 4
+  },
+  "preserved": [
+    "Git repositories and history bundles",
+    "Source changes and feat/browser-pipeline worktree",
+    "Sanitized audit evidence",
+    "Shared dependency caches",
+    "Production appliance and unrelated Docker workloads"
+  ],
+  "verification": {
+    "taskContainersRemaining": 0,
+    "targetBuildDirectoriesRemaining": 0,
+    "selectedTaskBuildCacheRecordsRemaining": 0,
+    "productionContainerIDsAndRestartCountsBeforeAfter": "identical"
+  },
+  "dockerReportedBeforeAfter": {
+    "imagesGB": [
+      51.07,
+      40.37
+    ],
+    "buildCacheGB": [
+      13.24,
+      10.16
+    ],
+    "containerCount": [
+      46,
+      31
+    ]
+  },
+  "futureValidation": {
+    "host": "docker0",
+    "vm": "docker-testing",
+    "vmAddress": "192.168.153.10",
+    "jumpUser": "michael",
+    "state": "running",
+    "sshAuthentication": "Current key rejected for michael and ubuntu; awaiting user-provided connection details.",
+    "constraint": "All new builds and tests run inside this VM; no new test workloads on the docker0 host."
+  }
+}

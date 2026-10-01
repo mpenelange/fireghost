@@ -1,0 +1,122 @@
+{
+  "investigation": "Camofox navigation timeout and Reddit 52-character baseline result",
+  "dateUTC": "2026-09-30",
+  "repositoryHead": "0489c3a745a08172ac743fdf6fa5e5180b9c1244",
+  "workingTree": "Uncommitted source fixes; no release build or promotion",
+  "browserImages": {
+    "2.4.6": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "2.4.7": "ghcr.io/redf0x1/camofox-browser@sha256:afaaf9795af8793f3e6353e9e5dd5b03713b6ffed6e80c1b0a179575322bcff0",
+    "2.4.8": "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55"
+  },
+  "navigation": {
+    "cause": "Unbounded background-work draining after the page-readiness action completes holds the tab lock. The outer navigation timeout does not cancel the drain.",
+    "callChain": [
+      "/navigate",
+      "buildRefs",
+      "getAriaSnapshot",
+      "waitForPageReady",
+      "withBlockedNavigationTracking"
+    ],
+    "control": "Same pinned 2.4.7 image, identical copied fingerprint, separate fresh-cookie profiles, private network; only exact upstream 2.4.8 drain patch differs before equivalent instrumentation.",
+    "original": {
+      "navigationStatus": 500,
+      "navigationMs": 30009,
+      "subsequentEvaluationTimeoutMs": 5000,
+      "pageURLVisibleMs": 2028,
+      "actionDoneUTC": "03:08:16.501",
+      "pendingBackgroundJobs": 3,
+      "pendingNavigationGuards": 0,
+      "observedDrainMsAfterAction": 27137,
+      "enteredFinalization": false
+    },
+    "patched": {
+      "navigationStatus": 200,
+      "navigationMs": 6096,
+      "documentEvaluationMs": 24,
+      "searchRows": 20,
+      "bodyTextLength": 5949,
+      "actionDoneUTC": "03:08:16.636",
+      "drainDoneUTC": "03:08:19.644",
+      "drainMs": 3008,
+      "pendingBackgroundJobsAtExit": 3,
+      "pendingNavigationGuards": 0,
+      "finalizationMs": 7
+    },
+    "timerControl": {
+      "requestedEvaluationTimeoutMs": 1000,
+      "backgroundTimerMs": 10000,
+      "2.4.6ClientTimeoutMs": 6500,
+      "2.4.7ClientTimeoutMs": 6501,
+      "2.4.8SuccessMs": 3023
+    },
+    "limits": [
+      "The unbounded drain already exists in 2.4.6; this does not establish that 2.4.7 introduced it.",
+      "Tracker setup and finalization still contain unbounded browser awaits; neither blocked this experiment.",
+      "The exact upstream patch preserves fail-closed handling of unresolved navigation guards.",
+      "Successful isolated counterfactual is not appliance regression approval or authorization to promote 2.4.8."
+    ],
+    "instrumentedModuleSha256": {
+      "original": "1cd9022a7c1d26abd44c9a19fb542d6303d8d0dfbec02f5cba06a0f869fda096",
+      "patched": "cc59e971b7a3365dd51148bbc14658d673df13465a5eb8ac143fd1d6cd47a16d"
+    },
+    "evidence": [
+      "nav247-original.json",
+      "nav247-exact248drain.json",
+      "nav247-original.trace.jsonl",
+      "nav247-exact248drain.trace.jsonl",
+      "timer246-warmed.json",
+      "timer247-warmed.json",
+      "timer248-warmed.json"
+    ]
+  },
+  "reddit": {
+    "cause": "Camofox replaces oversized serialized evaluation results with a diagnostic string. CRW ignored truncated:true and treated this string as HTML; markdown bracket escaping yields the observed 52 characters.",
+    "maxSerializedResultLength": 1048576,
+    "baseline": {
+      "settledDOMLength": 1163713,
+      "visibleBodyTextLength": 34549,
+      "posts": 27,
+      "reportedSerializedResultLength": 1201774,
+      "returnedResultLength": 50,
+      "truncated": true
+    },
+    "candidate": {
+      "settledDOMLength": 628091,
+      "visibleBodyTextLength": 6959,
+      "posts": 3,
+      "returnedResultLength": 628084,
+      "truncated": false
+    },
+    "limits": [
+      "Different independent profiles loaded different feed sizes; the cause of that size difference is not established.",
+      "HTTP 200 from Camofox is not proof of Reddit origin status.",
+      "Rejecting truncated documents prevents false success; it does not recover the oversized content. Bounded document transfer remains future work."
+    ],
+    "sourceFix": "Camofox renderer deserializes optional truncated flag, defaults omitted flag to false, and returns RendererError for true after existing tab cleanup.",
+    "evidence": [
+      "baseline-dom-summary.json",
+      "candidate-dom-summary.json"
+    ]
+  },
+  "validation": {
+    "red": "New exact-placeholder regression failed against previous code: diagnostic accepted as HTML.",
+    "greenCommand": "cargo fmt --all -- --check; cargo test --locked -p crw-renderer --features cdp,camofox; cargo clippy --locked -p crw-renderer --features cdp,camofox --all-targets -- -D warnings",
+    "passedTests": 240,
+    "failedTests": 0,
+    "ignoredTests": 13,
+    "camofoxIntegrationTests": 7,
+    "format": "pass",
+    "clippy": "pass",
+    "runtime": "Remote Docker rust-ci:1.98; Rust 1.98.1; source fixes tested, not rebuilt into deployed validation appliance.",
+    "evidence": [
+      "truncated-red.log",
+      "truncated-green.log"
+    ]
+  },
+  "operations": {
+    "productionDeploymentChanged": false,
+    "repositoryImagePinsChanged": false,
+    "remoteEvidenceRoot": "/home/michael/fireghost-validation/20260930-browser-diagnosis",
+    "sanitization": "No raw page HTML, body previews, cookies, fingerprints, runtime credentials, or environment dumps copied into repository."
+  }
+}

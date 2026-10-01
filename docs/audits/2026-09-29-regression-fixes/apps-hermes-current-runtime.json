@@ -1,0 +1,266 @@
+{
+  "timestamp": "2026-09-30T02:26:32.078638+00:00",
+  "endpoints": {
+    "production": "http://127.0.0.1:33000",
+    "candidate": "http://127.0.0.1:33010"
+  },
+  "probes": {
+    "production": {
+      "available": true,
+      "identity": {
+        "python": "3.14.7",
+        "provider": "plugins.web.firecrawl.provider.FirecrawlWebSearchProvider"
+      },
+      "search": {
+        "success": true,
+        "results": [
+          {
+            "title": "Hermes",
+            "url": "https://www.google.com",
+            "description": "Hermes is an Olympian deity in ancient Greek religion and mythology considered the herald of the gods. He is also widely considered the protector of human\u00a0..."
+          },
+          {
+            "title": "HERMES - Greek God of Herds & Trade, Herald of the Gods",
+            "url": "https://www.google.com",
+            "description": "Hermes was the ancient Greek god of herds and flocks, travellers and hospitality, roads and trade, thievery and cunning, heralds and diplomacy, language and\u00a0..."
+          },
+          {
+            "title": "Hermes: Greek God, Trickster and Messenger to the Gods",
+            "url": "https://www.google.com",
+            "description": ""
+          },
+          {
+            "title": "Hermes | God of Thieves, Symbol, Father, The Odyssey ...",
+            "url": "https://www.google.com",
+            "description": "Aug 1, 2026 \u2014 He was the divine messenger, protector of herds and travelers, and a god of commerce and trade. He was sometimes worshipped as a fertility god."
+          },
+          {
+            "title": "Hermes :: Messenger of the Gods: His Myths, Symbols & ...",
+            "url": "https://www.google.com",
+            "description": "Hermes is the winged herald and messenger of the Olympian gods. In addition, he is also a divine trickster, and the god of roads, flocks, commerce, and thieves."
+          }
+        ]
+      },
+      "extract": {
+        "success": true,
+        "items": [
+          {
+            "url": "https://example.com",
+            "title": "Example Domain",
+            "content_chars": 976
+          }
+        ]
+      },
+      "latency_seconds": {
+        "search": 3.7283818510040874,
+        "extract": 10.335935642011464,
+        "total": 14.064317493015551
+      }
+    },
+    "candidate": {
+      "available": true,
+      "identity": {
+        "python": "3.14.7",
+        "provider": "plugins.web.firecrawl.provider.FirecrawlWebSearchProvider"
+      },
+      "search": {
+        "success": true,
+        "results": [
+          {
+            "title": "Hermes",
+            "url": "https://www.google.com",
+            "description": "Hermes is an Olympian deity in ancient Greek religion and mythology considered the herald of the gods. He is also widely considered the protector of human\u00a0..."
+          },
+          {
+            "title": "AI Mode replied:",
+            "url": "https://www.google.com",
+            "description": ""
+          },
+          {
+            "title": "HERMES - Greek God of Herds & Trade, Herald of the Gods",
+            "url": "https://www.google.com",
+            "description": "Hermes was the ancient Greek god of herds and flocks, travellers and hospitality, roads and trade, thievery and cunning, heralds and diplomacy, language and\u00a0..."
+          },
+          {
+            "title": "Hermes: Greek God, Trickster and Messenger to the Gods",
+            "url": "https://www.google.com",
+            "description": ""
+          },
+          {
+            "title": "Hermes | God of Thieves, Symbol, Father, The Odyssey ...",
+            "url": "https://www.google.com",
+            "description": "Aug 1, 2026 \u2014 Hermes is a Greek god and son of Zeus and the Pleiad Maia, He was the divine messenger, protector of herds and travelers, and a god of commerce\u00a0..."
+          }
+        ]
+      },
+      "extract": {
+        "success": true,
+        "items": [
+          {
+            "url": "https://example.com",
+            "title": "Example Domain",
+            "content_chars": 976
+          }
+        ]
+      },
+      "latency_seconds": {
+        "search": 36.69139312200423,
+        "extract": 10.528137315995991,
+        "total": 47.21953043800022
+      }
+    }
+  },
+  "metrics": {
+    "production": {
+      "before": {
+        "requests": {
+          "search": 0.0,
+          "scrape": 12.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 0.0,
+          "scrape": 12.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "after": {
+        "requests": {
+          "search": 1.0,
+          "scrape": 13.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 13.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "delta": {
+        "requests": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "search": 0.0,
+        "scrape": 0.0
+      }
+    },
+    "candidate": {
+      "before": {
+        "requests": {
+          "search": 6.0,
+          "scrape": 14.0
+        },
+        "cache_hits": {
+          "search": 1.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 5.0,
+          "scrape": 14.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "after": {
+        "requests": {
+          "search": 7.0,
+          "scrape": 15.0
+        },
+        "cache_hits": {
+          "search": 1.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 6.0,
+          "scrape": 15.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        }
+      },
+      "delta": {
+        "requests": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cache_hits": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "local_attempts": {
+          "search": 1.0,
+          "scrape": 1.0
+        },
+        "cloud_attempts": {
+          "search": 0.0,
+          "scrape": 0.0
+        },
+        "search": 0.0,
+        "scrape": 0.0
+      }
+    }
+  },
+  "thresholds": {
+    "search_min_results": 1,
+    "search_max_results": 5,
+    "search_required_fields": [
+      "title",
+      "url",
+      "description"
+    ],
+    "extract_title": "Example Domain",
+    "extract_min_content_chars": 100,
+    "candidate_total_timeout_seconds": 120.0,
+    "search_min_title_overlap_ratio": 0.5,
+    "extract_min_production_size_ratio": 0.9
+  },
+  "reproducibility": {
+    "repo_head": "unknown",
+    "hermes_python": "/tmp/fireghost-regressions-20260929/installed-python",
+    "probe_inputs": {
+      "search_query": "Hermes mythology",
+      "search_limit": 5,
+      "extract_url": "https://example.com/",
+      "extract_format": "markdown"
+    },
+    "check_definitions": {
+      "semantic": "availability, result bounds/fields, production title overlap, representative extraction parity",
+      "endpoint_provenance": "each bracketed router probe must gain exactly one 2xx search and scrape request",
+      "latency": "candidate total must not exceed the absolute ceiling",
+      "cloud": "candidate search and scrape attempt deltas must remain zero; production is the recorded baseline"
+    }
+  },
+  "passed": false,
+  "reasons": [
+    "production search result missing required fields",
+    "candidate search result missing required fields"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "cold": {
+    "query": "Hermes mythology",
+    "success": false,
+    "error": "HTTPError",
+    "seconds": 63.554
+  },
+  "warm": {
+    "query": "Hermes mythology",
+    "success": false,
+    "error": "HTTPError",
+    "seconds": 61.027
+  },
+  "concurrent": [
+    {
+      "query": "Linux",
+      "success": false,
+      "error": "HTTPError",
+      "seconds": 64.601
+    },
+    {
+      "query": "Chicago",
+      "success": false,
+      "error": "HTTPError",
+      "seconds": 66.441
+    },
+    {
+      "query": "Rust programming language",
+      "success": false,
+      "error": "HTTPError",
+      "seconds": 61.018
+    },
+    {
+      "query": "Docker software",
+      "success": false,
+      "error": "HTTPError",
+      "seconds": 62.685
+    }
+  ],
+  "passed": false,
+  "scope": "Fixed CRW 1.2.0 branch with exact Camofox 2.4.7 digest; all queries routed locally to Wikipedia"
+}
