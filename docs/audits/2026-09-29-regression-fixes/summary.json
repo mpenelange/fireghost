@@ -1,0 +1,104 @@
+{
+  "date": "2026-09-29",
+  "branch": "chore/upstream-refresh-review",
+  "parent_revision": "0489c3a745a08172ac743fdf6fa5e5180b9c1244",
+  "source_files_sha256": {
+    "crw/crates/crw-search/src/camofox_search.rs": "bef62bd3400b1379d003516d19f5cbe65eefd10e37c7007dd74ebd9d8617cf0f",
+    "crw/crates/crw-search/tests/camofox_search_tests.rs": "5d94da278d2d8d5dec0e82a170dbdec14a82a6cda87906d6cf25d815e5fe28ac",
+    "crw/crates/crw-server/src/routes/v2/adapters.rs": "10de80716cc689e8ac56116bf16094d826fd815ae622cbb0c09f9faff3ade3b5",
+    "scripts/browser-regression-gate.py": "87354ee69baaf595f45cf6c7c417cccc274395f02f199f15e8d52e00119c0e6c",
+    "tests/fixtures/browser-regression-matrix.json": "92c3f0dff7e5e57fb2c3caca7c5d73286039698af4c8bc72497942bae7994889",
+    "tests/live/browser_regression_gate_test.py": "ff991119ede9c388e1782875a726f57a4cf4a7ba1ff26d60c77a3390443b5a57",
+    "docs/migration-validation.md": "2d161421a3c39d7371049917794fbfe9e8f370e33ca648fc4c308431ee6ce8e8"
+  },
+  "changes": [
+    "Preserve optional renderer provenance in v2 metadata",
+    "Use direct Camofox navigation with existing attempt deadlines",
+    "Recover once from destroyed-tab HTTP 410",
+    "Replace timed-out tabs before bounded deletion",
+    "Correct JavaScript main-content markers and distinguish invalid baselines in browser artifacts",
+    "Document disabled scrape caching for isolated cold/warm comparisons"
+  ],
+  "validation": {
+    "rust": {
+      "passed": 246,
+      "failed": 0,
+      "ignored": 5,
+      "scope": "crw-search and crw-server with camofox/CDP features; includes component integration tests and doctests"
+    },
+    "clippy": "passed for both changed Rust components/all targets with warnings denied",
+    "rust_format": "passed; formatted sources synchronized from validation host",
+    "python_live_gate_tests": {
+      "passed": 25
+    },
+    "appliance_tests": {
+      "passed": 61,
+      "backup_restore_integration": "passed on Docker host"
+    },
+    "live_contract": {
+      "passed": true,
+      "search_first_seconds": 5.045,
+      "search_cached_seconds": 0.001,
+      "search_results": 5,
+      "example_chars": 976,
+      "reddit_chars": 15065,
+      "four_concurrent_nonempty_searches": true,
+      "concurrent_wall_seconds": 8.545
+    },
+    "hermes_default_query": {
+      "passed": true,
+      "python": "3.14.7",
+      "candidate_total_seconds": 15.156,
+      "candidate_cloud_attempts": 0
+    },
+    "hermes_mythology_query": {
+      "passed": false,
+      "reason": "Both sides returned search rows with empty descriptions; retained evidence, no assertion relaxed"
+    },
+    "browser_cold_and_warm": {
+      "passed": false,
+      "candidate_semantics_passed": true,
+      "reason": "Isolated control Reddit Markdown was too small and omitted required marker; no valid relative baseline",
+      "control_app": "Both sides used the repaired CRW source with deployed browser pins for renderer-provenance comparisons",
+      "router_scrape_ttl": "0s; bypassed router scrape caching"
+    },
+    "camofox_2_4_7": {
+      "passed": false,
+      "reason": "Exact retained digest still returns server-side 30-second navigation failures; cold, warm and concurrent search probes fail around 61-66 seconds"
+    }
+  },
+  "image": {
+    "purpose": "Validation only; development-profile CRW binary layered over frozen production runtime base; release Dockerfile not rebuilt",
+    "component_version": "1.2.0-regressions.20260929",
+    "monorepo_revision_label": "0489c3a-dirty-714adf2e5eb8",
+    "source_archive_sha256_before_rustfmt": "714adf2e5eb8a715ce4935f65da321ead2f96c83b216deae99511afd10cfb4c6"
+  },
+  "disposition": {
+    "deployment_promoted": false,
+    "default_image_pins_changed": false,
+    "isolated_stacks_stopped": true,
+    "ssh_tunnels_closed": true,
+    "remote_evidence": "/home/michael/fireghost-validation/20260929-mcp-regressions",
+    "remaining_work": [
+      "Remediate or replace Camofox 2.4.7 navigation hang",
+      "Obtain valid Reddit baseline and browser regression approval",
+      "Retest the previously rejected 2.4.8 Reddit workload before advancing its pin"
+    ]
+  },
+  "production": {
+    "same_appliance_container_and_image_ids": true,
+    "observed_camofox_restart_delta": 1,
+    "production_restart_command_issued": false,
+    "hermes_probe_incident": "A bootstrap helper rewrote generated hermes/hermes-acp runtime paths to the temporary test directory. Paths were restored to the recorded /root/.hermes/tools runtime. Subsequent probes imported installed source/dependencies read-only with lazy installs disabled. Installed tracked source remained clean; a source identity stamp timestamp was refreshed and original stamp equality is unverified."
+  },
+  "artifacts": [
+    "apps-hermes-current-runtime.json",
+    "apps-hermes-default-query.json",
+    "camofox247-search.json",
+    "isolated-stability.json",
+    "production-after.json",
+    "production-before.json",
+    "repaired-browser-cold.json",
+    "repaired-browser-warm.json"
+  ]
+}

@@ -5,7 +5,7 @@
 # under QEMU for linux/arm64, which emulated the *entire* Rust compile and took
 # ~2h per release. Cross-compiling on the native runner brings arm64 back to
 # minutes; only the tiny runtime layer (ca-certificates) still touches QEMU.
-FROM --platform=$BUILDPLATFORM rust:1.93-bookworm AS builder
+FROM --platform=$BUILDPLATFORM rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS builder
 
 # Provided automatically by buildx: amd64 | arm64. BUILDARCH is the native arch
 # of the build host, so `$TARGETARCH != $BUILDARCH` ⇒ we are cross-compiling and
@@ -65,14 +65,14 @@ ENV CARGO_PROFILE_RELEASE_LTO=thin \
 
 RUN set -eux; \
     RUST_TARGET="$(cat /rust_target)"; \
-    cargo build --release --target "$RUST_TARGET" \
+    cargo build --locked --release --target "$RUST_TARGET" \
       -p crw-server --features cdp,camofox -p crw-mcp -p crw-cli; \
     mkdir -p /out; \
     cp "target/${RUST_TARGET}/release/crw" \
        "target/${RUST_TARGET}/release/crw-server" \
        "target/${RUST_TARGET}/release/crw-mcp" /out/
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 ARG CRW_VERSION=1.2.0-local
 ARG CRW_REVISION=unknown

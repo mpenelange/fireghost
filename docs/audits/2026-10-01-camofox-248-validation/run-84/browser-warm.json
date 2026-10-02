@@ -1,0 +1,350 @@
+{
+  "timestamp": "2026-10-02T01:03:42.797995+00:00",
+  "repo_head": "3be5cd2193645f372a785f935a37f3efcd2c17f7",
+  "endpoints": {
+    "production": "http://127.0.0.1:33000",
+    "candidate": "http://127.0.0.1:33010"
+  },
+  "matrix_schema_version": 1,
+  "cases": [
+    {
+      "name": "lightpanda-static",
+      "informational": false,
+      "renderer": "lightpanda",
+      "url": "https://example.com/",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 8.246
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 8.243
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-static",
+      "informational": false,
+      "renderer": "camofox",
+      "url": "https://example.com/",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 2.123
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 1.978
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "lightpanda-javascript",
+      "informational": false,
+      "renderer": "lightpanda",
+      "url": "https://quotes.toscrape.com/js/",
+      "thresholds": {
+        "minimum_markdown_chars": 500,
+        "minimum_candidate_ratio": 0.8
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 8.415
+      },
+      "candidate": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 8.421
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-javascript",
+      "informational": false,
+      "renderer": "camofox",
+      "url": "https://quotes.toscrape.com/js/",
+      "thresholds": {
+        "minimum_markdown_chars": 500,
+        "minimum_candidate_ratio": 0.8
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 2.503
+      },
+      "candidate": {
+        "success": true,
+        "title": "Quotes to Scrape",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 1472,
+        "markdown_sha256": "0b5d61b3e457ae546e9bcc98cb3be58a407c1c2788077277d36587d0bcc925a0",
+        "latency_seconds": 2.423
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "lightpanda-redirect",
+      "informational": false,
+      "renderer": "lightpanda",
+      "url": "https://httpbin.org/redirect-to",
+      "thresholds": {
+        "minimum_markdown_chars": 100,
+        "minimum_candidate_ratio": 0.9
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 8.47
+      },
+      "candidate": {
+        "success": true,
+        "title": "Example Domain",
+        "status_code": 200,
+        "rendered_with": "lightpanda",
+        "markdown_chars": 976,
+        "markdown_sha256": "4e2bdc3e81e6284cd9553eb66643d7a22d5f6bd5424581ec72c2ca7d2119cf4f",
+        "latency_seconds": 8.561
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-real-world",
+      "informational": false,
+      "renderer": "camofox",
+      "url": "https://github.com/rust-lang/rust",
+      "thresholds": {
+        "minimum_markdown_chars": 20000,
+        "minimum_candidate_ratio": 0.75
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "GitHub - rust-lang/rust: Empowering everyone to build reliable and efficient software. \u00b7 GitHub",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 113401,
+        "markdown_sha256": "aa4a29414a9acfa01b6910ecd02339d88dd01d1c4f91f8555c71cddcb25d2806",
+        "latency_seconds": 9.064
+      },
+      "candidate": {
+        "success": true,
+        "title": "GitHub - rust-lang/rust: Empowering everyone to build reliable and efficient software. \u00b7 GitHub",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 113401,
+        "markdown_sha256": "aa4a29414a9acfa01b6910ecd02339d88dd01d1c4f91f8555c71cddcb25d2806",
+        "latency_seconds": 3.922
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.0
+      }
+    },
+    {
+      "name": "camofox-real-world-reddit",
+      "informational": true,
+      "renderer": "camofox",
+      "url": "https://www.reddit.com/r/selfhosted/",
+      "thresholds": {
+        "minimum_markdown_chars": 1000,
+        "minimum_candidate_ratio": 0.75
+      },
+      "checks": {
+        "production": {
+          "passed": true,
+          "reasons": []
+        },
+        "candidate": {
+          "passed": true,
+          "reasons": []
+        },
+        "comparison": {
+          "passed": true,
+          "reasons": [],
+          "baseline_valid": true
+        }
+      },
+      "production": {
+        "success": true,
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 12090,
+        "markdown_sha256": "be035e7a67d73d7c9e9a170450331309fb307a31afdb0bf2faf7250999d6360a",
+        "latency_seconds": 4.908
+      },
+      "candidate": {
+        "success": true,
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "status_code": 200,
+        "rendered_with": "camofox",
+        "markdown_chars": 13424,
+        "markdown_sha256": "f2b36153b65dfb44bb73be76fc468dbc3d79a0b6f383d71f9797efc9a72c3230",
+        "latency_seconds": 5.518
+      },
+      "comparison": {
+        "markdown_size_ratio": 1.1103
+      }
+    }
+  ],
+  "checks": {
+    "production": {
+      "passed": true,
+      "reasons": []
+    },
+    "candidate": {
+      "passed": true,
+      "reasons": []
+    },
+    "comparison": {
+      "passed": true,
+      "reasons": []
+    }
+  },
+  "reasons": [],
+  "informational": [],
+  "passed": true
+}

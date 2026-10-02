@@ -18,7 +18,7 @@ archive_name=$(basename -- "$1")
 mkdir -p -- "$archive_dir"
 archive_dir=$(cd -- "$archive_dir" && pwd -P)
 project=${COMPOSE_PROJECT_NAME:-web-retrieval}
-image=alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
+image=alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 
 # Firefox profiles and the credit ledger must be quiescent for a consistent
 # archive. Restart only services that were running when the backup began.

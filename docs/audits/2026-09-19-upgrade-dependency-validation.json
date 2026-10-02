@@ -1,0 +1,30 @@
+{
+  "auditDate": "2026-09-19",
+  "source": "https://api.osv.dev/v1/querybatch",
+  "lockfile": "crw/Cargo.lock",
+  "lockfileSha256": "b1af2c2adace333324e3821ea04f56163c253ce216b09636d4a361e7a04b90d1",
+  "registryEntryCount": 513,
+  "scope": "OSV version-level matches for registry entries; no reachability claim",
+  "result": {
+    "vulnerabilityAdvisoryCount": 0,
+    "maintenanceAdvisoryCount": 2,
+    "remaining": [
+      {
+        "package": "number_prefix",
+        "lockedVersion": "0.4.0",
+        "advisory": "RUSTSEC-2025-0119",
+        "classification": "maintenance",
+        "constraint": "No fixed version; advisory applies from 0.0.0-0",
+        "action": "Consider replacing with unit-prefix"
+      },
+      {
+        "package": "ttf-parser",
+        "lockedVersion": "0.25.1",
+        "advisory": "RUSTSEC-2026-0192",
+        "classification": "maintenance",
+        "constraint": "No fixed version; advisory applies from 0.0.0-0",
+        "action": "Consider replacing with skrifa"
+      }
+    ]
+  }
+}

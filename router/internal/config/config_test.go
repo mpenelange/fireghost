@@ -29,8 +29,43 @@ func TestParseDefaults(t *testing.T) {
 	if got.MaxInflight != 64 {
 		t.Fatalf("max inflight = %d, want 64", got.MaxInflight)
 	}
+	if got.MCPEnabled {
+		t.Fatal("MCP enabled by default, want disabled")
+	}
 	if got.DailyCloudCredits != 0 || got.MonthlyCloudCredits != 0 || got.CloudBurstCredits != 0 || got.CloudRefillCreditsPerDay != 0 || got.SearchEstimatedCredits != 2 || got.ScrapeEstimatedCredits != 1 {
 		t.Fatalf("credits = %#v", got)
+	}
+}
+
+func TestParseMCPEnabledStrictBoolean(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "true", want: true},
+		{value: "false", want: false},
+	} {
+		values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "ROUTER_API_KEY": "secret", "MCP_ENABLED": test.value}
+		got, err := config.Parse(func(name string) string { return values[name] })
+		if err != nil {
+			t.Fatalf("MCP_ENABLED=%q: %v", test.value, err)
+		}
+		if got.MCPEnabled != test.want {
+			t.Fatalf("MCP_ENABLED=%q parsed as %t, want %t", test.value, got.MCPEnabled, test.want)
+		}
+	}
+	for _, value := range []string{"1", "TRUE", "False", "yes", " true "} {
+		values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "MCP_ENABLED": value}
+		if _, err := config.Parse(func(name string) string { return values[name] }); err == nil {
+			t.Fatalf("MCP_ENABLED=%q succeeded, want strict boolean error", value)
+		}
+	}
+}
+
+func TestParseRejectsEnabledMCPWithoutAPIKey(t *testing.T) {
+	values := map[string]string{"ROUTER_LOCAL_URL": "http://local:3000", "MCP_ENABLED": "true"}
+	if _, err := config.Parse(func(name string) string { return values[name] }); err == nil {
+		t.Fatal("enabled MCP without ROUTER_API_KEY succeeded, want error")
 	}
 }
 

@@ -1,0 +1,32 @@
+# Isolated candidate stack. See docs/audits/2026-09-19-upgrade-implementation.md.
+# Compose 2.24.4+ is required for !override. Do not pass the baseline project name.
+name: fireghost-upgrades
+
+services:
+  router:
+    # Do not replace the legacy web-retrieval-router:dev image tag when building.
+    image: fireghost-router:upgrade-candidate
+    build:
+      args:
+        VERSION: upgrade-20260919
+        REVISION: ${MONOREPO_REVISION:?set MONOREPO_REVISION to the candidate source revision}
+    ports: !override
+      - "127.0.0.1:${UPGRADE_ROUTER_HOST_PORT:-33020}:8080"
+    environment:
+      FIRECRAWL_CLOUD_API_KEY: ""
+      ROUTER_DAILY_CLOUD_CREDITS: "0"
+      ROUTER_MONTHLY_CLOUD_CREDITS: "0"
+      ROUTER_CLOUD_BURST_CREDITS: "0"
+      ROUTER_CLOUD_REFILL_CREDITS_PER_DAY: "0"
+
+  camofox:
+    # Upstream :2.4.7 currently publishes only a Linux amd64 manifest.
+    # ARM hosts require explicit amd64 emulation; no native-arm claim is made.
+    platform: linux/amd64
+    image: ghcr.io/redf0x1/camofox-browser:2.4.7@sha256:afaaf9795af8793f3e6353e9e5dd5b03713b6ffed6e80c1b0a179575322bcff0
+
+  lightpanda:
+    # Upstream has no :0.2.6 or :v0.2.6 image tag. This is the immutable
+    # latest index observed 2026-09-19, NOT a claim that it is release 0.2.6.
+    # Registry index includes Linux amd64 and arm64 manifests.
+    image: lightpanda/browser@sha256:8af7584500145dda4beb1a2e1d92a0e4d36c39c690b1bd8b1e2b174c09b363e0

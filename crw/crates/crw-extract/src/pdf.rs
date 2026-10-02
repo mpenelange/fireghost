@@ -1,6 +1,6 @@
 //! PDF → markdown adapter over the pure-Rust [`pdf_inspector`] crate.
 //!
-//! This is the single quarantine point for the `pdf-inspector` v0.1.0 API.
+//! This is the single quarantine point for the `pdf-inspector` v1 API.
 //! Everything the rest of the workspace needs flows through [`convert`] and
 //! the [`PdfExtract`] / [`PdfError`] types, so an upstream API change touches
 //! only this file.
@@ -130,14 +130,6 @@ pub fn convert(
 ) -> Result<PdfExtract, PdfError> {
     use pdf_inspector::{PdfError as UpstreamError, PdfOptions, PdfType};
 
-    // Decompression-bomb guard FIRST: reject a file whose FlateDecode streams
-    // inflate beyond the cap before pdf-inspector allocates the full payload.
-    // Runs in bounded memory (a fixed read buffer), so a 5 MB → 5 GB bomb is
-    // refused having allocated only kilobytes. `0` disables the guard.
-    if max_decompressed_bytes > 0 {
-        check_decompression_bomb(bytes, max_decompressed_bytes)?;
-    }
-
     // Map upstream errors → our stable surface.
     fn map_err(e: UpstreamError) -> PdfError {
         match e {
@@ -156,6 +148,11 @@ pub fn convert(
     // we only read `bytes` and return owned data — no shared mutable state
     // is left in an inconsistent state by a panic.
     let run = || -> Result<PdfExtract, PdfError> {
+        // Include preflight's lopdf parse in the panic boundary as well.
+        // Keep encrypted documents unsupported even though upstream v1 can
+        // automatically decrypt documents with an empty user password.
+        check_decompression_bomb(bytes, max_decompressed_bytes)?;
+
         // 1. Cheap classification for routing / scanned detection.
         let classification = pdf_inspector::classify_pdf_mem(bytes).map_err(map_err)?;
         let is_scanned = matches!(
@@ -175,7 +172,11 @@ pub fn convert(
         // 2. Full detect → extract → markdown pipeline (optionally page-capped).
         let result = match max_pages {
             Some(n) if n > 0 => {
-                let opts = PdfOptions::new().pages(1..=(n as u32));
+                // Upstream collects this range into a HashSet. Bound it to
+                // actual pages before converting usize, avoiding huge page
+                // filters and truncating casts from caller-supplied limits.
+                let end = n.min(classification.page_count as usize) as u32;
+                let opts = PdfOptions::new().pages(1..=end);
                 pdf_inspector::process_pdf_mem_with_options(bytes, opts).map_err(map_err)?
             }
             _ => pdf_inspector::process_pdf_mem(bytes).map_err(map_err)?,
@@ -217,11 +218,12 @@ pub fn convert(
     }
 }
 
-/// Decompression-bomb guard. Structure-parses the PDF (cheap — does not eagerly
-/// inflate page content) and bounded-inflates each FlateDecode stream, aborting
-/// the moment the running decompressed total would exceed `cap`. Peak memory is
-/// the 16 KiB read buffer, so a malicious file never gets to allocate its
-/// multi-GB payload. Non-Flate streams are skipped (bounded by file size).
+/// Preflight encrypted-document policy and decompression-bomb guard.
+/// Structure loading may eagerly expand object/xref streams, so it carries
+/// its own per-stream limit matching upstream's 8 MiB load limit. The later
+/// FlateDecode scan uses a 16 KiB buffer and enforces an aggregate `cap`.
+/// Other compression filters are not covered by this aggregate scan.
+/// `cap == 0` disables that scan, not upstream's structural stream limit.
 ///
 /// Conservative: if the structure can't be parsed or a stream isn't valid zlib,
 /// we don't treat that as a bomb — the main parser will surface the real error.
@@ -229,13 +231,37 @@ pub fn convert(
 fn check_decompression_bomb(bytes: &[u8], cap: usize) -> Result<(), PdfError> {
     use std::io::Read;
 
-    use lopdf::{Document, Object};
+    use lopdf::{DecompressError, Document, LoadOptions, Object};
 
-    // If structure parse fails, skip the guard (not a bomb signal); the main
-    // `process_pdf_mem` will produce the proper corrupt/encrypted error.
-    let Ok(doc) = Document::load_mem(bytes) else {
-        return Ok(());
+    const MAX_STRUCTURAL_STREAM_BYTES: usize = 8 * 1024 * 1024;
+    let load_limit = if cap == 0 {
+        MAX_STRUCTURAL_STREAM_BYTES
+    } else {
+        cap.min(MAX_STRUCTURAL_STREAM_BYTES)
     };
+    let doc = match Document::load_mem_with_options(
+        bytes,
+        LoadOptions {
+            // Lenient loading silently drops oversized object streams,
+            // which would hide them from the aggregate scan below.
+            strict: true,
+            max_decompressed_size: Some(load_limit),
+            ..Default::default()
+        },
+    ) {
+        Ok(doc) => doc,
+        Err(lopdf::Error::Decompress(DecompressError::MemoryLimitExceeded { .. })) => {
+            return Err(PdfError::TooLarge);
+        }
+        // Leave other structure errors to upstream's repair/error handling.
+        Err(_) => return Ok(()),
+    };
+    if doc.is_encrypted() || doc.encryption_state.is_some() {
+        return Err(PdfError::Encrypted);
+    }
+    if cap == 0 {
+        return Ok(());
+    }
 
     let mut budget = cap;
     for obj in doc.objects.values() {

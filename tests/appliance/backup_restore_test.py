@@ -7,7 +7,7 @@ import uuid
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ALPINE = "alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1"
+ALPINE = "alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
 
 
 class BackupRestoreTest(unittest.TestCase):

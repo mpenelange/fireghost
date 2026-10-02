@@ -109,3 +109,69 @@ write a sanitized failing artifact without stderr, secrets, tokens, or config
 content. Do not merge, publish, update `dev/stack.lock.json`, or
 cut production over until it passes. Production and its immutable CRW digest remain
 the rollback authority.
+
+## Browser regression matrix
+
+Before advancing either browser digest, compare the frozen production appliance
+with an isolated candidate using the checked-in matrix. Change only one browser
+image at a time; keep CRW, the router, configuration, and the other browser at
+their production versions so a failure has a single plausible cause. Neither the
+matrix nor its runner changes an image pin or deployment.
+
+```sh
+mkdir -p artifacts
+python3 scripts/browser-regression-gate.py \
+  --output "artifacts/browser-regression-$(date -u +%Y%m%dT%H%M%SZ).json"
+```
+
+The defaults target the frozen router at `127.0.0.1:33000`, staging at
+`127.0.0.1:33010`, and
+`tests/fixtures/browser-regression-matrix.json`. Supply `FIRECRAWL_API_KEY` in
+the invoking shell if authentication is enabled; it is sent as a bearer token
+and is never stored. The output path is mandatory, created exclusively, and
+must be new for every run.
+
+Every case pins either `lightpanda` or `camofox` in the `/v2/scrape` request.
+The gate requires a successful response, origin status 200, matching
+`metadata.renderedWith`, an absolute content floor, required/forbidden markers,
+and a candidate-to-production markdown-size ratio. It records only bounded
+metadata, lengths, hashes, latency, thresholds, and sanitized URLs; extracted
+page bodies, URL queries, and credentials are omitted. The default cases cover
+static HTML on both engines, JavaScript DOM execution on both engines, redirect
+handling, a heavy JavaScript-rendered real-world page, and the existing
+Camofox Reddit workload as an informational case. Because these
+are live sites, production is tested immediately before the candidate and acts
+as the behavioral control; retain the artifact with the update review.
+
+Artifacts and CLI output report production, candidate, and comparison checks
+separately. A production failure leaves the gate failed and marks the relative
+comparison as lacking a valid baseline, even when candidate checks pass or the
+size ratio meets its threshold. Request failures retain evidence from the other
+side and mark the comparison unavailable. All original failure reasons and
+thresholds remain enforced; a failed control cannot establish a browser regression.
+The JavaScript cases require two rendered authors, Albert Einstein and
+J.K. Rowling. Pagination text such as `Next` belongs to navigation removed by
+the default main-content extraction and is not a content marker.
+
+For an upstream release, run the matrix once with a cold candidate and again
+after the first pass for warm/profile-reuse evidence. Set `ROUTER_SCRAPE_TTL=0s`
+on both isolated validation routers before these runs: the default 24-hour scrape
+cache would otherwise serve cached responses, and request fields such as
+`storeInCache` or `maxAge` do not bypass the router cache. This setting belongs
+only to the isolated validation stacks; preserve the frozen production deployment.
+The browser gate does not itself prove cache bypass. In CI, `validation.yaml`
+applies these settings and runs both passes; see `docs/ci.md`. Then inspect container
+restart, OOM, memory, and PID data separately. A pass is required in addition
+to the Hermes gate, staging smoke/live-contract checks, component tests, and
+appliance tests. Any browser-specific incident URL should first be added as a
+new declarative case with non-secret markers and reviewed thresholds.
+
+A case marked `"informational": true` is requested and recorded in full, but its
+reasons go to the artifact's `informational` list and cannot fail the gate. The
+Reddit case is informational: Reddit restricts anonymous and automated access,
+production CRW 1.2.0 with Camofox 2.4.6 returns success containing Camofox's
+52-character truncation placeholder, repaired CRW correctly rejects that oversized
+result, and Firecrawl Cloud refuses Reddit. The decisive heavy real-world case is a
+large JavaScript-rendered GitHub repository page. Do not mark a case informational
+to hide a regression on a site that tolerates automated access. See
+`docs/audits/2026-10-01-camofox-248-validation/`.

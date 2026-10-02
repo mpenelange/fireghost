@@ -58,6 +58,8 @@ struct CreateTabResponse {
 #[derive(Deserialize)]
 struct EvaluateResponse {
     result: Option<String>,
+    #[serde(default)]
+    truncated: bool,
 }
 
 /// `GET /health` response.
@@ -227,7 +229,15 @@ impl PageFetcher for CamofoxRenderer {
         )
         .await;
 
-        let html = html?.result.unwrap_or_default();
+        let evaluation = html?;
+        // Oversized evaluation results are replaced by a diagnostic string,
+        // not usable HTML. Reject it so the renderer ladder can fail over.
+        if evaluation.truncated {
+            return Err(CrwError::RendererError(
+                "camofox: evaluate returned truncated document".to_string(),
+            ));
+        }
+        let html = evaluation.result.unwrap_or_default();
         if html.is_empty() {
             return Err(CrwError::RendererError(
                 "camofox: evaluate returned empty document".to_string(),

@@ -13,6 +13,7 @@ on:
       - crw/**
       - Makefile
       - .forgejo/workflows/crw.yaml
+  workflow_dispatch:
 
 jobs:
   check:
@@ -23,7 +24,7 @@ jobs:
       - name: Install pinned Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.1
+          toolchain: 1.98.1
           components: clippy, rustfmt
       - name: Cache Cargo inputs and artifacts
         uses: actions/cache@v4

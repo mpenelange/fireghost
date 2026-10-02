@@ -1,0 +1,54 @@
+{
+  "url": "https://www.reddit.com/r/selfhosted/",
+  "started": "2026-09-30T02:46:38.647Z",
+  "snapshots": [
+    {
+      "stage": "created",
+      "status": 200,
+      "ms": 725,
+      "document": {
+        "ready": "interactive",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 612600,
+        "bodyTextLength": 6965,
+        "postCount": 3,
+        "postLinks": 12
+      }
+    },
+    {
+      "stage": "waited",
+      "status": 200,
+      "ms": 27,
+      "document": {
+        "ready": "complete",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 626115,
+        "bodyTextLength": 6959,
+        "postCount": 3,
+        "postLinks": 12
+      }
+    },
+    {
+      "stage": "settled",
+      "status": 200,
+      "ms": 28,
+      "document": {
+        "ready": "complete",
+        "title": "Self-Hosted Alternatives to Popular Services",
+        "htmlLength": 628091,
+        "bodyTextLength": 6959,
+        "postCount": 3,
+        "postLinks": 12
+      }
+    }
+  ],
+  "outerHTMLResponse": {
+    "status": 200,
+    "ms": 68,
+    "ok": true,
+    "truncated": false,
+    "resultLength": 628084,
+    "hasBodyTag": true,
+    "hasClosingHtmlTag": true
+  }
+}

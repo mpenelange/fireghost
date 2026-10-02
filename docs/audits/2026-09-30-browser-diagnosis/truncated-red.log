@@ -1,0 +1,46 @@
+   Compiling tracing v0.1.44
+   Compiling anstream v1.0.0
+   Compiling env_logger v0.11.11
+   Compiling h2 v0.4.19
+   Compiling tower v0.5.3
+   Compiling axum-core v0.5.6
+   Compiling pdf-inspector v1.21.0
+   Compiling tower-http v0.6.11
+   Compiling hyper v1.11.1
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling reqwest v0.13.5
+   Compiling wiremock v0.6.5
+   Compiling axum v0.8.9
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling jsonschema v0.28.3
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `test` profile [unoptimized] target(s) in 21.59s
+     Running tests/camofox_tests.rs (target/debug/deps/camofox_tests-2586d1fcff1644e6)
+
+running 7 tests
+test fetch_fails_when_deadline_expired ... ok
+test fetch_accepts_short_html_without_optional_truncation_field ... ok
+test fetch_rejects_truncated_evaluation_placeholder ... FAILED
+test fetch_returns_evaluated_html ... ok
+test is_available_reads_health ... ok
+test name_and_js_support ... ok
+test fetch_bounded_by_deadline_not_client_timeout ... ok
+
+failures:
+
+---- fetch_rejects_truncated_evaluation_placeholder stdout ----
+
+thread 'fetch_rejects_truncated_evaluation_placeholder' (345) panicked at crates/crw-renderer/tests/camofox_tests.rs:128:5:
+truncated evaluation must fail instead of scraping its diagnostic: Ok(FetchResult { url: "https://example.com", final_url: None, status_code: 200, html: "[Truncated: result was 1201774 bytes, max 1048576]", content_type: Some("text/html"), raw_bytes: None, rendered_with: Some("camofox"), elapsed_ms: 2, warning: None, render_decision: None, credit_cost: 0, warnings: [], truncated: false, deadline_exceeded: false, captured_responses: [] })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    fetch_rejects_truncated_evaluation_placeholder
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+error: test failed, to rerun pass `-p crw-renderer --test camofox_tests`

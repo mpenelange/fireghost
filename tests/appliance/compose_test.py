@@ -41,8 +41,12 @@ class ComposeContractTest(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^    ports:", self.text)), 1)
 
     def test_no_mcp_service_or_port(self):
-        self.assertNotRegex(self.text.lower(), r"(?m)^  .*mcp.*:")
+        self.assertNotRegex(self.text.lower(), r"(?m)^  [^ \n]*mcp[^ \n]*:")
         self.assertNotRegex(self.text, r"(?m)^\s*-?\s*['\"]?\d+:\d+.*#.*mcp")
+
+    def test_router_receives_disabled_mcp_default(self):
+        self.assertIn("MCP_ENABLED=${MCP_ENABLED:-false}", self.service_block("router"))
+        self.assertRegex(ENV_EXAMPLE.read_text(encoding="utf-8"), r"(?m)^MCP_ENABLED=false$")
 
     def test_no_secret_value_is_embedded(self):
         self.assertRegex(self.service_block("router"), r"FIRECRAWL_CLOUD_API_KEY")

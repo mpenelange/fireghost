@@ -21,6 +21,7 @@ type Config struct {
 	CloudBurstCredits, CloudRefillCreditsPerDay          int
 	MonthlyResetDay                                      int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
+	MCPEnabled                                           bool
 }
 
 // Parse reads configuration through getenv, making parsing deterministic in tests.
@@ -33,6 +34,16 @@ func Parse(getenv func(string) string) (Config, error) {
 		MaxInflight:            64,
 		MonthlyResetDay:        1,
 		SearchEstimatedCredits: 2, ScrapeEstimatedCredits: 1,
+	}
+	if raw := getenv("MCP_ENABLED"); raw != "" {
+		switch raw {
+		case "true":
+			c.MCPEnabled = true
+		case "false":
+			c.MCPEnabled = false
+		default:
+			return Config{}, fmt.Errorf("invalid MCP_ENABLED: must be true or false")
+		}
 	}
 	stringValues := []struct {
 		name   string
@@ -166,6 +177,9 @@ func validate(c Config) error {
 	}
 	if c.ScrapeEstimatedCredits <= 0 {
 		return fmt.Errorf("ROUTER_SCRAPE_ESTIMATED_CREDITS must be positive")
+	}
+	if c.MCPEnabled && c.APIKey == "" {
+		return fmt.Errorf("MCP_ENABLED=true requires ROUTER_API_KEY")
 	}
 	if c.CloudAPIKey != "" && c.DailyCloudCredits == 0 && c.MonthlyCloudCredits == 0 {
 		return fmt.Errorf("cloud API key requires a positive daily or monthly cloud credit limit")

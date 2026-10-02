@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "lightpanda-static",
+      "renderer": "lightpanda",
+      "url": "https://example.com/",
+      "timeoutMs": 60000,
+      "minimumMarkdownChars": 100,
+      "minimumCandidateRatio": 0.9,
+      "requiredText": ["Example Domain"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "camofox-static",
+      "renderer": "camofox",
+      "url": "https://example.com/",
+      "timeoutMs": 60000,
+      "minimumMarkdownChars": 100,
+      "minimumCandidateRatio": 0.9,
+      "requiredText": ["Example Domain"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "lightpanda-javascript",
+      "renderer": "lightpanda",
+      "url": "https://quotes.toscrape.com/js/",
+      "timeoutMs": 60000,
+      "minimumMarkdownChars": 500,
+      "minimumCandidateRatio": 0.8,
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "camofox-javascript",
+      "renderer": "camofox",
+      "url": "https://quotes.toscrape.com/js/",
+      "timeoutMs": 60000,
+      "minimumMarkdownChars": 500,
+      "minimumCandidateRatio": 0.8,
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "lightpanda-redirect",
+      "renderer": "lightpanda",
+      "url": "https://httpbin.org/redirect-to?url=https%3A%2F%2Fexample.com%2F",
+      "timeoutMs": 60000,
+      "minimumMarkdownChars": 100,
+      "minimumCandidateRatio": 0.9,
+      "requiredText": ["Example Domain"],
+      "forbiddenText": ["Just a moment"]
+    },
+    {
+      "name": "camofox-real-world",
+      "renderer": "camofox",
+      "url": "https://github.com/rust-lang/rust",
+      "timeoutMs": 90000,
+      "minimumMarkdownChars": 20000,
+      "minimumCandidateRatio": 0.75,
+      "requiredText": ["rust-lang/rust", "rustc"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "camofox-real-world-reddit",
+      "informational": true,
+      "renderer": "camofox",
+      "url": "https://www.reddit.com/r/selfhosted/",
+      "timeoutMs": 90000,
+      "minimumMarkdownChars": 1000,
+      "minimumCandidateRatio": 0.75,
+      "requiredText": ["selfhosted"],
+      "forbiddenText": ["You've been blocked by network security"]
+    }
+  ]
+}
