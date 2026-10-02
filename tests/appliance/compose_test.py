@@ -25,7 +25,7 @@ class ComposeContractTest(unittest.TestCase):
 
     def test_renderer_images_are_immutable(self):
         self.assertIn(
-            "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+            "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
             self.service_block("camofox"),
         )
         self.assertIn(
