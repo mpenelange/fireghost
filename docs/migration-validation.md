@@ -158,8 +158,17 @@ on both isolated validation routers before these runs: the default 24-hour scrap
 cache would otherwise serve cached responses, and request fields such as
 `storeInCache` or `maxAge` do not bypass the router cache. This setting belongs
 only to the isolated validation stacks; preserve the frozen production deployment.
-The browser gate does not itself prove cache bypass. Then inspect container
+The browser gate does not itself prove cache bypass. In CI, `validation.yaml`
+applies these settings and runs both passes; see `docs/ci.md`. Then inspect container
 restart, OOM, memory, and PID data separately. A pass is required in addition
 to the Hermes gate, staging smoke/live-contract checks, component tests, and
 appliance tests. Any browser-specific incident URL should first be added as a
 new declarative case with non-secret markers and reviewed thresholds.
+
+The Reddit case currently has no valid relative baseline. Production CRW 1.2.0
+with Camofox 2.4.6 returns success containing Camofox's 52-character truncation
+placeholder, and repaired CRW correctly rejects that oversized result; Firecrawl
+Cloud refuses Reddit, so fallback cannot supply one either. Until the matrix gains
+a replacement heavy real-world case, a reviewer may judge Reddit on the candidate's
+absolute checks only, and must record the missing baseline in the review. See
+`docs/audits/2026-10-01-camofox-248-validation/`.
