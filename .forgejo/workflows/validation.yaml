@@ -60,6 +60,8 @@ jobs:
             --build-arg CRW_BUILD_DATE="$build_date" \
             --build-arg CRW_SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --metadata-file "$RUNNER_TEMP/crw-metadata.json" \
+            --cache-from "type=registry,ref=$IMAGE:buildcache" \
+            --cache-to "type=registry,ref=$IMAGE:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true" \
             --tag "$IMAGE:$tag" \
             crw
           digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$RUNNER_TEMP/crw-metadata.json")"

@@ -27,6 +27,17 @@ caches, and repository variables instead of hard-coded hosts. Runner VMs match
 GitHub's `ubuntu-latest` (Ubuntu LTS, 4 vCPUs, 16 GB RAM, 14 GB job disk); a
 runner that differs must carry a different label.
 
+The CRW image build caches compiled dependencies portably. `crw/Dockerfile`
+uses cargo-chef so the dependency graph compiles in its own layer, and the
+`buildx` calls in `release.yaml` and `validation.yaml` export layers to a
+registry tag (`fireghost-crw:buildcache`) with `type=registry,…,image-manifest=true`.
+That works with any OCI registry (Forgejo, ghcr.io) and needs no runner-local
+state, unlike BuildKit cache mounts or the GitHub-only `type=gha` backend.
+Per-build identity (`CRW_REVISION`, build date) is declared after the dependency
+layer so it does not invalidate it. Dependencies recompile only when the recipe
+(manifests and `Cargo.lock`) changes; a missing or failed cache only slows the
+build (`ignore-error=true`).
+
 Forgejo-specific touchpoints, each a small edit when moving:
 
 | Location | Forgejo today | On GitHub |
