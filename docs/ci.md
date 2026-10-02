@@ -16,4 +16,25 @@ The root `make check` command is the local equivalent of the component and packa
 
 ## Firewire status
 
-Forgejo Actions is enabled on `git.firewire.cc`; pushes and pull requests run on dedicated Ubuntu host-runner VMs using the `ubuntu-latest` label. Each runner has 4 vCPUs, 16 GB RAM, and a separate 14 GB filesystem shared by its workspace, caches, Rust toolchains, and Docker/containerd data. `release.yaml` additionally requires user-level Actions secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. A third host-runner VM with the same resources carries only the `validation` label, so browser and appliance validation never queues behind Rust builds and build jobs never land on it. Confirm an ordinary push completes before pushing an appliance release tag. Forgejo Actions is the sole build, test, and image-publication system for this repository; no GitHub build or release workflows are defined.
+Forgejo Actions is enabled on `git.firewire.cc`. Jobs run on ephemeral VMs on docker0, managed by the private `michael/ci-runners` repository: every job gets a fresh Ubuntu VM (4 vCPUs, 16 GB RAM, a new 14 GB job disk for its workspace and Docker data) that is deleted when the job ends. Two slots carry the `ubuntu-latest` label; one carries only the `validation` label, so browser and appliance validation never queues behind Rust builds and build jobs never land on it. `actions/cache` uses a shared 100 GB cache server, so Cargo inputs and `crw/target` survive between VMs. `release.yaml` additionally requires user-level Actions secrets `REGISTRY_USERNAME` and `REGISTRY_TOKEN`, with package-write access. Confirm an ordinary push completes before pushing an appliance release tag. Forgejo Actions is the sole build, test, and image-publication system for this repository; no GitHub build or release workflows are defined.
+
+## Portability to GitHub Actions
+
+Workflows use GitHub Actions syntax so the project can move to GitHub-hosted or
+other self-hosted runners without redesigning CI. Keep new workflow code portable:
+use `owner/repo@ref` action references, `$GITHUB_*` variables, `actions/cache` for
+caches, and repository variables instead of hard-coded hosts. Runner VMs match
+GitHub's `ubuntu-latest` (Ubuntu LTS, 4 vCPUs, 16 GB RAM, 14 GB job disk); a
+runner that differs must carry a different label.
+
+Forgejo-specific touchpoints, each a small edit when moving:
+
+| Location | Forgejo today | On GitHub |
+|---|---|---|
+| Workflow directory | `.forgejo/workflows/` | `git mv` to `.github/workflows/` (Forgejo also reads it) |
+| `crw.yaml`, `release.yaml` | `uses: https://github.com/dtolnay/rust-toolchain@stable` | `uses: dtolnay/rust-toolchain@stable`; set Forgejo `[actions] DEFAULT_ACTIONS_URL = https://github.com` first so both work |
+| `validation.yaml` artifact upload | `https://code.forgejo.org/forgejo/upload-artifact@v4` (upstream v4 rejects non-GitHub servers) | `actions/upload-artifact@v4` |
+| `validation.yaml` registry | variables `REGISTRY`, `IMAGE_NAMESPACE` (default `git.firewire.cc`, `git.firewire.cc/michael`) | set to `ghcr.io`, `ghcr.io/<owner>` |
+| `validation.yaml` runner | `runs-on: validation` | `ubuntu-latest` or a self-hosted label |
+| `release.yaml` | hard-coded `git.firewire.cc/michael/*` images and source URL | parameterize like `validation.yaml`; only runs on release tags, so change it with a release |
+| Secrets | `REGISTRY_USERNAME`, `REGISTRY_TOKEN` | same names; `GITHUB_TOKEN` can push to ghcr.io |

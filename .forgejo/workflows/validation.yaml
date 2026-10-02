@@ -21,6 +21,12 @@ concurrency:
   group: fireghost-validation
   cancel-in-progress: false
 
+env:
+  # Registry host and image namespace. Repository variables override the
+  # Forgejo defaults when the project moves hosts (e.g. ghcr.io/<owner>).
+  REGISTRY: ${{ vars.REGISTRY || 'git.firewire.cc' }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'git.firewire.cc/michael' }}
+
 jobs:
   build-crw:
     runs-on: ubuntu-latest
@@ -37,12 +43,12 @@ jobs:
           set -euo pipefail
           test -n "$REGISTRY_USERNAME"
           test -n "$REGISTRY_TOKEN"
-          printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
       - uses: docker/setup-buildx-action@v3
       - name: Build and push CRW validation image
         id: push
         env:
-          IMAGE: git.firewire.cc/michael/fireghost-crw
+          IMAGE: ${{ env.IMAGE_NAMESPACE }}/fireghost-crw
         run: |
           set -euo pipefail
           build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
@@ -52,7 +58,7 @@ jobs:
             --build-arg CRW_VERSION="$crw_version-validation.${GITHUB_SHA::7}" \
             --build-arg CRW_REVISION="$GITHUB_SHA" \
             --build-arg CRW_BUILD_DATE="$build_date" \
-            --build-arg CRW_SOURCE="https://git.firewire.cc/michael/fireghost" \
+            --build-arg CRW_SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --metadata-file "$RUNNER_TEMP/crw-metadata.json" \
             --tag "$IMAGE:$tag" \
             crw
@@ -94,7 +100,7 @@ jobs:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
       - name: Start control and candidate stacks
         run: |
           set -euo pipefail
@@ -141,4 +147,4 @@ jobs:
           $compose -p fg-validation-control down -v --remove-orphans || true
           $compose -f dev/compose.staging.yaml -p fg-validation-candidate down -v --remove-orphans || true
           docker image prune -af --filter "until=72h" || true
-          docker logout git.firewire.cc || true
+          docker logout "$REGISTRY" || true
