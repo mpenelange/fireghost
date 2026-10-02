@@ -67,3 +67,16 @@ for every case, and record container restart, OOM, peak-memory, and peak-PID
 observations beside the artifacts before approval.
 
 `CRW_IMAGE` remains supplied through ignored `dev/.env`; never copy credentials into the ledger or commit them. `dev/.env.example` and the lock describe tested candidates using immutable digests. Back up volumes and retain the previous image/configuration for rollback before any separately authorized deployment.
+
+## Browser engine upgrades and persistent profiles
+
+Camofox keeps one persistent Firefox profile per CRW user (`crw`,
+`crw-search-0`, …) in the `camofox-profiles` volume. A Camofox release that
+changes the Camoufox/Firefox engine version refuses profiles created by the
+previous engine ("Profile … was created with Camoufox X, but the current version
+is Y"), and every tab then fails with HTTP 500. Validation stacks start with
+fresh profiles and cannot catch this. When the lock's `browserEngine` changes,
+move the existing profiles aside (rename, do not delete, so a rollback can
+restore them) as part of the cutover, before the first Camofox request. See
+`docs/audits/2026-10-02-fireghost-1.1.0-cutover/`.
+

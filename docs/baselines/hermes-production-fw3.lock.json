@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "name": "fireghost-production-1.1.0",
-  "capturedAt": "2026-10-02T03:45:00Z",
+  "name": "hermes-production-fw3",
+  "capturedAt": "2026-08-24T05:56:08Z",
   "architecture": "linux/amd64",
   "source": {
     "monorepoImportRevision": "89812afa985ddcc8cef73e2d35d3f1068f198447",
-    "crwRevision": "04f41a027a45f858133d4282c3db2384014fdb4c",
-    "applianceRevision": "04f41a027a45f858133d4282c3db2384014fdb4c",
-    "routerRevision": "04f41a027a45f858133d4282c3db2384014fdb4c"
+    "crwRevision": "94f792a197433ce722ab78c2182b7fb988175502",
+    "applianceRevision": "9f142ce549d58ee50a6f7a8320c84f5404c09a74",
+    "routerRevision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca"
   },
   "components": {
     "hermes": {
@@ -15,19 +15,18 @@
       "provenance": "Version observed on the production host; Hermes is managed outside this repository."
     },
     "router": {
-      "version": "1.1.0",
-      "image": "git.firewire.cc/michael/fireghost-router@sha256:eb55cbdc10b69ecdab51d055ff29176b36a2baa19167ac6a0fb0df477cd1051a",
-      "imageId": "sha256:eb55cbdc10b69ecdab51d055ff29176b36a2baa19167ac6a0fb0df477cd1051a",
-      "sourceRevision": "04f41a027a45f858133d4282c3db2384014fdb4c",
-      "delivery": "registry",
-      "provenance": "fireghost-v1.1.0 release image; deployed on docker0 from /srv/docker/compose/fireghost."
+      "version": "dev",
+      "image": "web-retrieval-router:dev",
+      "imageId": "sha256:2e663609d96f87083d9357b499fc3c7b5c16999d61e10ed6969344dc81a2eb01",
+      "sourceRevision": "21a8dcfd7e87a34c12826e7691304fcb4c7343ca",
+      "delivery": "local-build",
+      "provenance": "Built from the clean v0.1.4 router tree; no registry digest exists for this legacy local image."
     },
     "crw": {
-      "version": "1.2.0",
-      "applianceVersion": "1.1.0",
-      "image": "git.firewire.cc/michael/fireghost-crw@sha256:905a33feb3111c5c0ff8679adab2caca15c695e5b286e5faf2429bae7d6f378f",
-      "imageId": "sha256:905a33feb3111c5c0ff8679adab2caca15c695e5b286e5faf2429bae7d6f378f",
-      "sourceRevision": "04f41a027a45f858133d4282c3db2384014fdb4c"
+      "version": "1.2.0-fw.3",
+      "image": "git.firewire.cc/michael/crw-camofox@sha256:3898cae0970787b095d4348578c0219c9b2ff2461bd8b419e67ef2b47d701115",
+      "imageId": "sha256:d64036edba088f7581863a3f3914fa89d14958e83257f7ca2d2c0dbfe1534e85",
+      "sourceRevision": "94f792a197433ce722ab78c2182b7fb988175502"
     },
     "camofox": {
       "version": "2.4.8",

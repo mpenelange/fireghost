@@ -1,0 +1,47 @@
+{
+  "event": "Production cutover to fireghost-v1.1.0",
+  "dateUTC": "2026-10-02",
+  "host": "docker0",
+  "release": {"tag": "fireghost-v1.1.0", "revision": "04f41a027a45f858133d4282c3db2384014fdb4c"},
+  "before": {
+    "project": "web-retrieval",
+    "directory": "/srv/docker/compose/web-retrieval (hermes-web-retrieval checkout with local edits)",
+    "router": "git.firewire.cc/michael/fireghost-router@sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a (1.0.0, via :latest)",
+    "crw": "git.firewire.cc/michael/fireghost-crw@sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b (1.2.0, via :latest)",
+    "camofox": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7 (2.4.6)"
+  },
+  "after": {
+    "project": "fireghost",
+    "directory": "/srv/docker/compose/fireghost (release root docker-compose.yml + production override; images pinned by digest in .env)",
+    "router": "git.firewire.cc/michael/fireghost-router@sha256:eb55cbdc10b69ecdab51d055ff29176b36a2baa19167ac6a0fb0df477cd1051a (1.1.0)",
+    "crw": "git.firewire.cc/michael/fireghost-crw@sha256:905a33feb3111c5c0ff8679adab2caca15c695e5b286e5faf2429bae7d6f378f (1.2.0, appliance 1.1.0)",
+    "camofox": "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55 (2.4.8)",
+    "mcp": "shipped disabled (MCP_ENABLED=false) and not routed by Traefik",
+    "route": "unchanged: web-scrape.firewire.cc /v2/search and /v2/scrape, IP allowlist, API key",
+    "data": "unchanged bind mounts /srv/docker/web-retrieval/{router-data,camofox-profiles}"
+  },
+  "preparation": [
+    "Router API and Firecrawl keys existed only in the running container environment; copied into the new .env (verified by hash, never displayed)",
+    "Rendered configuration diffed against running containers: only MCP_ENABLED=false and image-baked variables differ",
+    "Data archive /srv/docker/backups/web-retrieval-data-20261002T034030Z.tar.gz (14 MB)"
+  ],
+  "cutover": {"oldStopped": "03:41:19Z", "newHealthy": "03:41:37Z", "downtimeSeconds": 18, "oldContainers": "stopped, not removed (instant rollback with docker start)"},
+  "incident": {
+    "symptom": "Every Camofox tab returned HTTP 500 after cutover (cached and HTTP-path requests unaffected)",
+    "cause": "Camofox 2.4.8 (Camoufox/Firefox 152) refuses profiles created by 2.4.6 (Firefox 135). CI validation always starts with fresh profiles, so it could not catch this.",
+    "fix": "Moved profiles crw and crw-search-0 aside as *.camoufox135-20261002T034358Z; 2.4.8 created fresh profiles",
+    "impactMinutes": 3
+  },
+  "verification": {
+    "scrapeExampleCom": "200, 976 chars",
+    "search": "200, 3 results (cached and fresh)",
+    "redditAuto": "200, 11041 chars (previously 52-char truncation placeholder)",
+    "redditCamofox": "200, 13305 chars, renderedWith camofox",
+    "oldRedditAnonymous": "422 login_required",
+    "wikipediaRustArticle": "200, 77463 chars (previously 52-char placeholder)",
+    "quotesJsCamofox": "200, 1472 chars, renderedWith camofox",
+    "noApiKey": "401",
+    "mcpPath": "404 (unrouted)"
+  },
+  "rollback": "/srv/docker/compose/fireghost/docker-compose.rollback.yml: restore the camoufox135 profiles, then up -d with the rollback file (v1.0.0 router/CRW digests + Camofox 2.4.6)"
+}

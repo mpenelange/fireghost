@@ -41,7 +41,7 @@ class StackLockTest(unittest.TestCase):
             env = pathlib.Path(temp_dir) / ".env"
             env.write_text(
                 ENV_EXAMPLE.read_text(encoding="utf-8").replace(
-                    "sha256:3898cae0970787b095d4348578c0219c9b2ff2461bd8b419e67ef2b47d701115",
+                    json.loads(LOCK.read_text(encoding="utf-8"))["components"]["crw"]["image"].split("@")[1],
                     "sha256:" + "a" * 64,
                 ),
                 encoding="utf-8",
