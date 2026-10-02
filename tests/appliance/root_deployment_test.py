@@ -54,6 +54,13 @@ class RootDeploymentContractTest(unittest.TestCase):
         self.assertIn('PathPrefix(`${API_PATH_PREFIX:-/web/api}/v2/`)', text)
         self.assertIn("web-retrieval-private,web-retrieval-strip", text)
 
+    def test_crw_llm_key_is_always_defined(self):
+        # CRW exits at startup when the LLM provider is set without a key.
+        text = COMPOSE.read_text(encoding="utf-8")
+        self.assertIn("CRW_EXTRACTION__LLM__API_KEY: ${CRW_LLM_API_KEY:-}", text)
+        env = ENV_EXAMPLE.read_text(encoding="utf-8")
+        self.assertRegex(env, r"(?m)^CRW_LLM_API_KEY=$")
+
     def test_public_compose_is_pull_only_private_and_versioned(self):
         text = COMPOSE.read_text(encoding="utf-8")
         self.assertNotRegex(text, r"(?m)^\s+build:")
