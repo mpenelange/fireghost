@@ -60,6 +60,10 @@ const CLEANUP_BUDGET: Duration = Duration::from_millis(250);
 const URL_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const RENDER_SETTLE: Duration = Duration::from_millis(500);
 
+/// Budget for resolving one page's Google redirect links, all in parallel.
+/// A link that is not resolved in time keeps its (working) redirect URL.
+const REDIRECT_RESOLVE_BUDGET: Duration = Duration::from_secs(3);
+
 /// JS evaluated in the Google SERP to extract result rows. Returns a JSON
 /// *string* (via `JSON.stringify`) so the camofox `/evaluate` `result` field
 /// comes back as a string we can parse. Selectors are intentionally broad and
@@ -205,6 +209,9 @@ struct GithubRepo {
 /// treat the two interchangeably.
 pub struct CamofoxSearchClient {
     http: reqwest::Client,
+    /// Reads Google redirect targets: never follows redirects and keeps no
+    /// cookies, so it only fetches the `Location` of each `/goto` link.
+    redirect_http: reqwest::Client,
     base_url: String,
     api_key: Option<String>,
     /// Optional GitHub PAT for the `github` engine, which uses the GitHub REST
@@ -261,6 +268,11 @@ impl CamofoxSearchClient {
             .timeout(timeout)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
+        let redirect_http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(REDIRECT_RESOLVE_BUDGET)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         let workers = (0..pool_size)
             .map(|index| CamofoxSearchWorker {
                 user_id: if pool_size == 1 {
@@ -278,6 +290,7 @@ impl CamofoxSearchClient {
             .collect();
         Self {
             http,
+            redirect_http,
             base_url,
             api_key,
             github_token,
@@ -623,7 +636,14 @@ impl CamofoxSearchClient {
         tokio::time::sleep(RENDER_SETTLE.min(remaining)).await;
         while Instant::now() < deadline {
             match self.evaluate_rows(worker, tab_id, engine).await {
-                Ok(rows) if !rows.is_empty() => return Ok(rows),
+                Ok(rows) if !rows.is_empty() => {
+                    return Ok(match engine {
+                        SearchEngine::Google => {
+                            resolve_google_links(&self.redirect_http, rows).await
+                        }
+                        _ => rows,
+                    });
+                }
                 // A dead tab cannot recover through polling. Let fetch's
                 // bounded stale-tab retry replace it before trying again.
                 Err(error) if is_stale_tab(&error) => return Err(error),
@@ -760,6 +780,72 @@ impl CamofoxSearchClient {
 /// order is preserved; downstream `rerank` does the final ordering.
 /// Concise, user-facing reason for an engine failure — no internal detail, just
 /// enough to tell a timeout/block apart. Feeds `unresponsive_engines`.
+fn is_google_host(url: &url::Url) -> bool {
+    url.host_str()
+        .is_some_and(|host| host == "google.com" || host.ends_with(".google.com"))
+}
+
+/// Google wraps result links in `/goto?url=<token>` (or `/url?…`). The token
+/// is encrypted, so only Google can map it to the destination.
+fn is_google_redirect(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| is_google_host(&u) && matches!(u.path(), "/goto" | "/url"))
+}
+
+/// A row pointing back into Google itself (an AI Mode reply, related
+/// searches) rather than at a result page.
+fn is_google_internal(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| is_google_host(&u))
+}
+
+/// The redirect target of `url`, without following it. `None` unless the
+/// response is a redirect to an http(s) URL.
+async fn resolve_location(http: &reqwest::Client, url: &str) -> Option<String> {
+    let response = http.get(url).send().await.ok()?;
+    if !response.status().is_redirection() {
+        return None;
+    }
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)?
+        .to_str()
+        .ok()?;
+    let target = url::Url::parse(url).ok()?.join(location).ok()?;
+    matches!(target.scheme(), "http" | "https").then(|| target.to_string())
+}
+
+/// Replace Google redirect links with their destinations, resolving the whole
+/// page in parallel within [`REDIRECT_RESOLVE_BUDGET`]. Unresolved links keep
+/// the redirect URL (it still works when opened); rows that stay inside
+/// Google are dropped.
+async fn resolve_google_links(
+    http: &reqwest::Client,
+    rows: Vec<SearxngResult>,
+) -> Vec<SearxngResult> {
+    let lookups = rows.iter().map(|row| async move {
+        match row.url.as_deref() {
+            Some(url) if is_google_redirect(url) => resolve_location(http, url).await,
+            _ => None,
+        }
+    });
+    let resolved =
+        tokio::time::timeout(REDIRECT_RESOLVE_BUDGET, futures::future::join_all(lookups))
+            .await
+            .unwrap_or_default();
+    rows.into_iter()
+        .enumerate()
+        .filter_map(|(i, mut row)| {
+            if let Some(Some(target)) = resolved.get(i) {
+                row.url = Some(target.clone());
+            }
+            let keep = row
+                .url
+                .as_deref()
+                .is_some_and(|url| is_google_redirect(url) || !is_google_internal(url));
+            keep.then_some(row)
+        })
+        .collect()
+}
+
 fn engine_failure_reason(e: &SearchError) -> String {
     match e {
         SearchError::Timeout => "timed out".to_string(),
@@ -1199,5 +1285,120 @@ mod github_api_tests {
             ..Default::default()
         };
         assert!(client.fetch(&params).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod google_redirect_tests {
+    use super::*;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn row(url: &str) -> SearxngResult {
+        SearxngResult {
+            url: Some(url.to_string()),
+            title: Some("t".to_string()),
+            engine: Some("google".to_string()),
+            content: None,
+            score: None,
+            engines: vec![],
+            positions: vec![],
+            category: None,
+            template: None,
+            published_date: None,
+            img_src: None,
+            thumbnail_src: None,
+            img_format: None,
+            resolution: None,
+        }
+    }
+
+    /// Routes every request through the mock server, so Google-looking
+    /// `http://` URLs are answered locally instead of by Google.
+    fn proxied_client(server: &MockServer) -> reqwest::Client {
+        reqwest::Client::builder()
+            .proxy(reqwest::Proxy::all(server.uri()).unwrap())
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn classifies_google_links() {
+        assert!(is_google_redirect("https://www.google.com/goto?url=CAES"));
+        assert!(is_google_redirect("https://www.google.com/url?q=x"));
+        assert!(!is_google_redirect("https://www.google.com/?ictx=0&sa=X"));
+        assert!(!is_google_redirect("https://lightpanda.io/goto"));
+        assert!(is_google_internal("https://www.google.com/?ictx=0&sa=X"));
+        assert!(!is_google_internal(
+            "https://github.com/lightpanda-io/browser"
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolves_redirects_and_drops_google_internal_rows() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "A"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("location", "https://lightpanda.io/"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "B"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let rows = vec![
+            row("http://www.google.com/goto?url=A"),
+            row("http://www.google.com/?ictx=0&sa=X"),
+            row("http://www.google.com/goto?url=B"),
+            row("https://example.com/direct"),
+        ];
+        let urls: Vec<String> = resolve_google_links(&proxied_client(&server), rows)
+            .await
+            .into_iter()
+            .filter_map(|r| r.url)
+            .collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://lightpanda.io/",
+                // Not a redirect response: keeps the working redirect URL.
+                "http://www.google.com/goto?url=B",
+                "https://example.com/direct",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn ignores_relative_and_non_http_locations() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "rel"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", "/search?q=x"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "js"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("location", "javascript:alert(1)"),
+            )
+            .mount(&server)
+            .await;
+        let http = proxied_client(&server);
+        // A relative target resolves against Google, so the row is dropped as internal.
+        let rows =
+            resolve_google_links(&http, vec![row("http://www.google.com/goto?url=rel")]).await;
+        assert!(rows.is_empty());
+        assert_eq!(
+            resolve_location(&http, "http://www.google.com/goto?url=js").await,
+            None
+        );
     }
 }
