@@ -41,6 +41,7 @@ class RootDeploymentContractTest(unittest.TestCase):
             ("FIRECRAWL_MONTHLY_ALLOWANCE", "1500"),
             ("FIRECRAWL_BUFFER_PERCENT", "20"),
             ("ROUTER_MONTHLY_RESET_DAY", "3"),
+            ("ROUTER_CLOUD_CREDIT_FLOOR", "50"),
         ):
             self.assertRegex(env, rf"(?m)^{setting}={re.escape(default)}$")
 
@@ -50,6 +51,7 @@ class RootDeploymentContractTest(unittest.TestCase):
         self.assertIn("MCP_ENABLED=${MCP_ENABLED:-false}", text)
         self.assertRegex(env, r"(?m)^MCP_ENABLED=false$")
         self.assertIn('Path(`${API_PATH_PREFIX:-/web/api}/mcp`)', text)
+        self.assertIn('PathPrefix(`${API_PATH_PREFIX:-/web/api}/v2/`)', text)
         self.assertIn("web-retrieval-private,web-retrieval-strip", text)
 
     def test_public_compose_is_pull_only_private_and_versioned(self):

@@ -15,6 +15,7 @@ import (
 
 	budgetpkg "web-retrieval/internal/budget"
 	cachepkg "web-retrieval/internal/cache"
+	creditspkg "web-retrieval/internal/credits"
 	metricspkg "web-retrieval/internal/metrics"
 	flightpkg "web-retrieval/internal/singleflight"
 	"web-retrieval/internal/upstream"
@@ -33,6 +34,7 @@ type Config struct {
 	ScrapeEstimatedCredits int
 	MaxRequestBytes        int64
 	MaxResponseBytes       int64
+	MaxParseBytes          int64
 	MCPEnabled             bool
 	ServerVersion          string
 }
@@ -44,6 +46,9 @@ type Dependencies struct {
 	Clock       func() time.Time
 	FlightGroup flightpkg.FlightGroup[cachepkg.Entry]
 	Budget      budgetpkg.Ledger
+	// CreditFloor, when set, denies cloud requests once the live account
+	// balance reaches its floor, ahead of the Budget reservation.
+	CreditFloor *creditspkg.Floor
 	Metrics     *metricspkg.Registry
 }
 
@@ -64,6 +69,9 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 	registry := dependencies.Metrics
 	if registry == nil {
 		registry = metricspkg.NewRegistry()
+	}
+	if dependencies.CreditFloor != nil {
+		dependencies.Budget = creditspkg.Ledger{Floor: dependencies.CreditFloor, Inner: dependencies.Budget}
 	}
 	runOperation := newOperationRunner(config, dependencies, clock, registry, local, cloud)
 
@@ -102,8 +110,13 @@ func NewHandler(config Config, dependencies Dependencies) http.Handler {
 	}
 	mux.HandleFunc("POST /v2/search", handleOperation("/v2/search"))
 	mux.HandleFunc("POST /v2/scrape", handleOperation("/v2/scrape"))
+	registerPassthrough(mux, config, registry, local, cloud, dependencies.CreditFloor)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		endpoint, measured := metricsEndpoint(r.URL.Path)
+		if !measured {
+			_, pattern := mux.Handler(r)
+			endpoint, measured = passthroughEndpoint(pattern)
+		}
 		start := time.Now()
 		writer := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		if measured && endpoint == metricspkg.EndpointMetrics {
