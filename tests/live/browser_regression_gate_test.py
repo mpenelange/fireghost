@@ -191,6 +191,46 @@ class BrowserRegressionGateTests(unittest.TestCase):
                 )
         self.assertEqual(calls, [])
 
+    def test_informational_case_is_reported_without_failing_the_gate(self):
+        gate = self.load_gate()
+        matrix = self.matrix()
+        informational = dict(matrix["cases"][0], name="hostile-site", informational=True)
+        matrix["cases"].append(informational)
+        broken = response("lightpanda")
+        del broken["data"]["metadata"]["renderedWith"]
+        replies = iter([
+            response("lightpanda"), response("lightpanda"),
+            broken, response("lightpanda", "Example Domain " * 2),
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = gate.run_gate(
+                production_url="http://production.invalid",
+                candidate_url="http://candidate.invalid",
+                api_key="",
+                output=pathlib.Path(directory) / "result.json",
+                matrix=matrix,
+                requester=lambda *args: next(replies),
+            )
+
+        self.assertTrue(artifact["passed"], artifact["reasons"])
+        self.assertEqual(artifact["reasons"], [])
+        self.assertTrue(all(check["passed"] for check in artifact["checks"].values()))
+        result = artifact["cases"][1]
+        self.assertTrue(result["informational"])
+        self.assertFalse(result["checks"]["production"]["passed"])
+        self.assertFalse(result["checks"]["candidate"]["passed"])
+        notes = "\n".join(artifact["informational"])
+        self.assertIn("hostile-site: production used no reported renderer", notes)
+        self.assertIn("hostile-site: candidate markdown is too small", notes)
+        self.assertFalse(artifact["cases"][0]["informational"])
+
+    def test_informational_flag_must_be_boolean(self):
+        gate = self.load_gate()
+        invalid = self.matrix()
+        invalid["cases"][0]["informational"] = "yes"
+        with self.assertRaisesRegex(ValueError, "informational"):
+            gate._validate_matrix(invalid)
+
     def test_checked_in_matrix_covers_both_browsers_and_key_paths(self):
         gate = self.load_gate()
         matrix = json.loads(gate.DEFAULT_MATRIX.read_text())
@@ -200,7 +240,20 @@ class BrowserRegressionGateTests(unittest.TestCase):
         self.assertEqual(renderers, {"lightpanda", "camofox"})
         self.assertTrue(any("javascript" in name for name in names))
         self.assertTrue(any("redirect" in name for name in names))
-        self.assertTrue(any("real-world" in name for name in names))
+        decisive_real_world = [
+            case for case in matrix["cases"]
+            if "real-world" in case["name"] and not case.get("informational", False)
+        ]
+        self.assertTrue(decisive_real_world, "a non-informational real-world case must decide")
+
+    def test_reddit_case_is_informational(self):
+        # Reddit actively restricts automated and anonymous access, so its
+        # outcome is evidence, not a verdict on the candidate.
+        gate = self.load_gate()
+        matrix = json.loads(gate.DEFAULT_MATRIX.read_text())
+        reddit = [case for case in matrix["cases"] if "reddit.com" in case["url"]]
+        self.assertTrue(reddit)
+        self.assertTrue(all(case.get("informational") is True for case in reddit))
 
     def test_javascript_markers_describe_rendered_main_content(self):
         gate = self.load_gate()

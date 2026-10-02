@@ -66,6 +66,8 @@ def _validate_matrix(matrix):
                 isinstance(value, str) and value for value in case.get(key, [])
             ):
                 raise ValueError(f"{name}: {key} must be an array of nonempty strings")
+        if not isinstance(case.get("informational", False), bool):
+            raise ValueError(f"{name}: informational must be true or false")
 
 
 def _request(endpoint, api_key, payload, timeout):
@@ -146,10 +148,12 @@ def run_gate(*, production_url, candidate_url, api_key, output, matrix,
         "cases": [],
         "checks": {},
         "reasons": [],
+        "informational": [],
     }
     for case in matrix["cases"]:
         record = {
             "name": case["name"],
+            "informational": case.get("informational", False),
             "renderer": case["renderer"],
             "url": _safe_url(case["url"]),
             "thresholds": {
@@ -198,13 +202,16 @@ def run_gate(*, production_url, candidate_url, api_key, output, matrix,
                 f'{case["name"]}: production checks failed; size comparison has no valid baseline'
             )
         checks["comparison"]["passed"] = not comparison_reasons
+        # Informational cases are recorded in full but cannot fail the gate.
+        destination = artifact["informational"] if record["informational"] else artifact["reasons"]
         for check in checks.values():
-            artifact["reasons"].extend(check["reasons"])
+            destination.extend(check["reasons"])
         artifact["cases"].append(record)
+    decisive = [case for case in artifact["cases"] if not case["informational"]]
     artifact["checks"] = {
         identity: {
-            "passed": all(case["checks"][identity]["passed"] for case in artifact["cases"]),
-            "reasons": [reason for case in artifact["cases"]
+            "passed": all(case["checks"][identity]["passed"] for case in decisive),
+            "reasons": [reason for case in decisive
                         for reason in case["checks"][identity]["reasons"]],
         }
         for identity in ("production", "candidate", "comparison")
@@ -236,6 +243,8 @@ def main():
         print(f"{identity.capitalize()} checks: {'PASS' if check['passed'] else 'FAIL'}")
     for reason in artifact["reasons"]:
         print(f"- {reason}")
+    for note in artifact["informational"]:
+        print(f"- informational: {note}")
     raise SystemExit(0 if artifact["passed"] else 1)
 
 

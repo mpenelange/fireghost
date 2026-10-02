@@ -138,7 +138,8 @@ and a candidate-to-production markdown-size ratio. It records only bounded
 metadata, lengths, hashes, latency, thresholds, and sanitized URLs; extracted
 page bodies, URL queries, and credentials are omitted. The default cases cover
 static HTML on both engines, JavaScript DOM execution on both engines, redirect
-handling, and the existing Camofox real-world Reddit workload. Because these
+handling, a heavy JavaScript-rendered real-world page, and the existing
+Camofox Reddit workload as an informational case. Because these
 are live sites, production is tested immediately before the candidate and acts
 as the behavioral control; retain the artifact with the update review.
 
@@ -165,10 +166,12 @@ to the Hermes gate, staging smoke/live-contract checks, component tests, and
 appliance tests. Any browser-specific incident URL should first be added as a
 new declarative case with non-secret markers and reviewed thresholds.
 
-The Reddit case currently has no valid relative baseline. Production CRW 1.2.0
-with Camofox 2.4.6 returns success containing Camofox's 52-character truncation
-placeholder, and repaired CRW correctly rejects that oversized result; Firecrawl
-Cloud refuses Reddit, so fallback cannot supply one either. Until the matrix gains
-a replacement heavy real-world case, a reviewer may judge Reddit on the candidate's
-absolute checks only, and must record the missing baseline in the review. See
+A case marked `"informational": true` is requested and recorded in full, but its
+reasons go to the artifact's `informational` list and cannot fail the gate. The
+Reddit case is informational: Reddit restricts anonymous and automated access,
+production CRW 1.2.0 with Camofox 2.4.6 returns success containing Camofox's
+52-character truncation placeholder, repaired CRW correctly rejects that oversized
+result, and Firecrawl Cloud refuses Reddit. The decisive heavy real-world case is a
+large JavaScript-rendered GitHub repository page. Do not mark a case informational
+to hide a regression on a site that tolerates automated access. See
 `docs/audits/2026-10-01-camofox-248-validation/`.
