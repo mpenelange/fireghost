@@ -70,6 +70,10 @@ pub async fn map(
         .unwrap_or(120)
         .min(300);
 
+    let narrows = !req.include_paths.is_empty()
+        || !req.exclude_paths.is_empty()
+        || req.search.as_deref().is_some_and(|s| !s.is_empty());
+
     let fut = discover_urls(DiscoverOptions {
         base_url: &req.url,
         max_depth,
@@ -84,11 +88,11 @@ pub async fn map(
         crawl_fallback,
         url_filter: state.url_filter.clone(),
         // Push the caller's limit INTO discovery so a large `limit` actually
-        // discovers that many URLs. The post-filter `truncate` below stays as a
-        // safety net (and trims when include/exclude/search narrow the set).
-        max_urls: req
-            .limit
-            .unwrap_or(crw_crawl::crawl::DEFAULT_MAX_DISCOVERED_URLS),
+        // discovers that many URLs. When include/exclude/search will narrow
+        // the set, discover at least the default amount instead: capping
+        // discovery at `limit` first would filter only the first few URLs
+        // (often matching none). The `truncate` below then applies `limit`.
+        max_urls: discovery_cap(req.limit, narrows),
         // Stop just before the backstop below and return partials, instead of
         // letting the backstop drop the future and lose every discovered URL.
         overall_deadline: crw_crawl::crawl::discovery_deadline(Duration::from_secs(timeout_secs)),
@@ -129,4 +133,38 @@ pub async fn map(
         success: true,
         links,
     }))
+}
+
+/// URLs to discover for a map request. `0` stays unbounded.
+fn discovery_cap(limit: Option<usize>, narrows: bool) -> usize {
+    let default = crw_crawl::crawl::DEFAULT_MAX_DISCOVERED_URLS;
+    match limit {
+        Some(limit) if limit == 0 || !narrows => limit,
+        Some(limit) => limit.max(default),
+        None => default,
+    }
+}
+
+#[cfg(test)]
+mod discovery_cap_tests {
+    use super::discovery_cap;
+    use crw_crawl::crawl::DEFAULT_MAX_DISCOVERED_URLS as DEFAULT;
+
+    #[test]
+    fn limit_bounds_discovery_without_filters() {
+        assert_eq!(discovery_cap(Some(5), false), 5);
+        assert_eq!(discovery_cap(None, false), DEFAULT);
+    }
+
+    #[test]
+    fn filters_discover_beyond_a_small_limit() {
+        assert_eq!(discovery_cap(Some(5), true), DEFAULT);
+        assert_eq!(discovery_cap(Some(DEFAULT + 1), true), DEFAULT + 1);
+    }
+
+    #[test]
+    fn zero_stays_unbounded() {
+        assert_eq!(discovery_cap(Some(0), true), 0);
+        assert_eq!(discovery_cap(Some(0), false), 0);
+    }
 }
