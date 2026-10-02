@@ -181,6 +181,9 @@ jobs:
     needs: [verify, validate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      router_digest: ${{ steps.promote.outputs.router_digest }}
+      crw_digest: ${{ steps.promote.outputs.crw_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -196,6 +199,7 @@ jobs:
           printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
       - uses: docker/setup-buildx-action@v3
       - name: Promote tested images
+        id: promote
         env:
           VERSION: ${{ needs.verify.outputs.version }}
           MINOR: ${{ needs.verify.outputs.minor }}
@@ -355,3 +359,38 @@ jobs:
           else
             echo "not moving latest backward"
           fi
+          printf 'router_digest=%s\ncrw_digest=%s\n' "$router_candidate" "$crw_candidate" >> "$GITHUB_OUTPUT"
+
+  publish-release:
+    # Runs only after both images are promoted, so a release page always
+    # describes something that shipped. GitHub and Forgejo accept the same
+    # create-release request under their API base URL.
+    needs: [verify, promote]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish release page
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          ROUTER_DIGEST: ${{ needs.promote.outputs.router_digest }}
+          CRW_DIGEST: ${{ needs.promote.outputs.crw_digest }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Fetch the annotated tag object; its message becomes the notes.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          python3 scripts/release_page.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release.json"
+          api="${GITHUB_API_URL:-$GITHUB_SERVER_URL/api/v1}"
+          status="$(curl -sS -o "$RUNNER_TEMP/release-response.json" -w '%{http_code}' -X POST \
+            -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            --data-binary @"$RUNNER_TEMP/release.json" "$api/repos/$GITHUB_REPOSITORY/releases")"
+          case "$status" in
+            201) echo "published release page for $GITHUB_REF_NAME" ;;
+            409 | 422) echo "release page for $GITHUB_REF_NAME already exists" ;;
+            *) echo "release page request failed with HTTP $status" >&2; cat "$RUNNER_TEMP/release-response.json" >&2; exit 1 ;;
+          esac

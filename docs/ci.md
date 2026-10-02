@@ -49,3 +49,4 @@ Forgejo-specific touchpoints, each a small edit when moving:
 | `validation.yaml` runner | `runs-on: validation` | `ubuntu-latest` or a self-hosted label |
 | `release.yaml` | hard-coded `git.firewire.cc/michael/*` images and source URL | parameterize like `validation.yaml`; only runs on release tags, so change it with a release |
 | Secrets | `REGISTRY_USERNAME`, `REGISTRY_TOKEN` | same names; `GITHUB_TOKEN` can push to ghcr.io |
+| `release.yaml` release page | `POST $GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases` with the automatic `GITHUB_TOKEN` (Forgejo API base `…/api/v1`) | unchanged; GitHub accepts the same request and needs the job's `contents: write` |
