@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-09-20T05:00:51.911977+00:00",
+  "host": "docker0",
+  "runDirectory": "/home/michael/fireghost-validation/20260920-upgrade-01",
+  "components": [
+    {
+      "service": "router",
+      "containerId": "24b48f99ff935de868f5a6b62998cad04a1af9a64d747d1fe2ccf7d170cf2bb7",
+      "imageId": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+      "repoDigests": [
+        "git.firewire.cc/michael/fireghost-router@sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a"
+      ],
+      "version": "1.0.0",
+      "revision": "c7a58561821496d33f7d46497665db63002022cd",
+      "startedAt": "2026-09-19T08:06:22.823007318Z",
+      "restartCount": 0,
+      "health": "healthy"
+    },
+    {
+      "service": "crw",
+      "containerId": "ed1ea057b82dee92121b59322e4f6ce54175d6a0a659b8ff4f0e09ceff9858fd",
+      "imageId": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+      "repoDigests": [
+        "git.firewire.cc/michael/fireghost-crw@sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b"
+      ],
+      "version": "1.2.0",
+      "revision": "c7a58561821496d33f7d46497665db63002022cd",
+      "startedAt": "2026-09-19T08:06:23.115726704Z",
+      "restartCount": 0,
+      "health": "healthy"
+    },
+    {
+      "service": "camofox",
+      "containerId": "b34023e4547ced5359fcc74b72a63ab44d725be11d101faf637d71d4c4a1bd00",
+      "imageId": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+      "repoDigests": [
+        "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7"
+      ],
+      "version": null,
+      "revision": null,
+      "startedAt": "2026-09-20T04:06:52.087977819Z",
+      "restartCount": 20,
+      "health": "healthy"
+    },
+    {
+      "service": "lightpanda",
+      "containerId": "63dfa568d571b5f1170acda587d4f00e4ea97c936e5a550f00fffb47a4d64ab0",
+      "imageId": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+      "repoDigests": [
+        "lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887"
+      ],
+      "version": null,
+      "revision": null,
+      "startedAt": "2026-09-19T08:06:23.622305308Z",
+      "restartCount": 0,
+      "health": "healthy"
+    }
+  ],
+  "configSha256": {
+    "crw.toml": "aa93fb11b19c17c65fa06ce8704e8ea7ae064122915dbf9422ac92663ac62469",
+    "router-entrypoint.sh": "e2c723b2000ec8010d36809ef9f9b61ecbcdf320472f86d6f6cdfef22e37eac0"
+  }
+}

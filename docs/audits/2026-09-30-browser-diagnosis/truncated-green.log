@@ -1,0 +1,361 @@
+   Compiling crw-core v1.2.0 (/src/crates/crw-core)
+   Compiling crw-extract v1.2.0 (/src/crates/crw-extract)
+   Compiling crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `test` profile [unoptimized] target(s) in 18.19s
+     Running unittests src/lib.rs (target/debug/deps/crw_renderer-210b529f77ea424a)
+
+running 193 tests
+test blocklist::tests::blocks_font_resource_type ... ok
+test blocklist::tests::blocks_doubleclick_host_case_insensitive ... ok
+test blocklist::tests::allows_document_resource_type ... ok
+test blocklist::tests::allows_stylesheet_by_default ... ok
+test blocklist::tests::blocks_image_resource_type ... ok
+test blocklist::tests::blocks_google_analytics_host ... ok
+test blocklist::tests::blocks_stylesheet_when_enabled ... ok
+test blocklist::tests::empty_blocklist_allows_everything ... ok
+test blocklist::tests::malformed_url_does_not_panic ... ok
+test breaker::tests::classify_outcome_tier_timeout_with_full_budget ... ok
+test breaker::tests::classify_outcome_deadline_clamped ... ok
+test breaker::tests::classify_outcome_truncated_success ... ok
+test breaker::tests::closed_allows_all ... ok
+test breaker::tests::deadline_clamped_does_not_trip ... ok
+test breaker::tests::does_not_trip_below_min_calls ... ok
+test breaker::tests::global_for_resolves_every_renderer_kind ... ok
+test breaker::tests::cancel_probe_decrements_admitted ... ok
+test breaker::tests::ignored_outcomes_do_not_advance_window ... ok
+test breaker::tests::cooldown_grows_with_ejection_count ... ok
+test breaker::tests::half_open_close_on_majority_success ... ok
+test breaker::tests::old_failures_age_out ... ok
+test breaker::tests::reset_clears_state ... ok
+test breaker::tests::ring_buffer_wraps_correctly ... ok
+test breaker::tests::half_open_reopen_on_minority_success ... ok
+test breaker::tests::single_failure_does_not_trip ... ok
+test breaker::tests::truncated_does_not_trip_by_default ... ok
+test breaker::tests::registry_has_breaker_for_chrome_proxy ... ok
+test browser_pool::tests::acquire_release_happy_path ... ok
+test breaker::tests::trips_when_window_majority_fails ... ok
+test browser_pool::tests::close_target_failure_marks_dead_and_skips_dispose ... ok
+test browser_pool::tests::drop_without_release_marks_dead_and_decrements ... ok
+test browser_pool::tests::release_skips_close_target_when_none ... ok
+test browser_pool::tests::shutdown_drains_idle_slots ... ok
+test browser_pool::tests::shutdown_refuses_new_acquires ... ok
+test browser_pool::tests::slot_reuse_terminator_resets ... ok
+test browser_pool::tests::take_conn_state_matrix ... ok
+test cdp::tests::auth_response_cancels_when_no_creds ... ok
+test cdp::tests::auth_response_no_password_leak_on_cancel ... ok
+test cdp::tests::browserless_named_path_is_direct_ws ... ok
+test cdp::tests::auth_response_provides_credentials_when_creds_set ... ok
+test cdp::tests::browserless_token_url_is_direct_ws ... ok
+test cdp::tests::capturable_mime_recognises_json_variants ... ok
+test cdp::tests::capturable_mime_rejects_uninteresting_types ... ok
+test cdp::tests::first_tick_never_stable ... ok
+test cdp::tests::identical_sizes_are_stable_when_placeholder_gone ... ok
+test cdp::tests::large_delta_outside_tolerance_is_unstable ... ok
+test cdp::tests::lightpanda_safe_ua_strips_mozilla_keeps_chrome ... ok
+test cdp::tests::plain_lightpanda_url_is_not_direct_ws ... ok
+test cdp::tests::placeholder_still_present_blocks_stability ... ok
+test cdp::tests::shrink_past_tolerance_is_unstable ... ok
+test cdp::tests::small_delta_within_tolerance_is_stable ... ok
+test cdp::tests::small_page_uses_500_byte_floor ... ok
+test cdp::tests::spa_not_ready_when_selector_missing ... ok
+test cdp::tests::spa_not_ready_when_text_below_threshold ... ok
+test cdp::tests::spa_ready_at_or_above_threshold ... ok
+test cdp::tests::tracker_not_idle_during_quiet_period ... ok
+test cdp::tests::tracker_not_idle_with_inflight_request ... ok
+test cdp::tests::tracker_treats_negative_inflight_as_idle ... ok
+test cdp::tests::tracker_starts_idle_after_quiet_period ... ok
+test cdp::tests::user_agent_default_empty_and_builder_sets_it ... ok
+test cdp_conn::tests::dispatch_broadcasts_event_without_id ... ok
+test cdp_conn::tests::dispatch_drops_response_with_no_pending_entry ... ok
+test cdp_conn::tests::dispatch_forwards_error_to_pending ... ok
+test cdp_conn::tests::dispatch_routes_response_by_id ... ok
+test cdp_conn::tests::resolve_ws_host_ip_is_noop ... ok
+test cdp_conn::tests::resolve_ws_host_localhost_becomes_ip ... ok
+test detector::tests::blog_post_about_error_is_not_failed_render ... ok
+test detector::tests::cf_large_real_page_with_footer_mention_not_flagged ... ok
+test detector::tests::cf_managed_token_detected ... ok
+test detector::tests::cf_mitigated_header_challenge ... ok
+test detector::tests::cf_mitigated_header_other_values ... ok
+test detector::tests::cf_ray_id_alone_does_not_trigger ... ok
+test detector::tests::cf_single_weak_marker_not_enough ... ok
+test detector::tests::cf_strong_marker_beyond_scan_limit_not_flagged ... ok
+test detector::tests::cf_strong_marker_detected ... ok
+test detector::tests::cf_strong_marker_detected_on_large_page ... ok
+test detector::tests::cf_two_weak_markers_trigger ... ok
+test detector::tests::cloudfront_403_block_page_is_bot_wall ... ok
+test detector::tests::detects_legacy_react_error_decoder_url ... ok
+test detector::tests::detects_loading_placeholder_text ... ok
+test detector::tests::detects_nextjs_app_router_error_boundary ... ok
+test detector::tests::detects_nextjs_pages_router_error ... ok
+test detector::tests::detects_react_minified_error ... ok
+test detector::tests::detects_spa_shell ... ok
+test detector::tests::detects_spinner_only_body ... ok
+test detector::tests::empty_body_is_placeholder ... ok
+test detector::tests::generic_403_with_block_phrasing_is_bot_wall ... ok
+test detector::tests::healthy_page_is_not_failed_render ... ok
+test detector::tests::huge_page_is_not_scanned ... ok
+test detector::tests::inline_executable_script_warrants_browser ... ok
+test detector::tests::json_api_error_without_body_is_not_bot_wall ... ok
+test detector::tests::json_ld_only_does_not_warrant_browser ... ok
+test detector::tests::large_page_never_placeholder ... ok
+test cdp::tests::ws_fetch_guard_reaps_target_on_cancel ... ok
+test detector::tests::legitimate_blog_about_cloudfront_is_not_bot_wall ... ok
+test detector::tests::logo_alt_loading_on_real_page_not_placeholder ... ok
+test detector::tests::large_ssr_page_with_body_close_past_check_window_not_thin ... ok
+test detector::tests::omitted_body_close_tag_not_placeholder ... ok
+test detector::tests::real_content_not_placeholder ... ok
+test detector::tests::real_wikipedia_article_is_not_bot_wall ... ok
+test detector::tests::spinner_class_in_script_body_ignored ... ok
+test detector::tests::static_page_no_js_needed ... ok
+test detector::tests::thin_meta_refresh_redirect_warrants_browser ... ok
+test detector::tests::thin_shell_with_script_bundle_warrants_browser ... ok
+test detector::tests::thin_static_page_does_not_warrant_browser ... ok
+test detector::tests::vendor_akamai_pardon_our_interruption_detected ... ok
+test detector::tests::vendor_akamai_reference_id_detected ... ok
+test detector::tests::vendor_block_clean_page_returns_none ... ok
+test detector::tests::vendor_block_oversized_page_returns_none ... ok
+test detector::tests::vendor_cloudflare_challenge_form_detected ... ok
+test detector::tests::vendor_cloudflare_challenge_platform_detected ... ok
+test detector::tests::vendor_cloudflare_error_code_detected ... ok
+test detector::tests::vendor_cloudfront_block_detected ... ok
+test detector::tests::vendor_datadome_captcha_domain_detected ... ok
+test detector::tests::vendor_imperva_incapsula_resource_detected ... ok
+test detector::tests::vendor_legit_blog_about_cloudflare_is_none ... ok
+test detector::tests::vendor_perimeterx_pxappid_detected ... ok
+test detector::tests::vendor_sucuri_firewall_brand_detected ... ok
+test detector::tests::wikimedia_http200_block_shell_is_bot_wall ... ok
+test detector::tests::multibyte_char_straddling_detector_window_does_not_panic ... ok
+test browser_pool::tests::drop_reaps_target_and_context ... ok
+test egress::tests::latch_is_keyed_by_etld_plus_one ... ok
+test egress::tests::note_block_latches_the_host ... ok
+test egress::tests::other_hosts_are_unaffected ... ok
+test egress::tests::unknown_host_is_not_latched ... ok
+test host_limiter::tests::acquire_returns_permit_and_sleep ... ok
+test host_limiter::tests::per_host_cap_serializes ... ok
+test host_limiter::tests::rate_limiter_enforces_interval ... ok
+test host_limiter::tests::rate_limiter_negative_rps_is_unlimited ... ok
+test host_limiter::tests::rate_limiter_zero_rps_is_unlimited ... ok
+test http_only::tests::charset_from_content_type_parses_label ... ok
+test browser_pool::tests::shutdown_force_closes_leaked_guard ... ok
+test http_only::tests::connection_failure_catches_connection_refused ... ok
+test egress::tests::latch_expires_so_direct_is_reprobed ... ok
+test egress::tests::reblock_after_expiry_relatches ... ok
+test http_only::tests::connection_failure_catches_connection_reset ... ok
+test http_only::tests::connection_failure_ignores_dns_failure ... ok
+test http_only::tests::connection_reset_is_retried_through_proxy ... ok
+test http_only::tests::connection_failure_catches_connect_timeout ... ok
+test http_only::tests::decode_bogus_header_falls_through_to_meta_then_utf8 ... ok
+test http_only::tests::decode_latin1_via_header_no_replacement_char ... ok
+test http_only::tests::decode_utf8_unchanged ... ok
+test http_only::tests::decode_windows1254_via_meta_sniff ... ok
+test http_only::tests::connection_failure_without_proxy_retries_once ... ok
+test http_only::tests::should_arm_proxy_truth_table ... ok
+test preference::tests::case_insensitive ... ok
+test preference::tests::collapses_subdomains_to_registrable ... ok
+test preference::tests::handles_co_uk_etld ... ok
+test preference::tests::host_preferences_normalize_collapses_subdomain ... ok
+test preference::tests::host_preferences_promotes_after_threshold ... ok
+test preference::tests::host_preferences_reset_clears_state ... ok
+test preference::tests::ipv4_distinct_addresses_distinct_keys ... ok
+test preference::tests::ipv4_returns_raw ... ok
+test preference::tests::ipv6_bracketed_returns_unbracketed ... ok
+test preference::tests::keeps_shopify_tenant ... ok
+test preference::tests::keeps_vercel_tenant ... ok
+test preference::tests::normalizes_www_prefix ... ok
+test preference::tests::renderer_stats_promotes_on_threshold ... ok
+test preference::tests::renderer_stats_strict_predicate_excludes_cf ... ok
+test preference::tests::renderer_stats_success_clears_promotion ... ok
+test preference::tests::renderer_stats_window_capped ... ok
+test preference::tests::trailing_dot_stripped ... ok
+test http_only::tests::proxy_connect_failure_is_not_blamed_on_the_caller ... ok
+test http_only::tests::connection_reset_without_proxy_still_fails ... ok
+test http_only::tests::connection_failure_ignores_read_timeout ... ok
+test tests::antibot_block_returns_as_success_when_escalation_disabled ... ok
+test tests::auto_mode_preserves_origin_404_when_camofox_status_is_synthetic ... ok
+test tests::degenerate_budget_skips_js_tier_and_preserves_timeout ... ok
+test tests::auto_promoted_host_tries_chrome_first ... ok
+test tests::breaker_skipped_renderer_falls_through_to_next ... ok
+test tests::failover_concats_warnings_across_two_failed_renderers ... ok
+test tests::failover_skips_renderer_that_returns_failed_render ... ok
+test tests::failover_surfaces_warning_when_only_failed_render_available ... ok
+test tests::fetch_pinned_renderer_failure_propagates ... ok
+test tests::fetch_with_pinned_renderer_filters_pool ... ok
+test tests::healthy_budget_still_invokes_js_tier ... ok
+test tests::fetch_with_pinned_renderer_unknown_returns_error ... ok
+test tests::fetch_with_renderer_auto_uses_full_chain ... ok
+test tests::js_tier_accepts_200_clean_response ... ok
+test tests::js_tier_escalates_on_403_status ... ok
+test tests::new_mode_auto_no_endpoints_ok_http_only ... ok
+test tests::js_tier_escalates_on_vendor_block_with_200 ... ok
+test tests::new_mode_auto_with_lightpanda_endpoint_builds_lightpanda ... ok
+test tests::new_mode_lightpanda_without_endpoint_errors ... ok
+test tests::js_tier_escalates_to_chrome_proxy_on_antibot_block ... ok
+test tests::new_mode_none_ok_no_js_renderers ... ok
+test tests::new_render_js_default_stored ... ok
+test tests::observed_chrome_status_is_not_overwritten_by_origin_404 ... ok
+test tests::unreachable_origin_beats_js_renderer_error ... ok
+test tests::promoted_host_escalates_chrome_to_chrome_proxy_not_lightpanda ... ok
+test tests::user_pinned_decision_records_credit_and_kind ... ok
+test tests::budget_skip_overrides_an_earlier_renderer_error ... ok
+test tests::user_pinned_failed_render_emits_warning ... ok
+
+test result: ok. 193 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.14s
+
+     Running tests/browser_pool_real_chrome.rs (target/debug/deps/browser_pool_real_chrome-8003ff3222938869)
+
+running 8 tests
+test t0_cookie_isolation_per_release ... ignored
+test t1_local_storage_isolation_per_release ... ignored
+test t2_stress_200_cycles ... ignored
+test t3_conn_kill_recovers ... ignored
+test t4_drain_under_load ... ignored
+test t4b_drain_with_leaked_guard ... ignored
+test t6_close_target_normal_path ... ignored
+test t7_permit_accounting_under_shutdown ... ignored
+
+test result: ok. 0 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/browser_pool_spike.rs (target/debug/deps/browser_pool_spike-101ac99e6c2713c6)
+
+running 3 tests
+test spike_concurrent_contexts ... ignored
+test spike_dispose_with_open_target ... ignored
+test spike_loop_variant_100x ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/camofox_tests.rs (target/debug/deps/camofox_tests-460076f80eae3be4)
+
+running 7 tests
+test fetch_fails_when_deadline_expired ... ok
+test fetch_accepts_short_html_without_optional_truncation_field ... ok
+test fetch_rejects_truncated_evaluation_placeholder ... ok
+test name_and_js_support ... ok
+test fetch_returns_evaluated_html ... ok
+test is_available_reads_health ... ok
+test fetch_bounded_by_deadline_not_client_timeout ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running tests/cdp_polling_tests.rs (target/debug/deps/cdp_polling_tests-c92f3e71a720c994)
+
+running 2 tests
+test explicit_wait_for_opts_out_of_polling ... ignored, requires CRW_CDP_WS_URL pointing to a live Chrome/CDP endpoint
+test polls_until_delayed_content_appears ... ignored, requires CRW_CDP_WS_URL pointing to a live Chrome/CDP endpoint
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/detector_tests.rs (target/debug/deps/detector_tests-b587d26f9e195dff)
+
+running 27 tests
+test bot_wall_dnb_style ... ok
+test bot_wall_scanpy_style ... ok
+test bot_wall_verify_human ... ok
+test detector_angular_ng_app ... ok
+test detector_astro_marker ... ok
+test detector_body_text_above_threshold_with_indicators ... ok
+test bot_wall_false_positive_long_article ... ok
+test detector_gatsby_marker ... ok
+test detector_empty_body_with_root_div ... ok
+test detector_minimal_html_no_body ... ok
+test detector_next_app ... ok
+test detector_long_body_many_scripts_not_spa ... ok
+test detector_nextjs_data_island_marker ... ok
+test detector_nuxt_app ... ok
+test detector_noscript_enable_javascript ... ok
+test detector_react_root ... ok
+test detector_remix_marker ... ok
+test detector_short_body_many_scripts ... ok
+test detector_sveltekit_marker ... ok
+test detector_static_page_plenty_of_text ... ok
+test detector_three_scripts_not_enough_for_spa ... ok
+test storybook_shell_triggers_js_render ... ok
+test storybook_in_script_string_no_false_positive ... ok
+test thin_html_short_body_triggers ... ok
+test thin_markdown_floor_is_100_bytes ... ok
+test thin_html_substantive_page_not_thin ... ok
+test detector_only_checks_first_50kb ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/egress_latch.rs (target/debug/deps/egress_latch-0788452666778b65)
+
+running 2 tests
+test latch_engages_on_the_map_per_page_budget ... ok
+test latched_host_falls_back_to_direct_when_the_proxy_is_dead ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/egress_latch_no_proxy.rs (target/debug/deps/egress_latch_no_proxy-4df200759a85961f)
+
+running 1 test
+test latch_is_inert_when_no_proxy_is_configured ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/egress_latch_proxy_block.rs (target/debug/deps/egress_latch_proxy_block-2a3eeea8f24ca091)
+
+running 1 test
+test latched_host_falls_back_to_direct_when_the_proxy_walls_it_403 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/egress_latch_proxy_cf200.rs (target/debug/deps/egress_latch_proxy_cf200-0126265850cfd6ea)
+
+running 1 test
+test latched_host_falls_back_to_direct_on_a_cf_challenge_served_as_200 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/egress_latch_scrape_budget.rs (target/debug/deps/egress_latch_scrape_budget-0d8995ac37892ae4)
+
+running 1 test
+test latch_does_not_engage_on_the_scrape_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/http_only_tests.rs (target/debug/deps/http_only_tests-5471497d613a42cc)
+
+running 6 tests
+test http_fetcher_does_not_retry_500 ... ok
+test http_fetcher_decodes_gzip_and_brotli_responses ... ok
+test http_fetcher_gives_up_after_one_retry_on_502 ... ok
+test http_fetcher_retries_502_then_succeeds ... ok
+test http_fetcher_retries_on_connect_refused ... ok
+test http_fetcher_enforces_deadline_against_slow_origin ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+   Doc-tests crw_renderer
+
+running 1 test
+test crates/crw-renderer/src/lib.rs - (line 19) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.45s; merged doctests compilation took 0.45s
+    Checking tracing-core v0.1.36
+    Checking anstream v1.0.0
+    Checking chrono v0.4.45
+    Checking num v0.4.3
+    Checking fraction v0.15.4
+    Checking env_logger v0.11.11
+    Checking tracing v0.1.44
+    Checking h2 v0.4.19
+    Checking tower v0.5.3
+    Checking axum-core v0.5.6
+    Checking lopdf v0.45.0
+    Checking tower-http v0.6.11
+    Checking hyper v1.11.1
+    Checking pdf-inspector v1.21.0
+    Checking hyper-util v0.1.20
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking axum v0.8.9
+    Checking reqwest v0.13.5
+    Checking jsonschema v0.28.3
+    Checking crw-core v1.2.0 (/src/crates/crw-core)
+    Checking wiremock v0.6.5
+    Checking crw-extract v1.2.0 (/src/crates/crw-extract)
+    Checking crw-renderer v1.2.0 (/src/crates/crw-renderer)
+    Finished `dev` profile [unoptimized] target(s) in 13.87s

@@ -22,6 +22,44 @@ import (
 	flightpkg "web-retrieval/internal/singleflight"
 )
 
+func TestMCPDisabledReturnsNotFoundWithoutReadingBody(t *testing.T) {
+	body := &failOnReadBody{}
+	request := httptest.NewRequest(http.MethodPost, "/mcp", body)
+	recorder := httptest.NewRecorder()
+	router.NewHandler(router.Config{MCPEnabled: false, APIKey: "secret"}, router.Dependencies{}).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+	if body.read {
+		t.Fatal("disabled MCP route read request body")
+	}
+}
+
+func TestMCPEnabledRequiresConfiguredBearer(t *testing.T) {
+	handler := router.NewHandler(router.Config{MCPEnabled: true, APIKey: "secret"}, router.Dependencies{})
+	for _, authorization := range []string{"", "Bearer wrong", "Basic secret"} {
+		request := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(`{}`))
+		request.Header.Set("Authorization", authorization)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("authorization %q status = %d, want 401", authorization, recorder.Code)
+		}
+		if got := recorder.Header().Get("WWW-Authenticate"); got != "Bearer" {
+			t.Fatalf("WWW-Authenticate = %q, want Bearer", got)
+		}
+	}
+}
+
+type failOnReadBody struct{ read bool }
+
+func (b *failOnReadBody) Read([]byte) (int, error) {
+	b.read = true
+	return 0, errors.New("unexpected read")
+}
+
+func (*failOnReadBody) Close() error { return nil }
+
 func TestMetricsEndpointIsUnauthenticatedAndReportsRequestStatusAndDuration(t *testing.T) {
 	registry := metricspkg.NewRegistry()
 	handler := router.NewHandler(router.Config{APIKey: "secret"}, router.Dependencies{Metrics: registry})
@@ -1883,6 +1921,7 @@ func TestScrapeNon2xxFallbackExcludesTerminalStatusesAndErrors(t *testing.T) {
 		{name: "unprocessable connection reset", status: 422, body: `{"success":false,"error":"connection reset by peer"}`, wantCloudCall: true},
 		{name: "unprocessable invalid URL", status: 422, body: `{"success":false,"error":"Invalid URL supplied"}`},
 		{name: "unprocessable robots", status: 422, body: `{"success":false,"error":"Blocked by robots.txt"}`},
+		{name: "unprocessable login required", status: 422, body: `{"success":false,"error":"Login required: reddit.com served a sign-in page instead of the requested content","error_code":"login_required"}`},
 		{name: "robots", status: 403, body: `{"success":false,"error":"Blocked by robots.txt"}`},
 		{name: "invalid URL", status: 500, body: `{"success":false,"error":"Invalid URL supplied"}`},
 	}

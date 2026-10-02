@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c AS test
+FROM golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS test
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
@@ -11,9 +11,9 @@ ARG VERSION=dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags="-s -w -buildid=" -o /out/router ./cmd/router
+    -ldflags="-s -w -buildid= -X main.version=$VERSION" -o /out/router ./cmd/router
 
-FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1 AS runtime
+FROM alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS runtime
 RUN apk add --no-cache ca-certificates wget \
     && addgroup -S -g 10001 router \
     && adduser -S -D -H -u 10001 -G router router \

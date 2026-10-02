@@ -44,6 +44,14 @@ class RootDeploymentContractTest(unittest.TestCase):
         ):
             self.assertRegex(env, rf"(?m)^{setting}={re.escape(default)}$")
 
+    def test_mcp_is_disabled_by_default_and_uses_existing_private_route(self):
+        text = COMPOSE.read_text(encoding="utf-8")
+        env = ENV_EXAMPLE.read_text(encoding="utf-8")
+        self.assertIn("MCP_ENABLED=${MCP_ENABLED:-false}", text)
+        self.assertRegex(env, r"(?m)^MCP_ENABLED=false$")
+        self.assertIn('Path(`${API_PATH_PREFIX:-/web/api}/mcp`)', text)
+        self.assertIn("web-retrieval-private,web-retrieval-strip", text)
+
     def test_public_compose_is_pull_only_private_and_versioned(self):
         text = COMPOSE.read_text(encoding="utf-8")
         self.assertNotRegex(text, r"(?m)^\s+build:")

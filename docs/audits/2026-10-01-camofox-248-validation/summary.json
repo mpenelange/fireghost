@@ -1,0 +1,125 @@
+{
+  "investigation": "Camofox 2.4.8 browser-pin validation in Forgejo CI",
+  "dateUTC": "2026-10-01",
+  "branch": "chore/upstream-refresh-review",
+  "repositoryHead": "649e637a0ec4f2eff7ddbfbac2f955fb89331f25",
+  "ci": {
+    "workflow": ".forgejo/workflows/validation.yaml",
+    "runNumber": 80,
+    "artifactURL": "https://git.firewire.cc/michael/fireghost/actions/runs/84/artifacts/1",
+    "build": "build-crw on an ubuntu-latest build runner; pushed validation image",
+    "validationRunner": "ci-validation-0 (label: validation)",
+    "crwImage": "git.firewire.cc/michael/fireghost-crw@sha256:d195d968b59e87b8927ca0d0a797ca60976f24c07a6d6ceb018245aaa423c2d1",
+    "control": {
+      "camofox": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+      "version": "2.4.6"
+    },
+    "candidate": {
+      "camofox": "ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55",
+      "version": "2.4.8"
+    },
+    "isolation": "Both stacks use the same candidate CRW, router build, LightPanda pin, and configuration; only the Camofox image differs. ROUTER_SCRAPE_TTL=0s; cloud key empty and cloud credits zero."
+  },
+  "results": {
+    "cold": {
+      "gatePassed": false,
+      "candidateChecksPassed": true,
+      "controlFailures": [
+        "camofox-real-world: HTTP 500"
+      ]
+    },
+    "warm": {
+      "gatePassed": false,
+      "candidateChecksPassed": true,
+      "controlFailures": [
+        "camofox-real-world: HTTP 500"
+      ]
+    },
+    "relativeComparisonsPassed": [
+      "lightpanda-static",
+      "camofox-static",
+      "lightpanda-javascript",
+      "camofox-javascript",
+      "lightpanda-redirect"
+    ],
+    "reddit": {
+      "candidateMarkdownChars": {
+        "cold": 12127,
+        "warm": 14439
+      },
+      "candidateLatencySeconds": {
+        "cold": 8.167,
+        "warm": 6.813
+      },
+      "controlError": "HTTPError (status 500; response body not retained by the gate)",
+      "baselineValid": false
+    },
+    "containers": "No restarts or OOM kills in either stack",
+    "navigationHang": "Not observed with 2.4.8"
+  },
+  "redditBaseline": {
+    "finding": "No valid Reddit baseline exists. Production CRW returns success with a 52-character Camofox truncation placeholder (production-reddit.json). The fixed CRW correctly rejects the same oversized 2.4.6 result, consistent with the control's HTTP 500; the gate did not retain the error body, so that cause is inferred, not proven.",
+    "externalContext": "Reddit announced on 2026-09-30 the end of public API access by March 2027 and RSS on 2026-11-13, and restricted anonymous old.reddit access. The Reddit case is expected to become unreliable for reasons outside Fireghost.",
+    "proposedDisposition": "Judge the Reddit case on absolute candidate checks (content floor, markers, renderer provenance) and record the missing baseline; all other cases pass relative comparison."
+  },
+  "limits": [
+    "A passing candidate is evidence for review, not authorization to change an image pin or the production deployment.",
+    "Reddit content is live and varies between runs.",
+    "Rejecting truncated documents prevents false success but does not recover oversized pages; bounded document transfer remains future work."
+  ],
+  "operations": {
+    "productionDeploymentChanged": false,
+    "repositoryImagePinsChanged": false,
+    "observedPinDrift": "dev/stack.lock.json records crw-camofox@sha256:3898cae0...; production runs fireghost-crw@sha256:9d1428de... via the mutable latest tag."
+  },
+  "evidence": [
+    "browser-cold.json",
+    "browser-warm.json",
+    "containers.txt",
+    "production-reddit.json"
+  ],
+  "followUpRun": {
+    "runNumber": 84,
+    "repositoryHead": "3be5cd2",
+    "artifactURL": "https://git.firewire.cc/michael/fireghost/actions/runs/88/artifacts/2",
+    "changes": [
+      "CRW reports known sign-in walls as login_required (422)",
+      "Reddit case informational; GitHub rust-lang/rust page is the decisive heavy Camofox case"
+    ],
+    "crwImage": "git.firewire.cc/michael/fireghost-crw@sha256:0e6bf0210981b772d7d5e84e5c1b01c02b0f9c8a61b534e6bf9890832e6d6ec6",
+    "gatePassed": {
+      "cold": true,
+      "warm": true
+    },
+    "decisiveRealWorld": {
+      "case": "camofox-real-world (github.com/rust-lang/rust)",
+      "controlChars": 113401,
+      "candidateChars": 113401,
+      "candidateLatencySeconds": {
+        "cold": 4.07,
+        "warm": 3.922
+      }
+    },
+    "redditInformational": {
+      "cold": {
+        "controlChars": 13463,
+        "candidate": "HTTP 500 (body not retained)"
+      },
+      "warm": {
+        "controlChars": 12090,
+        "candidateChars": 13424
+      }
+    },
+    "observation": "Reddit outcomes flip between runs and sides (run 80: control failed; run 84 cold: candidate failed), consistent with Reddit serving different feed sizes around Camofox's 1 MiB serialization limit. The 500 is not a login wall (that is now 422).",
+    "containers": "No restarts or OOM kills in either stack",
+    "evidence": [
+      "run-84/browser-cold.json",
+      "run-84/browser-warm.json",
+      "run-84/containers.txt"
+    ]
+  },
+  "additionalFindings": [
+    "Production also returns the 52-character truncation placeholder as success for en.wikipedia.org/wiki/Rust_(programming_language) via Camofox, so the truncation defect affects mainstream large pages, not only Reddit.",
+    "Production Camofox 2.4.6: closing the last tab leaves Firefox without a window; new tabs fail with 'Browser.newPage: window is null' (HTTP 500 through CRW) for about 8 s until the persistent context is recycled. Triggered by back-to-back requests during this review; production recovered without a restart. Its lifetime restart count was 15 with a restart at 23:12 UTC before any review request."
+  ]
+}

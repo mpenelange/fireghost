@@ -56,6 +56,9 @@ pub struct V2Metadata {
     pub source_url: String,
     pub url: String,
     pub status_code: u16,
+    /// Renderer provenance from the engine, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rendered_with: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     /// Resolved proxy tier ("basic" | "stealth"). v2 always reports one.
@@ -88,6 +91,7 @@ pub fn to_v2_document(data: ScrapeData, proxy_used: &str, scrape_id: String) -> 
         source_url: m.source_url.clone(),
         url: m.source_url.clone(),
         status_code: m.status_code,
+        rendered_with: m.rendered_with.clone(),
         content_type: data.content_type.clone(),
         proxy_used: proxy_used.to_string(),
         cache_state: "miss".to_string(),
@@ -408,6 +412,33 @@ mod tests {
         assert_eq!(p.status, "scraping");
         // SDK must keep polling forward even though we returned all buffered docs.
         assert!(p.next.is_some());
+    }
+
+    #[test]
+    fn v2_metadata_preserves_renderer_provenance() {
+        for renderer in ["camofox", "cdp", "http"] {
+            let mut data = fake_doc("https://example.com");
+            data.metadata.rendered_with = Some(renderer.to_string());
+
+            let native = serde_json::to_value(&data).unwrap();
+            let doc = to_v2_document(data, "basic", "id".to_string());
+            let v2 = serde_json::to_value(&doc).unwrap();
+
+            assert_eq!(native["metadata"]["renderedWith"], renderer);
+            assert_eq!(v2["metadata"]["renderedWith"], renderer);
+            assert!(v2["metadata"].get("rendered_with").is_none());
+        }
+    }
+
+    #[test]
+    fn v2_metadata_omits_absent_renderer_provenance() {
+        let data = fake_doc("https://example.com");
+        let native = serde_json::to_value(&data).unwrap();
+        let doc = to_v2_document(data, "basic", "id".to_string());
+        let v2 = serde_json::to_value(&doc).unwrap();
+
+        assert!(native["metadata"].get("renderedWith").is_none());
+        assert!(v2["metadata"].get("renderedWith").is_none());
     }
 
     #[test]

@@ -34,3 +34,19 @@ func TestRegistryFormatsPrometheusTextWithFixedLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistryReportsMCPRequestsAndDuration(t *testing.T) {
+	registry := metrics.NewRegistry()
+	registry.IncRequest(metrics.EndpointMCP, metrics.Status2xx)
+	registry.ObserveRequestDuration(metrics.EndpointMCP, 250*time.Millisecond)
+	text := registry.PrometheusText()
+	for _, want := range []string{
+		`web_retrieval_requests_total{endpoint="mcp",status_class="2xx"} 1`,
+		`web_retrieval_request_duration_seconds_count{endpoint="mcp"} 1`,
+		`web_retrieval_request_duration_seconds_sum{endpoint="mcp"} 0.25`,
+	} {
+		if !strings.Contains(text, want+"\n") {
+			t.Errorf("metrics output missing %q:\n%s", want, text)
+		}
+	}
+}

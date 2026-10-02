@@ -14,6 +14,7 @@ services:
       - FIRECRAWL_CLOUD_API_KEY=${FIRECRAWL_CLOUD_API_KEY:-}
       - FIRECRAWL_ENABLED=${FIRECRAWL_ENABLED:-false}
       - ROUTER_API_KEY=${ROUTER_API_KEY:?set ROUTER_API_KEY in .env}
+      - MCP_ENABLED=${MCP_ENABLED:-false}
       - ROUTER_CACHE_DIR=/data/cache
       - ROUTER_LEDGER_PATH=/data/budget.json
       - ROUTER_SEARCH_TTL=${ROUTER_SEARCH_TTL:-15m}
@@ -42,7 +43,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
-      traefik.http.routers.web-retrieval.rule: "Host(`${API_HOST:-api.firewire.cc}`) && (Path(`${API_PATH_PREFIX:-/web/api}/v2/search`) || Path(`${API_PATH_PREFIX:-/web/api}/v2/scrape`))"
+      traefik.http.routers.web-retrieval.rule: "Host(`${API_HOST:-api.firewire.cc}`) && (Path(`${API_PATH_PREFIX:-/web/api}/v2/search`) || Path(`${API_PATH_PREFIX:-/web/api}/v2/scrape`) || Path(`${API_PATH_PREFIX:-/web/api}/mcp`))"
       traefik.http.routers.web-retrieval.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
       traefik.http.routers.web-retrieval.tls: "true"
       traefik.http.routers.web-retrieval.tls.certresolver: "${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}"

@@ -1,0 +1,767 @@
+{
+  "auditDate": "2026-09-19",
+  "source": "https://api.osv.dev/v1/querybatch",
+  "queryCount": 525,
+  "cratesIoQueryCount": 523,
+  "scope": "Version-level matches, not reachability confirmation; marked is declared minimum, not installed resolution",
+  "matches": [
+    {
+      "query": {
+        "package": {
+          "name": "anyhow",
+          "ecosystem": "crates.io"
+        },
+        "version": "1.0.102"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0190",
+          "modified": "2026-06-29T14:15:03.650725Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "aws-lc-sys",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.38.0"
+      },
+      "matches": [
+        {
+          "id": "GHSA-394x-vwmw-crm3",
+          "modified": "2026-09-10T03:50:36.682059Z",
+          "aliases": [
+            "RUSTSEC-2026-0044"
+          ]
+        },
+        {
+          "id": "GHSA-9f94-5g5w-gf6r",
+          "modified": "2026-09-10T03:50:38.508589Z",
+          "aliases": [
+            "CVE-2026-4428",
+            "RUSTSEC-2026-0042",
+            "RUSTSEC-2026-0048"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0044",
+          "modified": "2026-03-20T17:15:07.834445Z",
+          "aliases": [
+            "GHSA-394x-vwmw-crm3"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0048",
+          "modified": "2026-03-20T17:26:22.199786Z",
+          "aliases": [
+            "CVE-2026-4428",
+            "GHSA-9f94-5g5w-gf6r",
+            "RUSTSEC-2026-0042"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "crossbeam-epoch",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.9.18"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0204",
+          "modified": "2026-07-06T22:30:04.159269Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "event-listener",
+          "ecosystem": "crates.io"
+        },
+        "version": "5.4.1"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0221",
+          "modified": "2026-07-31T12:15:04.629484Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "h2",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.4.13"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0258",
+          "modified": "2026-08-18T08:30:03.308019Z",
+          "aliases": [
+            "GHSA-q83h-524g-xf6h"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "lopdf",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.41.0"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0187",
+          "modified": "2026-06-26T12:16:12.422905Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "number_prefix",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.4.0"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2025-0119",
+          "modified": "2025-11-18T08:13:56Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "protobuf",
+          "ecosystem": "crates.io"
+        },
+        "version": "2.28.0"
+      },
+      "matches": [
+        {
+          "id": "GHSA-2gh3-rmm4-6rq5",
+          "modified": "2026-09-10T03:50:06.154902Z",
+          "aliases": [
+            "CVE-2025-53605",
+            "RUSTSEC-2024-0437"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2024-0437",
+          "modified": "2026-02-04T02:24:04.262379Z",
+          "aliases": [
+            "CVE-2025-53605",
+            "GHSA-2gh3-rmm4-6rq5"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "quinn-proto",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.11.13"
+      },
+      "matches": [
+        {
+          "id": "GHSA-4w2j-m93h-cj5j",
+          "modified": "2026-09-10T03:51:10.288925Z",
+          "aliases": [
+            "CVE-2026-25800",
+            "RUSTSEC-2026-0185"
+          ]
+        },
+        {
+          "id": "GHSA-6xvm-j4wr-6v98",
+          "modified": "2026-09-10T03:50:37.796449Z",
+          "aliases": [
+            "CVE-2026-31812",
+            "RUSTSEC-2026-0037"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0037",
+          "modified": "2026-03-14T07:30:14.675976Z",
+          "aliases": [
+            "CVE-2026-31812",
+            "GHSA-6xvm-j4wr-6v98"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0185",
+          "modified": "2026-07-25T06:55:52Z",
+          "aliases": [
+            "CVE-2026-25800",
+            "GHSA-4w2j-m93h-cj5j"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "rand",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.8.5"
+      },
+      "matches": [
+        {
+          "id": "GHSA-cq8v-f236-94qc",
+          "modified": "2026-09-10T03:50:43.958966Z",
+          "aliases": [
+            "RUSTSEC-2026-0097"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0097",
+          "modified": "2026-07-17T16:00:04.554426Z",
+          "aliases": [
+            "GHSA-cq8v-f236-94qc"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "rand",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.9.2"
+      },
+      "matches": [
+        {
+          "id": "GHSA-cq8v-f236-94qc",
+          "modified": "2026-09-10T03:50:43.958966Z",
+          "aliases": [
+            "RUSTSEC-2026-0097"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0097",
+          "modified": "2026-07-17T16:00:04.554426Z",
+          "aliases": [
+            "GHSA-cq8v-f236-94qc"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "rustls",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.23.37"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0285",
+          "modified": "2026-09-14T16:15:03.240735Z",
+          "aliases": [
+            "GHSA-2mjx-qc3c-rqvc"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "rustls-webpki",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.103.9"
+      },
+      "matches": [
+        {
+          "id": "GHSA-82j2-j2ch-gfr8",
+          "modified": "2026-09-19T03:55:33.412079Z",
+          "aliases": [
+            "CVE-2026-93599",
+            "RUSTSEC-2026-0104"
+          ]
+        },
+        {
+          "id": "GHSA-965h-392x-2mh5",
+          "modified": "2026-09-19T03:55:32.245575Z",
+          "aliases": [
+            "CVE-2026-93600",
+            "RUSTSEC-2026-0098"
+          ]
+        },
+        {
+          "id": "GHSA-pwjx-qhcg-rvj4",
+          "modified": "2026-09-19T03:55:49.529651Z",
+          "aliases": [
+            "CVE-2026-93602",
+            "RUSTSEC-2026-0049"
+          ]
+        },
+        {
+          "id": "GHSA-xgp8-3hg3-c2mh",
+          "modified": "2026-09-19T03:55:49.146112Z",
+          "aliases": [
+            "CVE-2026-93601",
+            "RUSTSEC-2026-0099"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0049",
+          "modified": "2026-09-19T08:42:27Z",
+          "aliases": [
+            "CVE-2026-93602",
+            "GHSA-pwjx-qhcg-rvj4"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0098",
+          "modified": "2026-09-19T08:42:27Z",
+          "aliases": [
+            "CVE-2026-93600",
+            "GHSA-965h-392x-2mh5"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0099",
+          "modified": "2026-09-19T08:42:27Z",
+          "aliases": [
+            "CVE-2026-93601",
+            "GHSA-xgp8-3hg3-c2mh"
+          ]
+        },
+        {
+          "id": "RUSTSEC-2026-0104",
+          "modified": "2026-09-19T08:42:27Z",
+          "aliases": [
+            "CVE-2026-93599",
+            "GHSA-82j2-j2ch-gfr8"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "ttf-parser",
+          "ecosystem": "crates.io"
+        },
+        "version": "0.25.1"
+      },
+      "matches": [
+        {
+          "id": "RUSTSEC-2026-0192",
+          "modified": "2026-06-29T21:15:04.384453Z",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "stdlib",
+          "ecosystem": "Go"
+        },
+        "version": "1.24.6"
+      },
+      "matches": [
+        {
+          "id": "GO-2025-4006",
+          "modified": "2026-05-15T10:59:23.181284Z",
+          "aliases": [
+            "BIT-golang-2025-61725",
+            "CVE-2025-61725"
+          ]
+        },
+        {
+          "id": "GO-2025-4007",
+          "modified": "2026-05-15T10:59:24.436863Z",
+          "aliases": [
+            "BIT-golang-2025-58187",
+            "CVE-2025-58187"
+          ]
+        },
+        {
+          "id": "GO-2025-4008",
+          "modified": "2026-05-15T10:59:23.580906Z",
+          "aliases": [
+            "BIT-golang-2025-58189",
+            "CVE-2025-58189"
+          ]
+        },
+        {
+          "id": "GO-2025-4009",
+          "modified": "2026-05-15T10:59:24.005728Z",
+          "aliases": [
+            "BIT-golang-2025-61723",
+            "CVE-2025-61723"
+          ]
+        },
+        {
+          "id": "GO-2025-4010",
+          "modified": "2026-05-15T10:59:24.305821Z",
+          "aliases": [
+            "BIT-golang-2025-47912",
+            "CVE-2025-47912"
+          ]
+        },
+        {
+          "id": "GO-2025-4011",
+          "modified": "2026-05-15T10:59:22.605843Z",
+          "aliases": [
+            "BIT-golang-2025-58185",
+            "CVE-2025-58185"
+          ]
+        },
+        {
+          "id": "GO-2025-4012",
+          "modified": "2026-05-15T10:59:23.250861Z",
+          "aliases": [
+            "BIT-golang-2025-58186",
+            "CVE-2025-58186"
+          ]
+        },
+        {
+          "id": "GO-2025-4013",
+          "modified": "2026-08-08T10:26:52.222176Z",
+          "aliases": [
+            "BIT-golang-2025-58188",
+            "CVE-2025-58188"
+          ]
+        },
+        {
+          "id": "GO-2025-4014",
+          "modified": "2026-08-05T10:56:57.143030Z",
+          "aliases": [
+            "BIT-golang-2025-58183",
+            "CVE-2025-58183"
+          ]
+        },
+        {
+          "id": "GO-2025-4015",
+          "modified": "2026-05-15T10:59:23.447690Z",
+          "aliases": [
+            "BIT-golang-2025-61724",
+            "CVE-2025-61724"
+          ]
+        },
+        {
+          "id": "GO-2025-4155",
+          "modified": "2026-08-14T10:42:11.677137Z",
+          "aliases": [
+            "BIT-golang-2025-61729",
+            "CVE-2025-61729"
+          ]
+        },
+        {
+          "id": "GO-2025-4175",
+          "modified": "2026-05-15T10:59:24.063040Z",
+          "aliases": [
+            "BIT-golang-2025-61727",
+            "CVE-2025-61727"
+          ]
+        },
+        {
+          "id": "GO-2026-4337",
+          "modified": "2026-09-18T10:41:38.501133Z",
+          "aliases": [
+            "BIT-golang-2025-68121",
+            "CVE-2025-68121"
+          ]
+        },
+        {
+          "id": "GO-2026-4340",
+          "modified": "2026-08-07T10:42:58.273913Z",
+          "aliases": [
+            "BIT-golang-2025-61730",
+            "CVE-2025-61730"
+          ]
+        },
+        {
+          "id": "GO-2026-4341",
+          "modified": "2026-09-11T10:41:41.706958Z",
+          "aliases": [
+            "BIT-golang-2025-61726",
+            "CVE-2025-61726"
+          ]
+        },
+        {
+          "id": "GO-2026-4342",
+          "modified": "2026-08-08T10:26:51.881576Z",
+          "aliases": [
+            "BIT-golang-2025-61728",
+            "CVE-2025-61728"
+          ]
+        },
+        {
+          "id": "GO-2026-4601",
+          "modified": "2026-09-18T10:41:38.371213Z",
+          "aliases": [
+            "BIT-golang-2026-25679",
+            "CVE-2026-25679"
+          ]
+        },
+        {
+          "id": "GO-2026-4602",
+          "modified": "2026-05-15T10:59:23.640277Z",
+          "aliases": [
+            "BIT-golang-2026-27139",
+            "CVE-2026-27139"
+          ]
+        },
+        {
+          "id": "GO-2026-4603",
+          "modified": "2026-05-15T10:59:23.946663Z",
+          "aliases": [
+            "BIT-golang-2026-27142",
+            "CVE-2026-27142"
+          ]
+        },
+        {
+          "id": "GO-2026-4864",
+          "modified": "2026-09-17T10:41:36.299382Z",
+          "aliases": [
+            "BIT-golang-2026-32282",
+            "CVE-2026-32282"
+          ]
+        },
+        {
+          "id": "GO-2026-4865",
+          "modified": "2026-07-10T10:44:23.724783Z",
+          "aliases": [
+            "BIT-golang-2026-32289",
+            "CVE-2026-32289"
+          ]
+        },
+        {
+          "id": "GO-2026-4869",
+          "modified": "2026-05-15T10:59:23.054049Z",
+          "aliases": [
+            "BIT-golang-2026-32288",
+            "CVE-2026-32288"
+          ]
+        },
+        {
+          "id": "GO-2026-4870",
+          "modified": "2026-09-17T10:41:36.364653Z",
+          "aliases": [
+            "BIT-golang-2026-32283",
+            "CVE-2026-32283"
+          ]
+        },
+        {
+          "id": "GO-2026-4918",
+          "modified": "2026-09-16T10:41:36.686823Z",
+          "aliases": [
+            "BIT-golang-2026-33814",
+            "CVE-2026-33814"
+          ]
+        },
+        {
+          "id": "GO-2026-4946",
+          "modified": "2026-09-17T10:41:36.412326Z",
+          "aliases": [
+            "BIT-golang-2026-32281",
+            "CVE-2026-32281"
+          ]
+        },
+        {
+          "id": "GO-2026-4947",
+          "modified": "2026-09-18T10:41:38.531069Z",
+          "aliases": [
+            "BIT-golang-2026-32280",
+            "CVE-2026-32280"
+          ]
+        },
+        {
+          "id": "GO-2026-4970",
+          "modified": "2026-09-16T10:41:36.578014Z",
+          "aliases": [
+            "BIT-golang-2026-39822",
+            "CVE-2026-39822"
+          ]
+        },
+        {
+          "id": "GO-2026-4971",
+          "modified": "2026-08-26T10:42:13.474920Z",
+          "aliases": [
+            "BIT-golang-2026-39836",
+            "CVE-2026-39836"
+          ]
+        },
+        {
+          "id": "GO-2026-4976",
+          "modified": "2026-08-31T10:25:58.969613Z",
+          "aliases": [
+            "BIT-golang-2026-39825",
+            "CVE-2026-39825"
+          ]
+        },
+        {
+          "id": "GO-2026-4977",
+          "modified": "2026-09-18T10:41:38.305866Z",
+          "aliases": [
+            "BIT-golang-2026-42499",
+            "CVE-2026-42499"
+          ]
+        },
+        {
+          "id": "GO-2026-4980",
+          "modified": "2026-08-31T10:25:58.429372Z",
+          "aliases": [
+            "BIT-golang-2026-39826",
+            "CVE-2026-39826"
+          ]
+        },
+        {
+          "id": "GO-2026-4981",
+          "modified": "2026-09-15T10:41:36.847701Z",
+          "aliases": [
+            "BIT-golang-2026-33811",
+            "CVE-2026-33811"
+          ]
+        },
+        {
+          "id": "GO-2026-4982",
+          "modified": "2026-08-31T10:25:58.456781Z",
+          "aliases": [
+            "BIT-golang-2026-39823",
+            "CVE-2026-39823"
+          ]
+        },
+        {
+          "id": "GO-2026-4986",
+          "modified": "2026-09-18T10:41:38.281334Z",
+          "aliases": [
+            "BIT-golang-2026-39820",
+            "CVE-2026-39820"
+          ]
+        },
+        {
+          "id": "GO-2026-5026",
+          "modified": "2026-09-17T10:41:36.745996Z",
+          "aliases": [
+            "CVE-2026-39821"
+          ]
+        },
+        {
+          "id": "GO-2026-5037",
+          "modified": "2026-09-17T10:41:36.463498Z",
+          "aliases": [
+            "BIT-golang-2026-27145",
+            "CVE-2026-27145"
+          ]
+        },
+        {
+          "id": "GO-2026-5038",
+          "modified": "2026-09-18T10:41:38.257292Z",
+          "aliases": [
+            "BIT-golang-2026-42504",
+            "CVE-2026-42504"
+          ]
+        },
+        {
+          "id": "GO-2026-5039",
+          "modified": "2026-08-31T10:25:58.939163Z",
+          "aliases": [
+            "BIT-golang-2026-42507",
+            "CVE-2026-42507"
+          ]
+        },
+        {
+          "id": "GO-2026-5856",
+          "modified": "2026-07-31T10:44:49.202644Z",
+          "aliases": [
+            "BIT-golang-2026-42505",
+            "CVE-2026-42505"
+          ]
+        },
+        {
+          "id": "GO-2026-5972",
+          "modified": "2026-09-18T10:41:38.606954Z",
+          "aliases": [
+            "BIT-golang-2026-33818",
+            "CVE-2026-33818"
+          ]
+        },
+        {
+          "id": "GO-2026-6088",
+          "modified": "2026-09-18T10:41:38.629371Z",
+          "aliases": [
+            "BIT-golang-2026-56859",
+            "CVE-2026-56859"
+          ]
+        },
+        {
+          "id": "GO-2026-6089",
+          "modified": "2026-09-18T10:41:38.431769Z",
+          "aliases": [
+            "BIT-golang-2026-56853",
+            "CVE-2026-56853"
+          ]
+        },
+        {
+          "id": "GO-2026-6090",
+          "modified": "2026-09-18T10:41:38.651310Z",
+          "aliases": [
+            "BIT-golang-2026-56862",
+            "CVE-2026-56862"
+          ]
+        },
+        {
+          "id": "GO-2026-6091",
+          "modified": "2026-09-18T10:41:38.578781Z",
+          "aliases": [
+            "BIT-golang-2026-56858",
+            "CVE-2026-56858"
+          ]
+        },
+        {
+          "id": "GO-2026-6218",
+          "modified": "2026-09-18T10:41:38.467269Z",
+          "aliases": [
+            "BIT-golang-2026-56860",
+            "CVE-2026-56860"
+          ]
+        }
+      ]
+    },
+    {
+      "query": {
+        "package": {
+          "name": "marked",
+          "ecosystem": "npm"
+        },
+        "version": "18.0.0"
+      },
+      "matches": [
+        {
+          "id": "GHSA-6v9c-7cg6-27q7",
+          "modified": "2026-05-05T16:11:33.907963Z",
+          "aliases": [
+            "CVE-2026-41680"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -99,7 +99,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         install = text.index("uses: https://github.com/dtolnay/rust-toolchain@stable")
         gate = text.index("make check")
         self.assertLess(install, gate)
-        self.assertIn("toolchain: 1.93.1", text[install:gate])
+        self.assertIn("toolchain: 1.98.1", text[install:gate])
 
     def test_non_release_workflows_do_not_run_for_tags(self):
         for path in (FORGEJO_APPLIANCE, FORGEJO_CRW, FORGEJO_ROUTER):

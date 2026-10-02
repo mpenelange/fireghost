@@ -6,7 +6,7 @@
 	build-images up down ps logs pull smoke live-contract staging-up staging-down staging-ps \
 	staging-smoke staging-live-contract backup restore check-updates
 
-GO_IMAGE = golang:1.24.6-bookworm@sha256:ab1d1823abb55a9504d2e3e003b75b36dbeb1cbcc4c92593d85a84ee46becc6c
+GO_IMAGE = golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195
 GO_DOCKER = docker run --rm -v "$(CURDIR)/router:/src" -w /src $(GO_IMAGE)
 COMPOSE = docker compose --project-directory dev -f dev/compose.yaml
 STAGING_PROJECT ?= hermes-web-retrieval-staging
@@ -70,7 +70,7 @@ hermes-regression:
 	$(HERMES_PYTHON) scripts/hermes-regression-gate.py --hermes-python "$(HERMES_PYTHON)" --search-query "$(HERMES_REGRESSION_SEARCH_QUERY)" --output "$(OUTPUT)"
 
 router-fmt-check:
-	$(GO_DOCKER) sh -c 'test -z "$$(gofmt -l .)"'
+	$(GO_DOCKER) sh -c 'files="$$(gofmt -l .)"; test -z "$$files" || { gofmt -d $$files; exit 1; }'
 
 router-vet:
 	$(GO_DOCKER) go vet ./...

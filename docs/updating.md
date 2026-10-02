@@ -6,7 +6,7 @@ Upstream discovery and deployment selection are deliberately separate:
 - `dev/stack.lock.json` remains the tested appliance lock. Compose and stack-lock tests continue to require immutable deployment digests.
 - `./scripts/check-updates.sh check` reads the review ledger and reports every component as `current`, `changed`, or `unavailable`. It does not edit either file, fetch source into the worktree, pull an image, or deploy anything. A nonzero exit means operator review is required.
 
-The monorepo's `crw/` is our maintained fork, with local changes after the shared lineage commit `aac7999b9379fd8b6ef818ce37f78634416f79c1`. The source entries are intentionally distinct: `crwVendor` tracks the immediate vendor upstream at `adambenhassen/crw-camofox`; its reviewed head is `ca65413060fc3daaf621c0a81cd3d0368160402e`, whose patch is already represented in the maintained fork. `crwFoundation` independently exposes movement in foundational `us/crw`. A foundation change is research input and must not be imported directly into `crw/`. The retired `michael/crw-camofox` repository is not an update source.
+The monorepo's `crw/` is our maintained fork, with local changes after the shared lineage commit `aac7999b9379fd8b6ef818ce37f78634416f79c1`. The source entries are intentionally distinct: `crwVendor` tracks the immediate vendor upstream's renderer work at `adambenhassen/crw-camofox` branch `feat/camofox-renderer`; its reviewed head is `84f12bb3ef4c4111142e4da894444f2052fea493`, whose patch is already represented in the maintained fork. `crwFoundation` independently exposes movement in foundational `us/crw`. A foundation change is research input and must not be imported directly into `crw/`. The retired `michael/crw-camofox` repository is not an update source.
 
 The image entries probe mutable tags only to discover new published artifacts. Their `reviewedDigest` values never authorize a deployment. Resolve and test a platform-appropriate immutable digest before proposing any later change to the appliance lock.
 
@@ -22,13 +22,19 @@ The checker uses `git ls-remote` for branch heads and `docker buildx imagetools 
 
 When a result changes, review upstream commits, releases, licensing, security notices, and browser compatibility before updating the reviewed ledger. Update one component per review; do not advance unrelated entries merely because they were discovered together.
 
+The 1.1 update program treats MCP and upstream refreshes as separate reviewable
+changes on the same release line. Camofox and Lightpanda remain pinned until
+their individual reviews are ready. Each browser candidate must pass the
+production-versus-candidate browser matrix in `docs/migration-validation.md`;
+never combine both browser candidates in one comparison.
+
 ## Prepare a CRW-fork source review
 
 Work from a separate local clone so fetching cannot alter this repository's refs:
 
 ```sh
 git clone https://github.com/adambenhassen/crw-camofox /tmp/crw-camofox-review
-git -C /tmp/crw-camofox-review fetch --prune origin main
+git -C /tmp/crw-camofox-review fetch --prune origin feat/camofox-renderer
 ./scripts/check-updates.sh prepare-crw \
   --source-repo /tmp/crw-camofox-review \
   --candidate <full-candidate-commit> \
@@ -53,5 +59,11 @@ For each source or browser update:
 3. Build and identify a candidate without changing production. Runtime images and release manifests must identify the monorepo revision and component version.
 4. Resolve the candidate image to an immutable digest and update `dev/stack.lock.json` only in the later appliance-candidate change. Run `make check-stack-lock` and the full validation suite.
 5. Exercise the isolated staging appliance and its smoke/live-contract gates. Obtain equivalence and regression approval before any production cutover.
+
+For a Camofox or Lightpanda candidate, also run
+`scripts/browser-regression-gate.py` twice (cold and warm) and retain both
+exclusive JSON artifacts. Confirm that `renderedWith` names the intended engine
+for every case, and record container restart, OOM, peak-memory, and peak-PID
+observations beside the artifacts before approval.
 
 `CRW_IMAGE` remains supplied through ignored `dev/.env`; never copy credentials into the ledger or commit them. `dev/.env.example` and the lock describe tested candidates using immutable digests. Back up volumes and retain the previous image/configuration for rollback before any separately authorized deployment.

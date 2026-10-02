@@ -1,0 +1,9 @@
+{"step":"create_tab","status":200,"latency_ms":1816}
+{"step":"schedule_navigation","status":200,"latency_ms":186}
+{"step":"poll_tabs","status":200,"latency_ms":15}
+{"step":"poll_tabs","status":200,"latency_ms":11}
+{"step":"poll_tabs","status":200,"latency_ms":13}
+{"step":"poll_tabs","status":200,"latency_ms":11}
+{"step":"navigation_match","status":"matched","latency_ms":0}
+{"step":"evaluate_trivial","status":"timeout_or_transport","latency_ms":3005}
+{"step":"evaluate_wikipedia_scrape","status":"timeout_or_transport","latency_ms":3001}

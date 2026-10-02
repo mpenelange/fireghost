@@ -1,0 +1,45 @@
+{
+  "capturedAt": "2026-09-20T05:32:57.744858+00:00",
+  "components": [
+    {
+      "service": "router",
+      "sameContainerId": true,
+      "sameImageId": true,
+      "sameStartedAt": true,
+      "restartCountBefore": 0,
+      "restartCountAfter": 0,
+      "health": "healthy",
+      "status": "running"
+    },
+    {
+      "service": "crw",
+      "sameContainerId": true,
+      "sameImageId": true,
+      "sameStartedAt": true,
+      "restartCountBefore": 0,
+      "restartCountAfter": 0,
+      "health": "healthy",
+      "status": "running"
+    },
+    {
+      "service": "camofox",
+      "sameContainerId": true,
+      "sameImageId": true,
+      "sameStartedAt": false,
+      "restartCountBefore": 20,
+      "restartCountAfter": 21,
+      "health": "healthy",
+      "status": "running"
+    },
+    {
+      "service": "lightpanda",
+      "sameContainerId": true,
+      "sameImageId": true,
+      "sameStartedAt": true,
+      "restartCountBefore": 0,
+      "restartCountAfter": 0,
+      "health": "healthy",
+      "status": "running"
+    }
+  ]
+}

@@ -4,8 +4,8 @@ Fireghost is a self-hosted, local-first retrieval platform with
 Firecrawl-compatible search and scrape APIs. It runs a Go router, CRW, Camofox,
 and LightPanda behind an existing private Traefik installation, and is designed
 for clients that need private retrieval infrastructure rather than for one
-specific assistant. Future client integrations may include MCP, but Fireghost
-does not currently provide an MCP server. Owned router and CRW images default
+specific assistant. The Go router optionally provides a stateless Streamable
+HTTP MCP server alongside the REST API. Owned router and CRW images default
 to the newest tested stable release; third-party browser images remain pinned
 by digest. The public Compose path performs no builds or host-port publishing.
 
@@ -51,10 +51,21 @@ Do not commit `.env`. `ROUTER_API_KEY` authenticates clients to this appliance;
 `FIRECRAWL_CLOUD_API_KEY` is a separate backend credential and is blank by
 default.
 
-The compatible defaults expose only `POST /v2/search` and `POST /v2/scrape` at
+The compatible defaults expose `POST /v2/search` and `POST /v2/scrape` at
 `https://api.firewire.cc/web/api`. Set `API_HOST` and `API_PATH_PREFIX` in `.env`
 to change them. The prefix must begin with `/` and should not end with `/`.
 Health, metrics, CRW, and both browsers remain private with no published ports.
+
+MCP is disabled by default. Set `MCP_ENABLED=true` to expose the router's
+stateless Streamable HTTP endpoint at
+`https://$API_HOST$API_PATH_PREFIX/mcp` (for example,
+`https://api.firewire.cc/web/api/mcp`). Configure an MCP client with that URL
+and the HTTP header `Authorization: Bearer $ROUTER_API_KEY`. The endpoint uses
+MCP protocol `2025-06-18` and advertises `search` and `scrape`; their arguments
+are the same objects accepted by the corresponding Firecrawl-compatible REST
+endpoints. Traefik applies the existing CIDR allowlist and prefix stripping, and
+the router independently checks the bearer credential. `MCP_ENABLED` accepts
+only literal `true` or `false`; enabling it without `ROUTER_API_KEY` is rejected.
 
 ## Traefik prerequisites
 
@@ -66,7 +77,8 @@ The Traefik entrypoint needs a response/write timeout above the router's 90-seco
 upstream timeout (120 seconds is a reasonable starting point).
 
 The route has priority **100** and claims exactly
-`$API_PATH_PREFIX/v2/search` and `$API_PATH_PREFIX/v2/scrape`; ensure no existing
+`$API_PATH_PREFIX/v2/search`, `$API_PATH_PREFIX/v2/scrape`, and
+`$API_PATH_PREFIX/mcp`; ensure no existing
 catch-all route wins or also claims that prefix. If Traefik uses a default TLS
 certificate instead of ACME, remove the cert-resolver label locally.
 

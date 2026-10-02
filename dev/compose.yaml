@@ -22,6 +22,7 @@ services:
       - ROUTER_CLOUD_URL=${ROUTER_CLOUD_URL:-https://api.firecrawl.dev}
       - FIRECRAWL_CLOUD_API_KEY=${FIRECRAWL_CLOUD_API_KEY:-}
       - ROUTER_API_KEY=${ROUTER_API_KEY:-}
+      - MCP_ENABLED=${MCP_ENABLED:-false}
       - ROUTER_CACHE_DIR=/data/cache
       - ROUTER_LEDGER_PATH=/data/budget.json
       - ROUTER_SEARCH_TTL=${ROUTER_SEARCH_TTL:-15m}

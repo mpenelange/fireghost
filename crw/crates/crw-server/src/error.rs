@@ -45,6 +45,7 @@ impl IntoResponse for AppError {
             CrwError::HttpError(_) => StatusCode::BAD_GATEWAY,
             CrwError::TargetUnreachable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             CrwError::ExtractionError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CrwError::LoginRequired(_) => StatusCode::UNPROCESSABLE_ENTITY,
             CrwError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             CrwError::SearchDisabled(_) => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -96,6 +97,14 @@ mod tests {
         assert_eq!(
             status_for(CrwError::HttpError("fail".into())),
             StatusCode::BAD_GATEWAY
+        );
+    }
+
+    #[test]
+    fn app_error_login_required_422() {
+        assert_eq!(
+            status_for(CrwError::LoginRequired("sign-in page".into())),
+            StatusCode::UNPROCESSABLE_ENTITY
         );
     }
 

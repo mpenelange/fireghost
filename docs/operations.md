@@ -4,6 +4,16 @@ These commands operate the preserved `dev/compose.yaml` contract, not the
 root public Compose stack. Start with `make up`, then inspect `make ps` and run
 `make smoke`. Logs are available through `make logs SERVICES="router crw camofox lightpanda"`; metrics are at `http://127.0.0.1:33000/metrics`.
 
+`MCP_ENABLED` defaults to literal `false`. When set to `true`, the router serves
+stateless Streamable HTTP MCP at `/mcp` and requires a nonempty
+`ROUTER_API_KEY`; clients send it as `Authorization: Bearer <key>`. In the public
+Traefik deployment the external URL is `$API_PATH_PREFIX/mcp` on `API_HOST`,
+protected by the same CIDR allowlist as REST. MCP calls use the same cached,
+coalesced, local-first search and scrape operations, including cloud budgets and
+the 16 MiB upstream response ceiling. MCP request counts and durations use the
+`endpoint="mcp"` metrics label; cache and upstream metrics retain their
+`search` or `scrape` endpoint labels.
+
 ## Isolated candidate
 
 Run `make staging-up` to create a separate Compose project, network, cache, and browser-profile volume. Its router binds only to `127.0.0.1:33010`, and its router image uses the distinct `monorepo-staging` tag so it cannot replace the production router tag. Validate with `make staging-smoke staging-live-contract`, inspect with `make staging-ps`, and remove its containers and network with `make staging-down`. Production remains on port `33000` throughout.

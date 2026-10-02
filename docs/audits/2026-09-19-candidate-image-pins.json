@@ -1,0 +1,152 @@
+{
+  "checkedOn": "2026-09-19",
+  "images": [
+    {
+      "repository": "library/golang",
+      "tag": "1.27.1-bookworm",
+      "indexDigest": "sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195",
+      "source": "https://hub.docker.com/v2/repositories/library/golang/tags/1.27.1-bookworm",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux",
+          "digest": "sha256:966278043a40889499db9b0cd196fc789c37c385d41bd9a10cb1e7764af60cdc"
+        },
+        {
+          "architecture": "ppc64le",
+          "os": "linux",
+          "digest": "sha256:ea44e4cdd7080a42a9d8585130ae5ce9555519198db0783648da9cf7fb3edae0"
+        },
+        {
+          "architecture": "386",
+          "os": "linux",
+          "digest": "sha256:d632ffd4a00c560a89b2d77e0d1e58dc6785ab9919870e77a8a75783895f8a0b"
+        },
+        {
+          "architecture": "arm",
+          "os": "linux",
+          "digest": "sha256:6f658c7de76b477f1cb0d93a7811f17c4859b8f1cc395060495c77a72069938f"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "digest": "sha256:1668bbf856490c9bd0b77204ae1cdaebe273dc459b5eeb3a31a4ddc78ca6fae1"
+        }
+      ]
+    },
+    {
+      "repository": "library/alpine",
+      "tag": "3.22.6",
+      "indexDigest": "sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+      "source": "https://hub.docker.com/v2/repositories/library/alpine/tags/3.22.6",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux",
+          "digest": "sha256:3e9b4b680bfc9fb5269227cffbd6d42be39fbf7c0b908123913864aa4447e764"
+        },
+        {
+          "architecture": "ppc64le",
+          "os": "linux",
+          "digest": "sha256:d3f9354d41e5bc6cd8b4e7127860553fa3c3a76369c4bedca0b01d8922b29627"
+        },
+        {
+          "architecture": "386",
+          "os": "linux",
+          "digest": "sha256:1136d3a024321ad150667cedbb3828db613d57391e471fd87af096a88e2adce5"
+        },
+        {
+          "architecture": "s390x",
+          "os": "linux",
+          "digest": "sha256:5fd1c1a839a5c24fe563cb20862fca94368fa229800ad960bdc22fe166b06d6c"
+        },
+        {
+          "architecture": "arm",
+          "os": "linux",
+          "digest": "sha256:947bab19f99aef448855af6d1886613d95d311a1b8bf9d32e7b329eb76ab4e44"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "digest": "sha256:2e1a7aa4cbc4e9e5222bb4c24a839aa1a6170ea5492d644777ce7b178824e44f"
+        },
+        {
+          "architecture": "arm",
+          "os": "linux",
+          "digest": "sha256:450c744b1ef46c709ee72b733c54813f149999273fffb17f2097f79160aba27a"
+        },
+        {
+          "architecture": "riscv64",
+          "os": "linux",
+          "digest": "sha256:ddd567990d0fe41158fd851e03e23f1a65c60cb9dd152afe318c9476ecb85e7f"
+        }
+      ]
+    },
+    {
+      "repository": "library/rust",
+      "tag": "1.98.1-bookworm",
+      "indexDigest": "sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e",
+      "source": "https://hub.docker.com/v2/repositories/library/rust/tags/1.98.1-bookworm",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux",
+          "digest": "sha256:c49256cbe5ea0188bc658a689500d70c41eb51f009a7a7be209caf60a944f3ec"
+        },
+        {
+          "architecture": "ppc64le",
+          "os": "linux",
+          "digest": "sha256:633aaca1bba4de036c2e98f042d562c3b3af97c6bb6a34a315851dcb2cfc206f"
+        },
+        {
+          "architecture": "386",
+          "os": "linux",
+          "digest": "sha256:9c7865a496711c859ce6673aa75f4dca1582dec73a752d10eed1ff9a39a544f0"
+        },
+        {
+          "architecture": "arm",
+          "os": "linux",
+          "digest": "sha256:7648c745ec50b8ded5b0d5895d8c5bff4ea7e554701b878c8624742ba1df28e3"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "digest": "sha256:5b993f23fb69746405496e76f91e511d96c82b5b23304fd5d20b4a80a8b223ea"
+        }
+      ]
+    },
+    {
+      "repository": "library/debian",
+      "tag": "bookworm-slim",
+      "indexDigest": "sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251",
+      "source": "https://hub.docker.com/v2/repositories/library/debian/tags/bookworm-slim",
+      "platforms": [
+        {
+          "architecture": "amd64",
+          "os": "linux",
+          "digest": "sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b"
+        },
+        {
+          "architecture": "ppc64le",
+          "os": "linux",
+          "digest": "sha256:fed77b78795122da1e752c586260935d4254aaf96b7da8bfb9139d8b5bbba9ff"
+        },
+        {
+          "architecture": "386",
+          "os": "linux",
+          "digest": "sha256:605e8292d9d3e5288094fb9dffd68869a19771546cc11d7c3c777f9d7e0f705d"
+        },
+        {
+          "architecture": "arm",
+          "os": "linux",
+          "digest": "sha256:523460af6da3f308775ef6f50ce4fdaa5b71c8ca2b88d0ddbb44d7b17d497379"
+        },
+        {
+          "architecture": "arm64",
+          "os": "linux",
+          "digest": "sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417"
+        }
+      ]
+    }
+  ]
+}
