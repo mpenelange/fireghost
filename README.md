@@ -51,8 +51,12 @@ Do not commit `.env`. `ROUTER_API_KEY` authenticates clients to this appliance;
 `FIRECRAWL_CLOUD_API_KEY` is a separate backend credential and is blank by
 default.
 
-The compatible defaults expose `POST /v2/search` and `POST /v2/scrape` at
-`https://api.firewire.cc/web/api`. Set `API_HOST` and `API_PATH_PREFIX` in `.env`
+The compatible defaults expose the Firecrawl v2 API at
+`https://api.firewire.cc/web/api`: `search` and `scrape` with cloud fallback,
+CRW-implemented routes (`map`, `crawl`, `batch/scrape`, `extract`, `parse`)
+locally, and an allowlist of cloud-only routes (`agent`, `interact`, and
+read-only `team` usage) forwarded to Firecrawl Cloud. See
+[docs/fallback-policy.md](docs/fallback-policy.md) for the routing table. Set `API_HOST` and `API_PATH_PREFIX` in `.env`
 to change them. The prefix must begin with `/` and should not end with `/`.
 Health, metrics, CRW, and both browsers remain private with no published ports.
 
@@ -76,9 +80,9 @@ networks; review forwarded-client IP trust before placing another proxy in front
 The Traefik entrypoint needs a response/write timeout above the router's 90-second
 upstream timeout (120 seconds is a reasonable starting point).
 
-The route has priority **100** and claims exactly
-`$API_PATH_PREFIX/v2/search`, `$API_PATH_PREFIX/v2/scrape`, and
-`$API_PATH_PREFIX/mcp`; ensure no existing
+The route has priority **100** and claims every path under
+`$API_PATH_PREFIX/v2/` plus `$API_PATH_PREFIX/mcp`; the router itself returns
+404 for any v2 route outside its routing table. Ensure no existing
 catch-all route wins or also claims that prefix. If Traefik uses a default TLS
 certificate instead of ACME, remove the cert-resolver label locally.
 

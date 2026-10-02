@@ -29,6 +29,9 @@ func TestParseDefaults(t *testing.T) {
 	if got.MaxInflight != 64 {
 		t.Fatalf("max inflight = %d, want 64", got.MaxInflight)
 	}
+	if got.MaxParseBytes != 50<<20 || got.CloudCreditFloor != 50 {
+		t.Fatalf("parse bytes = %d credit floor = %d, want 50 MiB and 50", got.MaxParseBytes, got.CloudCreditFloor)
+	}
 	if got.MCPEnabled {
 		t.Fatal("MCP enabled by default, want disabled")
 	}
@@ -130,6 +133,9 @@ func TestParseRejectsInvalidConfiguration(t *testing.T) {
 		{"nonnegative ttl", "ROUTER_SEARCH_TTL", "-1s", nil},
 		{"positive bytes", "ROUTER_MAX_REQUEST_BYTES", "0", nil},
 		{"positive cache total", "ROUTER_CACHE_MAX_BYTES", "0", nil},
+		{"positive parse bytes", "ROUTER_MAX_PARSE_BYTES", "0", nil},
+		{"nonnegative credit floor", "ROUTER_CLOUD_CREDIT_FLOOR", "-1", nil},
+		{"integer credit floor", "ROUTER_CLOUD_CREDIT_FLOOR", "many", nil},
 		{"positive max inflight", "ROUTER_MAX_INFLIGHT", "0", nil},
 		{"nonnegative credits", "ROUTER_DAILY_CLOUD_CREDITS", "-1", nil},
 		{"nonnegative burst", "ROUTER_CLOUD_BURST_CREDITS", "-1", nil},

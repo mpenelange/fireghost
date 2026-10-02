@@ -23,11 +23,13 @@ services:
       - ROUTER_SERVER_READ_TIMEOUT=${ROUTER_SERVER_READ_TIMEOUT:-30s}
       - ROUTER_MAX_REQUEST_BYTES=${ROUTER_MAX_REQUEST_BYTES:-2097152}
       - ROUTER_MAX_RESPONSE_BYTES=${ROUTER_MAX_RESPONSE_BYTES:-16777216}
+      - ROUTER_MAX_PARSE_BYTES=${ROUTER_MAX_PARSE_BYTES:-52428800}
       - ROUTER_CACHE_MAX_ENTRY_BYTES=${ROUTER_CACHE_MAX_ENTRY_BYTES:-16777216}
       - ROUTER_CACHE_MAX_BYTES=${ROUTER_CACHE_MAX_BYTES:-1073741824}
       - ROUTER_MAX_INFLIGHT=${ROUTER_MAX_INFLIGHT:-64}
       - ROUTER_CLOUD_BURST_CREDITS=${ROUTER_CLOUD_BURST_CREDITS:-20}
       - ROUTER_CLOUD_REFILL_CREDITS_PER_DAY=${ROUTER_CLOUD_REFILL_CREDITS_PER_DAY:-20}
+      - ROUTER_CLOUD_CREDIT_FLOOR=${ROUTER_CLOUD_CREDIT_FLOOR:-50}
       - FIRECRAWL_MONTHLY_ALLOWANCE=${FIRECRAWL_MONTHLY_ALLOWANCE:-1500}
       - FIRECRAWL_BUFFER_PERCENT=${FIRECRAWL_BUFFER_PERCENT:-20}
       - ROUTER_MONTHLY_RESET_DAY=${ROUTER_MONTHLY_RESET_DAY:-3}
@@ -43,7 +45,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}"
-      traefik.http.routers.web-retrieval.rule: "Host(`${API_HOST:-api.firewire.cc}`) && (Path(`${API_PATH_PREFIX:-/web/api}/v2/search`) || Path(`${API_PATH_PREFIX:-/web/api}/v2/scrape`) || Path(`${API_PATH_PREFIX:-/web/api}/mcp`))"
+      traefik.http.routers.web-retrieval.rule: "Host(`${API_HOST:-api.firewire.cc}`) && (PathPrefix(`${API_PATH_PREFIX:-/web/api}/v2/`) || Path(`${API_PATH_PREFIX:-/web/api}/mcp`))"
       traefik.http.routers.web-retrieval.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
       traefik.http.routers.web-retrieval.tls: "true"
       traefik.http.routers.web-retrieval.tls.certresolver: "${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}"
@@ -86,6 +88,15 @@ services:
     environment:
       RUST_LOG: ${CRW_LOG_LEVEL:-info}
       CRW_CONFIG: config/crw
+      # LLM for structured extraction (json/summary formats, /v2/extract) and
+      # search answers, used only when a request asks for them. The key must
+      # always be defined: CRW refuses to start if the provider is set without
+      # it. An empty key leaves those features returning an error.
+      CRW_EXTRACTION__LLM__PROVIDER: ${CRW_LLM_PROVIDER:-openai}
+      CRW_EXTRACTION__LLM__BASE_URL: ${CRW_LLM_BASE_URL:-https://api.fireworks.ai/inference/v1}
+      CRW_EXTRACTION__LLM__MODEL: ${CRW_LLM_MODEL:-accounts/fireworks/models/gpt-oss-120b}
+      CRW_EXTRACTION__LLM__MAX_TOKENS: ${CRW_LLM_MAX_TOKENS:-8192}
+      CRW_EXTRACTION__LLM__API_KEY: ${CRW_LLM_API_KEY:-}
     volumes:
       - ./deployment/crw.toml:/app/config/crw.toml:ro
     networks:

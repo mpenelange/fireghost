@@ -15,9 +15,11 @@ import (
 	budgetpkg "web-retrieval/internal/budget"
 	cachepkg "web-retrieval/internal/cache"
 	"web-retrieval/internal/config"
+	creditspkg "web-retrieval/internal/credits"
 	metricspkg "web-retrieval/internal/metrics"
 	"web-retrieval/internal/router"
 	flightpkg "web-retrieval/internal/singleflight"
+	"web-retrieval/internal/upstream"
 )
 
 var version = "dev"
@@ -100,12 +102,16 @@ func buildHandler(cfg config.Config, registry *metricspkg.Registry) (http.Handle
 		return nil, fmt.Errorf("initialize budget: %w", err)
 	}
 	client := &http.Client{Timeout: cfg.HTTPTimeout}
+	var floor *creditspkg.Floor
+	if cfg.CloudAPIKey != "" {
+		floor = creditspkg.NewFloor(upstream.NewAuthenticated(cfg.CloudURL, client, cfg.CloudAPIKey), cfg.CloudCreditFloor)
+	}
 	return router.NewHandler(router.Config{
 		LocalBaseURL: cfg.LocalURL, CloudBaseURL: cfg.CloudURL, CloudAPIKey: cfg.CloudAPIKey, APIKey: cfg.APIKey,
 		SearchTTL: cfg.SearchTTL, ScrapeTTL: cfg.ScrapeTTL, HTTPTimeout: cfg.HTTPTimeout, SearchEstimatedCredits: cfg.SearchEstimatedCredits,
 		ScrapeEstimatedCredits: cfg.ScrapeEstimatedCredits, MaxRequestBytes: cfg.MaxRequestBytes, MaxResponseBytes: cfg.MaxResponseBytes,
-		MCPEnabled: cfg.MCPEnabled, ServerVersion: version,
-	}, router.Dependencies{HTTPClient: client, Cache: fileCache, Budget: ledger, Metrics: registry, FlightGroup: flightpkg.NewWithLimit[cachepkg.Entry](cfg.MaxInflight)}), nil
+		MaxParseBytes: cfg.MaxParseBytes, MCPEnabled: cfg.MCPEnabled, ServerVersion: version,
+	}, router.Dependencies{HTTPClient: client, Cache: fileCache, Budget: ledger, CreditFloor: floor, Metrics: registry, FlightGroup: flightpkg.NewWithLimit[cachepkg.Entry](cfg.MaxInflight)}), nil
 }
 
 func buildBudgetLedger(cfg config.Config, clock func() time.Time) (*budgetpkg.File, error) {

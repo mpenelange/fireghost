@@ -13,13 +13,13 @@ type Config struct {
 	ListenAddr, LocalURL, CloudURL, CloudAPIKey, APIKey  string
 	CacheDir, LedgerPath                                 string
 	SearchTTL, ScrapeTTL, HTTPTimeout, ServerReadTimeout time.Duration
-	MaxRequestBytes, MaxResponseBytes                    int64
+	MaxRequestBytes, MaxResponseBytes, MaxParseBytes     int64
 	CacheMaxBytes                                        int64
 	CacheMaxEntryBytes                                   int
 	MaxInflight                                          int
 	DailyCloudCredits, MonthlyCloudCredits               int
 	CloudBurstCredits, CloudRefillCreditsPerDay          int
-	MonthlyResetDay                                      int
+	MonthlyResetDay, CloudCreditFloor                    int
 	SearchEstimatedCredits, ScrapeEstimatedCredits       int
 	MCPEnabled                                           bool
 }
@@ -30,9 +30,10 @@ func Parse(getenv func(string) string) (Config, error) {
 		ListenAddr: ":8080", LocalURL: getenv("ROUTER_LOCAL_URL"), CloudURL: "https://api.firecrawl.dev",
 		CacheDir: "/data/cache", LedgerPath: "/data/budget.json",
 		SearchTTL: 15 * time.Minute, ScrapeTTL: 24 * time.Hour, HTTPTimeout: 60 * time.Second, ServerReadTimeout: 30 * time.Second,
-		MaxRequestBytes: 2 << 20, MaxResponseBytes: 16 << 20, CacheMaxBytes: 1 << 30, CacheMaxEntryBytes: 16 << 20,
+		MaxRequestBytes: 2 << 20, MaxResponseBytes: 16 << 20, MaxParseBytes: 50 << 20, CacheMaxBytes: 1 << 30, CacheMaxEntryBytes: 16 << 20,
 		MaxInflight:            64,
 		MonthlyResetDay:        1,
+		CloudCreditFloor:       50,
 		SearchEstimatedCredits: 2, ScrapeEstimatedCredits: 1,
 	}
 	if raw := getenv("MCP_ENABLED"); raw != "" {
@@ -79,6 +80,7 @@ func Parse(getenv func(string) string) (Config, error) {
 		target *int64
 	}{
 		{"ROUTER_MAX_REQUEST_BYTES", &c.MaxRequestBytes}, {"ROUTER_MAX_RESPONSE_BYTES", &c.MaxResponseBytes},
+		{"ROUTER_MAX_PARSE_BYTES", &c.MaxParseBytes},
 		{"ROUTER_CACHE_MAX_BYTES", &c.CacheMaxBytes},
 	}
 	for _, value := range int64s {
@@ -101,6 +103,7 @@ func Parse(getenv func(string) string) (Config, error) {
 		{"ROUTER_CLOUD_REFILL_CREDITS_PER_DAY", &c.CloudRefillCreditsPerDay},
 		{"ROUTER_SEARCH_ESTIMATED_CREDITS", &c.SearchEstimatedCredits},
 		{"ROUTER_SCRAPE_ESTIMATED_CREDITS", &c.ScrapeEstimatedCredits},
+		{"ROUTER_CLOUD_CREDIT_FLOOR", &c.CloudCreditFloor},
 	}
 	for _, value := range ints {
 		if raw := getenv(value.name); raw != "" {
@@ -145,6 +148,9 @@ func validate(c Config) error {
 	if c.MaxResponseBytes <= 0 {
 		return fmt.Errorf("ROUTER_MAX_RESPONSE_BYTES must be positive")
 	}
+	if c.MaxParseBytes <= 0 {
+		return fmt.Errorf("ROUTER_MAX_PARSE_BYTES must be positive")
+	}
 	if c.CacheMaxEntryBytes <= 0 {
 		return fmt.Errorf("ROUTER_CACHE_MAX_ENTRY_BYTES must be positive")
 	}
@@ -177,6 +183,9 @@ func validate(c Config) error {
 	}
 	if c.ScrapeEstimatedCredits <= 0 {
 		return fmt.Errorf("ROUTER_SCRAPE_ESTIMATED_CREDITS must be positive")
+	}
+	if c.CloudCreditFloor < 0 {
+		return fmt.Errorf("ROUTER_CLOUD_CREDIT_FLOOR must not be negative")
 	}
 	if c.MCPEnabled && c.APIKey == "" {
 		return fmt.Errorf("MCP_ENABLED=true requires ROUTER_API_KEY")
