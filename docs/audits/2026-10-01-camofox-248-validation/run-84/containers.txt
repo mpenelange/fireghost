@@ -1,0 +1,16 @@
+fg-validation-control router image=web-retrieval-router:validation restarts=0 oom=false status=running
+fg-validation-control crw image=git.firewire.cc/michael/fireghost-crw@sha256:0e6bf0210981b772d7d5e84e5c1b01c02b0f9c8a61b534e6bf9890832e6d6ec6 restarts=0 oom=false status=running
+fg-validation-control lightpanda image=lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887 restarts=0 oom=false status=running
+fg-validation-control camofox image=ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7 restarts=0 oom=false status=running
+fg-validation-candidate router image=web-retrieval-router:validation restarts=0 oom=false status=running
+fg-validation-candidate crw image=git.firewire.cc/michael/fireghost-crw@sha256:0e6bf0210981b772d7d5e84e5c1b01c02b0f9c8a61b534e6bf9890832e6d6ec6 restarts=0 oom=false status=running
+fg-validation-candidate lightpanda image=lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887 restarts=0 oom=false status=running
+fg-validation-candidate camofox image=ghcr.io/redf0x1/camofox-browser@sha256:1c1370acdd17f7d0336b64aff4ba4cf31e2b41cc90b23ddcf6135aee81380a55 restarts=0 oom=false status=running
+fg-validation-candidate-router-1 mem=3.324MiB / 256MiB pids=8
+fg-validation-candidate-crw-1 mem=14.89MiB / 1GiB pids=4
+fg-validation-candidate-lightpanda-1 mem=4.105MiB / 512MiB pids=8
+fg-validation-candidate-camofox-1 mem=147.1MiB / 4GiB pids=46
+fg-validation-control-router-1 mem=3.723MiB / 256MiB pids=8
+fg-validation-control-crw-1 mem=16.02MiB / 1GiB pids=4
+fg-validation-control-lightpanda-1 mem=32.24MiB / 512MiB pids=8
+fg-validation-control-camofox-1 mem=373MiB / 4GiB pids=38
