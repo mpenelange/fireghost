@@ -150,17 +150,20 @@ component tags are never reused. The workflow remains dormant while Actions is
 disabled; see [`docs/ci.md`](docs/ci.md).
 
 ```sh
-git tag -a appliance-v0.1.0 -m "Appliance 0.1.0"
-git push origin appliance-v0.1.0
+git tag -a fireghost-v1.2.1 -m "Fireghost 1.2.1" -m "- What changed"
+git push origin fireghost-v1.2.1
 ```
 
-The release workflow validates the exact `appliance-vMAJOR.MINOR.PATCH` shape,
+The release workflow validates the exact `fireghost-vMAJOR.MINOR.PATCH` shape,
 runs `make check`, builds run-unique image candidates, exercises the isolated
 candidate appliance with cloud fallback disabled, and only then promotes both
 owned images to `0.1.0`, `0.1`, and `latest`. Full-version tags are
 workflow-enforced immutable rollback references. Serialized releases move minor
 and `latest` aliases only forward. The CRW image retains its own component
-version in OCI metadata while also recording the appliance version.
+version in OCI metadata while also recording the appliance version. After
+promotion it publishes a release page for the tag: the tag message's first line
+is the title, the rest the notes, followed by both image references and
+digests.
 
 Forgejo's registry cannot update two package aliases in one transaction. The
 workflow retries paired alias updates and restores prior aliases when possible,
