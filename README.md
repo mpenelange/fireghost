@@ -71,6 +71,21 @@ endpoints. Traefik applies the existing CIDR allowlist and prefix stripping, and
 the router independently checks the bearer credential. `MCP_ENABLED` accepts
 only literal `true` or `false`; enabling it without `ROUTER_API_KEY` is rejected.
 
+## Agent skill
+
+`skills/fireghost` lets coding agents (Claude Code, and pi through the shared
+Agent Skills directory) use Fireghost for web search and retrieval. It is the
+official Firecrawl CLI behind a `fireghost` wrapper that points it at this
+appliance, reads the router key from the macOS Keychain item `fireghost-api`
+(or `FIREGHOST_API_KEY`), disables Firecrawl telemetry and feedback calls,
+limits search to web sources, and refuses Cloud-only commands unless
+`FIREGHOST_ALLOW_CLOUD=1`.
+
+```sh
+npm install -g firecrawl-cli
+./scripts/install-skill.sh   # re-run after updating skills/fireghost
+```
+
 ## Traefik prerequisites
 
 The root stack expects the external `TRAEFIK_NETWORK`, TLS `TRAEFIK_ENTRYPOINT`,
