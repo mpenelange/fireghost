@@ -28,7 +28,7 @@
       "timeoutMs": 60000,
       "minimumMarkdownChars": 500,
       "minimumCandidateRatio": 0.8,
-      "requiredText": ["Albert Einstein", "Next"],
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
       "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
     },
     {
@@ -38,7 +38,7 @@
       "timeoutMs": 60000,
       "minimumMarkdownChars": 500,
       "minimumCandidateRatio": 0.8,
-      "requiredText": ["Albert Einstein", "Next"],
+      "requiredText": ["Albert Einstein", "J.K. Rowling"],
       "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
     },
     {
@@ -53,6 +53,17 @@
     },
     {
       "name": "camofox-real-world",
+      "renderer": "camofox",
+      "url": "https://github.com/rust-lang/rust",
+      "timeoutMs": 90000,
+      "minimumMarkdownChars": 20000,
+      "minimumCandidateRatio": 0.75,
+      "requiredText": ["rust-lang/rust", "rustc"],
+      "forbiddenText": ["Just a moment", "Enable JavaScript and cookies"]
+    },
+    {
+      "name": "camofox-real-world-reddit",
+      "informational": true,
       "renderer": "camofox",
       "url": "https://www.reddit.com/r/selfhosted/",
       "timeoutMs": 90000,

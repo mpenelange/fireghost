@@ -1,0 +1,31 @@
+{
+  "dateUTC": "2026-10-01",
+  "purpose": "Observe how the deployed production CRW handles the browser-gate Reddit case",
+  "method": "One request from a temporary curl container on the production Compose network directly to CRW, bypassing the router (no cache, no cloud fallback, no credentials). No production service was changed or restarted.",
+  "request": {"endpoint": "crw:3000/v2/scrape", "url": "https://www.reddit.com/r/selfhosted/", "formats": ["markdown"], "renderer": "camofox", "timeoutMs": 60000},
+  "production": {
+    "crwImage": "git.firewire.cc/michael/fireghost-crw@sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+    "crwVersion": "1.2.0",
+    "crwRevision": "c7a58561821496d33f7d46497665db63002022cd",
+    "camofoxImage": "ghcr.io/redf0x1/camofox-browser@sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "composeReference": "fireghost-crw:latest (mutable tag; resolves to the digest above)"
+  },
+  "www.reddit.com": {
+    "httpStatus": 200,
+    "success": true,
+    "originStatus": 200,
+    "markdownChars": 52,
+    "markdown": "\\[Truncated: result was 1158816 bytes, max 1048576\\]",
+    "renderedWith": null,
+    "title": null,
+    "latencySeconds": 6.72
+  },
+  "old.reddit.com": {
+    "httpStatus": 200,
+    "success": true,
+    "markdownChars": 231,
+    "title": "Welcome to Reddit",
+    "observation": "Anonymous request receives the login wall; no posts"
+  },
+  "firecrawlCloud": "Operator test in the Firecrawl playground: Reddit refused. Router cloud fallback cannot recover Reddit."
+}

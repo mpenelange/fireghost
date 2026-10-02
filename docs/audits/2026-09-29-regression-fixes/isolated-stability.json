@@ -1,0 +1,86 @@
+[
+  {
+    "name": "/fg-regressions-baseline-20260929-crw-1",
+    "image": "sha256:9d1428de2942e57309f1d359b974c9d23f218f3bc14506e3894544e7809f0c9b",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-baseline-20260929-router-1",
+    "image": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-baseline-20260929-lightpanda-1",
+    "image": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-baseline-20260929-camofox-1",
+    "image": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-candidate-20260929-router-1",
+    "image": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-candidate-20260929-crw-1",
+    "image": "sha256:25d454806c336fba49a4da063a33a13441c803edf4929fe09fd1785bc2aada92",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-candidate-20260929-lightpanda-1",
+    "image": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-candidate-20260929-camofox-1",
+    "image": "sha256:41e79fb61d50f0a8292b2a51c81ebcb0a2be24d89e9eac970edd12613006ced7",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-camofox247-20260929-router-1",
+    "image": "sha256:4a391dbf71c012430abc5b9ed0c260ec0bd302fef5b6d2d5e306f2429a31d13a",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-camofox247-20260929-crw-1",
+    "image": "sha256:25d454806c336fba49a4da063a33a13441c803edf4929fe09fd1785bc2aada92",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-camofox247-20260929-lightpanda-1",
+    "image": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  },
+  {
+    "name": "/fg-regressions-camofox247-20260929-camofox-1",
+    "image": "sha256:afaaf9795af8793f3e6353e9e5dd5b03713b6ffed6e80c1b0a179575322bcff0",
+    "oom_killed": false,
+    "restarts": 0,
+    "health": "healthy"
+  }
+]

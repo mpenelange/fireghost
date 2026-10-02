@@ -1,0 +1,144 @@
+name: validation
+
+# Browser-pin regression validation. CRW is built on the shared build runner;
+# both isolated stacks run on the shared `validation` runner.
+# Both sides use the candidate CRW so only the browser image differs. Neither
+# job changes an image pin, dev/stack.lock.json, or the production deployment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      camofox_image:
+        description: Candidate Camofox image (immutable digest reference)
+        required: false
+        default: ""
+      lightpanda_image:
+        description: Candidate LightPanda image (immutable digest reference)
+        required: false
+        default: ""
+
+concurrency:
+  group: fireghost-validation
+  cancel-in-progress: false
+
+jobs:
+  build-crw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY_USERNAME"
+          test -n "$REGISTRY_TOKEN"
+          printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push CRW validation image
+        id: push
+        env:
+          IMAGE: git.firewire.cc/michael/fireghost-crw
+        run: |
+          set -euo pipefail
+          build_date="$(git show -s --format=%cI "$GITHUB_SHA")"
+          crw_version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("crw/Cargo.toml").read_text())["workspace"]["package"]["version"])')"
+          tag="validation-${GITHUB_SHA::12}"
+          docker buildx build --platform linux/amd64 --push \
+            --build-arg CRW_VERSION="$crw_version-validation.${GITHUB_SHA::7}" \
+            --build-arg CRW_REVISION="$GITHUB_SHA" \
+            --build-arg CRW_BUILD_DATE="$build_date" \
+            --build-arg CRW_SOURCE="https://git.firewire.cc/michael/fireghost" \
+            --metadata-file "$RUNNER_TEMP/crw-metadata.json" \
+            --tag "$IMAGE:$tag" \
+            crw
+          digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$RUNNER_TEMP/crw-metadata.json")"
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+
+  browser-regression:
+    needs: build-crw
+    runs-on: validation
+    timeout-minutes: 90
+    env:
+      CRW_IMAGE: ${{ needs.build-crw.outputs.image }}
+      CAMOFOX_CANDIDATE: ${{ inputs.camofox_image }}
+      LIGHTPANDA_CANDIDATE: ${{ inputs.lightpanda_image }}
+      ROUTER_VERSION: validation
+      ROUTER_REVISION: ${{ github.sha }}
+      # Bypass the router scrape cache so cold and warm passes reach CRW.
+      ROUTER_SCRAPE_TTL: 0s
+      # Isolated stacks never spend cloud credits.
+      FIRECRAWL_CLOUD_API_KEY: ""
+      ROUTER_DAILY_CLOUD_CREDITS: "0"
+      ROUTER_MONTHLY_CLOUD_CREDITS: "0"
+      ROUTER_CLOUD_BURST_CREDITS: "0"
+      ROUTER_CLOUD_REFILL_CREDITS_PER_DAY: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require exactly one browser change
+        run: |
+          set -euo pipefail
+          if [ -n "$CAMOFOX_CANDIDATE" ] && [ -n "$LIGHTPANDA_CANDIDATE" ]; then
+            echo "Change only one browser image per run" >&2; exit 1
+          fi
+          for ref in "$CAMOFOX_CANDIDATE" "$LIGHTPANDA_CANDIDATE"; do
+            case "$ref" in ""|*@sha256:*) ;; *) echo "Not a digest reference: $ref" >&2; exit 1 ;; esac
+          done
+      - name: Log in to Forgejo registry
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login git.firewire.cc --username "$REGISTRY_USERNAME" --password-stdin
+      - name: Start control and candidate stacks
+        run: |
+          set -euo pipefail
+          cp dev/.env.example dev/.env
+          {
+            echo "services:"
+            if [ -n "$CAMOFOX_CANDIDATE" ]; then
+              printf '  camofox:\n    image: %s\n' "$CAMOFOX_CANDIDATE"
+            fi
+            if [ -n "$LIGHTPANDA_CANDIDATE" ]; then
+              printf '  lightpanda:\n    image: %s\n' "$LIGHTPANDA_CANDIDATE"
+            fi
+            if [ -z "$CAMOFOX_CANDIDATE$LIGHTPANDA_CANDIDATE" ]; then
+              echo "  {}"
+            fi
+          } > "$RUNNER_TEMP/browser-candidate.yaml"
+          compose="docker compose --project-directory dev -f dev/compose.yaml"
+          $compose -p fg-validation-control up -d --build --wait --wait-timeout 300
+          $compose -f dev/compose.staging.yaml -f "$RUNNER_TEMP/browser-candidate.yaml" \
+            -p fg-validation-candidate up -d --build --wait --wait-timeout 300
+      - name: Browser regression (cold candidate)
+        run: python3 scripts/browser-regression-gate.py --output "artifacts/validation-$GITHUB_RUN_NUMBER/browser-cold.json"
+      - name: Browser regression (warm candidate)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/browser-regression-gate.py --output "artifacts/validation-$GITHUB_RUN_NUMBER/browser-warm.json"
+      - name: Record container health
+        if: ${{ always() }}
+        run: |
+          mkdir -p "artifacts/validation-$GITHUB_RUN_NUMBER"
+          for p in fg-validation-control fg-validation-candidate; do
+            docker ps -aq --filter "label=com.docker.compose.project=$p" | xargs -r docker inspect \
+              --format '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.service"}} image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}} status={{.State.Status}}'
+          done | tee "artifacts/validation-$GITHUB_RUN_NUMBER/containers.txt"
+          docker stats --no-stream --format '{{.Name}} mem={{.MemUsage}} pids={{.PIDs}}' | tee -a "artifacts/validation-$GITHUB_RUN_NUMBER/containers.txt"
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: validation-${{ github.run_number }}
+          path: artifacts/validation-${{ github.run_number }}/
+      - name: Tear down isolated stacks
+        if: ${{ always() }}
+        run: |
+          compose="docker compose --project-directory dev -f dev/compose.yaml"
+          $compose -p fg-validation-control down -v --remove-orphans || true
+          $compose -f dev/compose.staging.yaml -p fg-validation-candidate down -v --remove-orphans || true
+          docker image prune -af --filter "until=72h" || true
+          docker logout git.firewire.cc || true

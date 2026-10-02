@@ -431,6 +431,18 @@ async fn scrape_url_inner(
         data.markdown.as_deref(),
         extraction_cfg.http_retry_threshold_bytes,
     );
+    if data.block.is_none()
+        && let Some(reason) = detect_login_wall(
+            fetch_result
+                .final_url
+                .as_deref()
+                .unwrap_or(&fetch_result.url),
+            &fetch_result.html,
+            data.markdown.as_deref(),
+        )
+    {
+        return Err(crw_core::error::CrwError::LoginRequired(reason));
+    }
     // Surface redirect mismatch as warning. Helps detect cases like
     // northernair.ca/history.htm silently 302'ing to the homepage — extraction
     // looks "successful" but the user got the wrong page.
@@ -893,6 +905,32 @@ fn classify_block(
     })
 }
 
+/// Extracted text at or above this size is real content, not a bare sign-in
+/// wall. Reddit's anonymous wall extracts to ~230 chars; listings to 10k+.
+const LOGIN_WALL_MAX_MARKDOWN_CHARS: usize = 1_000;
+
+/// Per-site sign-in walls served in place of content: (registrable domain,
+/// markers that must ALL appear). Specific form-field ids keep ordinary pages
+/// that merely link to a login page from matching.
+const LOGIN_WALL_SIGNATURES: [(&str, &[&str]); 1] = [(
+    "reddit.com",
+    &[r#"id="login-username""#, r#"id="login-password""#],
+)];
+
+/// Detect a known site's sign-in wall. Returns the `LoginRequired` reason.
+/// Runs only when markdown was extracted, so content size can be judged.
+fn detect_login_wall(url: &str, html: &str, markdown: Option<&str>) -> Option<String> {
+    if markdown?.trim().chars().count() >= LOGIN_WALL_MAX_MARKDOWN_CHARS {
+        return None;
+    }
+    let host = url::Url::parse(url).ok()?.host_str()?.to_ascii_lowercase();
+    LOGIN_WALL_SIGNATURES.iter().find_map(|(domain, markers)| {
+        let on_site = host == *domain || host.ends_with(&format!(".{domain}"));
+        (on_site && markers.iter().all(|marker| html.contains(marker)))
+            .then(|| format!("{domain} served a sign-in page instead of the requested content"))
+    })
+}
+
 fn formats_include_json(formats: &[OutputFormat]) -> bool {
     formats.contains(&OutputFormat::Json)
 }
@@ -1166,5 +1204,85 @@ mod tests {
             "<html><body>Google broke reCAPTCHA for de-googled Android users</body></html>",
         ));
         assert!(warning.is_none(), "got false-positive: {warning:?}");
+    }
+
+    // Minimal synthetic copy of the markers on Reddit's anonymous sign-in
+    // wall (observed 2026-10-01 on old.reddit.com); no captured page content.
+    const REDDIT_LOGIN_WALL: &str = r#"<html><head><title>Welcome to Reddit</title></head><body><faceplate-form action="/svc/shreddit/account/login"><faceplate-text-input id="login-username" name="username"></faceplate-text-input><faceplate-text-input id="login-password" name="password" type="password"></faceplate-text-input></faceplate-form></body></html>"#;
+    const LOGIN_WALL_MARKDOWN: &str = "# Welcome to Reddit\n\nLog In Continue with SSO";
+
+    #[test]
+    fn login_wall_detected_on_reddit_sign_in_page() {
+        for url in [
+            "https://old.reddit.com/r/selfhosted/",
+            "https://www.reddit.com/r/selfhosted/",
+            "https://reddit.com/r/selfhosted/",
+        ] {
+            assert!(
+                detect_login_wall(url, REDDIT_LOGIN_WALL, Some(LOGIN_WALL_MARKDOWN)).is_some(),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn login_wall_ignores_reddit_page_with_substantial_content() {
+        let markdown = "A real post title and body. ".repeat(100);
+        assert!(
+            detect_login_wall(
+                "https://www.reddit.com/r/selfhosted/",
+                REDDIT_LOGIN_WALL,
+                Some(&markdown)
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn login_wall_ignores_other_and_lookalike_hosts() {
+        for url in [
+            "https://example.com/",
+            "https://notreddit.com/r/selfhosted/",
+            "https://reddit.com.example.net/r/selfhosted/",
+        ] {
+            assert!(
+                detect_login_wall(url, REDDIT_LOGIN_WALL, Some(LOGIN_WALL_MARKDOWN)).is_none(),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn login_wall_requires_both_sign_in_fields() {
+        let username_only = REDDIT_LOGIN_WALL.replace("id=\"login-password\"", "id=\"other\"");
+        assert!(
+            detect_login_wall(
+                "https://old.reddit.com/r/selfhosted/",
+                &username_only,
+                Some(LOGIN_WALL_MARKDOWN)
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn login_wall_requires_extracted_markdown() {
+        // Markdown is only produced when a text format is requested; without it
+        // a sign-in wall cannot be told apart from a page that has content.
+        assert!(
+            detect_login_wall(
+                "https://old.reddit.com/r/selfhosted/",
+                REDDIT_LOGIN_WALL,
+                None
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn login_wall_ignores_unparseable_url() {
+        assert!(
+            detect_login_wall("not a url", REDDIT_LOGIN_WALL, Some(LOGIN_WALL_MARKDOWN)).is_none()
+        );
     }
 }

@@ -2,11 +2,10 @@
 //!
 //! Search SERPs trip anti-bot / consent walls immediately, so search does NOT
 //! use the renderer failover ladder — it drives the camofox-browser (Firefox)
-//! tier directly: schedule a tab navigation, observe the destination through
-//! `/tabs`, then scrape result rows via `/evaluate`. Navigation is deliberately
-//! scheduled from the evaluator instead of calling Camofox's blocking
-//! `/navigate` route: that route can keep running for 30 seconds after CRW's
-//! shorter timeout, poisoning the shared warm tab for the next engine. Multiple
+//! tier directly: navigate a tab, observe the destination through `/tabs`, then
+//! scrape result rows via `/evaluate`. The entire attempt is bounded by CRW's
+//! deadline. A timed-out tab is replaced before best-effort closure, since the
+//! upstream navigation may continue after the client disconnects. Multiple
 //! engines requested in one call run sequentially on the warm tab and their
 //! rows are merged (see [`merge_results`]).
 //!
@@ -51,11 +50,14 @@ const SESSION_KEY: &str = "search";
 /// stale-tab path (idle eviction / camofox restart), not the steady state.
 const RETRY_BACKOFF: Duration = Duration::from_millis(750);
 
+/// Replacement creation and old-tab deletion have independent short budgets;
+/// a wedged browser must not add another full search timeout to cleanup.
+const CLEANUP_BUDGET: Duration = Duration::from_millis(250);
+
 /// Polling is intentionally cheap and bounded. Camofox's tab-list route does
 /// not wait for browser lifecycle events, so it remains responsive while a
 /// destination is loading or redirecting through a challenge page.
 const URL_POLL_INTERVAL: Duration = Duration::from_millis(200);
-const NAV_START_GRACE: Duration = Duration::from_millis(500);
 const RENDER_SETTLE: Duration = Duration::from_millis(500);
 
 /// JS evaluated in the Google SERP to extract result rows. Returns a JSON
@@ -113,8 +115,8 @@ fn scrape_js(engine: SearchEngine) -> &'static str {
 }
 
 /// Direct SERP URL for a browser-driven engine. We intentionally do not use the
-/// blocking Camofox navigation API (or its Google macro): navigation is
-/// scheduled through `/evaluate`, then observed via `/tabs`.
+/// Google macro so every engine uses an explicit query-specific destination,
+/// which is verified via `/tabs` before extraction.
 fn search_target_url(engine: SearchEngine, query: &str) -> String {
     let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
     match engine {
@@ -437,7 +439,7 @@ impl CamofoxSearchClient {
             let outcome = if matches!(engine, SearchEngine::Github) {
                 self.github_search(&params.q).await
             } else {
-                match self.attempt(worker, &mut tab, engine, params).await {
+                let outcome = match self.attempt(worker, &mut tab, engine, params).await {
                     Ok(rows) => Ok(rows),
                     Err(e) if is_stale_tab(&e) => {
                         // Warm tab/context died (idle eviction or camofox
@@ -448,7 +450,11 @@ impl CamofoxSearchClient {
                         self.attempt(worker, &mut tab, engine, params).await
                     }
                     Err(e) => Err(e),
+                };
+                if matches!(outcome, Err(SearchError::Timeout)) {
+                    self.abandon_tab(worker, &mut tab).await;
                 }
+                outcome
             };
             match outcome {
                 Ok(rows) => {
@@ -536,6 +542,35 @@ impl CamofoxSearchClient {
         Ok(id)
     }
 
+    /// Mint the replacement before deleting the old tab, avoiding Camofox's
+    /// eager zero-tab context teardown. Both operations are bounded separately;
+    /// failed prewarming leaves no cached id, so the next query can retry create.
+    async fn abandon_tab(&self, worker: &CamofoxSearchWorker, tab: &mut Option<String>) {
+        let Some(old) = tab.take() else { return };
+        match tokio::time::timeout(CLEANUP_BUDGET, self.ensure_tab(worker, tab)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => tracing::debug!(%error, "camofox: replacement tab creation failed"),
+            Err(_) => tracing::debug!("camofox: replacement tab creation timed out"),
+        }
+        let close = self
+            .auth(self.http.delete(format!("{}/tabs/{old}", self.base_url)))
+            .json(&json!({ "userId": worker.user_id }))
+            .send();
+        match tokio::time::timeout(CLEANUP_BUDGET, close).await {
+            Ok(Ok(response))
+                if response.status().is_success()
+                    || matches!(response.status().as_u16(), 404 | 410) => {}
+            Ok(Ok(response)) => tracing::warn!(
+                status = response.status().as_u16(),
+                "camofox: abandoned tab deletion rejected"
+            ),
+            Ok(Err(error)) => {
+                tracing::warn!(error = %error.without_url(), "camofox: abandoned tab deletion failed")
+            }
+            Err(_) => tracing::warn!("camofox: abandoned tab deletion timed out"),
+        }
+    }
+
     async fn run_search(
         &self,
         worker: &CamofoxSearchWorker,
@@ -545,31 +580,22 @@ impl CamofoxSearchClient {
         deadline: Instant,
     ) -> Result<Vec<SearxngResult>, SearchError> {
         let target_url = search_target_url(engine, &params.q);
-        let encoded_url = serde_json::to_string(&target_url).map_err(|e| {
-            SearchError::InvalidResponse(format!("camofox: encode navigation URL: {e}"))
-        })?;
-        let expression =
-            format!("(()=>{{setTimeout(()=>location.assign({encoded_url}),0);return true}})()");
-        let scheduled = self
+        if Instant::now() >= deadline {
+            return Err(SearchError::Timeout);
+        }
+        // Both Camofox 2.4.6 and 2.4.8 ignore a request `timeout` and use
+        // their own 30-second navigation budget. attempt() enforces our total
+        // deadline; fetch() replaces a tab that may still be busy upstream.
+        let navigation = self
             .post(
-                &format!("/tabs/{tab_id}/evaluate"),
+                &format!("/tabs/{tab_id}/navigate"),
                 json!({
                     "userId": worker.user_id,
-                    "expression": expression,
-                    "timeout": 3_000,
+                    "url": target_url,
                 }),
             )
             .await?;
-        Self::api_response(scheduled, "schedule navigation").await?;
-
-        // The scheduled callback runs after the evaluator returns. Give the
-        // browser event loop a moment before checking a warm tab that still
-        // contains the previous query's URL.
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Ok(Vec::new());
-        }
-        tokio::time::sleep(NAV_START_GRACE.min(remaining)).await;
+        Self::api_response(navigation, "navigate").await?;
         loop {
             if Instant::now() >= deadline {
                 return Ok(Vec::new());
@@ -748,8 +774,8 @@ fn query_value(url: &url::Url, key: &str) -> Option<String> {
         .find_map(|(name, value)| (name == key).then(|| value.into_owned()))
 }
 
-/// A warm tab can still report the previous query while the scheduled timer is
-/// waiting to run. Require both the expected engine route and the current query
+/// A warm tab can still report the previous query while navigation settles.
+/// Require both the expected engine route and the current query
 /// before extraction so stale rows cannot be returned for a new request.
 fn url_matches_search(engine: SearchEngine, observed: &str, query: &str) -> bool {
     let Ok(url) = url::Url::parse(observed) else {
@@ -844,13 +870,13 @@ fn merge_results(
 }
 
 /// Whether an error means the warm tab/context is gone and recreating it could
-/// recover — a missing tab (404), a server-side fault like the upstream
-/// `window is null` (5xx), or a dropped connection during a relaunch. A
-/// timeout or a malformed-response parse error won't be helped by recreating,
-/// so they're reported as-is.
+/// recover — a missing tab (404), a destroyed timed-out tab (410), a server-side
+/// fault like `window is null` (5xx), or a dropped connection during a relaunch.
+/// Client-side timeouts rotate the tab for the next engine but are not retried;
+/// malformed responses are reported without replacing the tab.
 fn is_stale_tab(e: &SearchError) -> bool {
     match e {
-        SearchError::Upstream { status, .. } => *status == 404 || *status >= 500,
+        SearchError::Upstream { status, .. } => matches!(*status, 404 | 410) || *status >= 500,
         SearchError::Transport(_) => true,
         SearchError::Timeout | SearchError::InvalidResponse(_) => false,
     }
@@ -956,7 +982,7 @@ mod extractor_tests {
 #[cfg(test)]
 mod github_api_tests {
     use super::*;
-    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// A tab can disappear after URL polling succeeded. Propagate that
@@ -985,8 +1011,7 @@ mod github_api_tests {
             .await;
         for tab in ["t1", "t2"] {
             Mock::given(method("POST"))
-                .and(path(format!("/tabs/{tab}/evaluate")))
-                .and(body_partial_json(json!({ "timeout": 3000 })))
+                .and(path(format!("/tabs/{tab}/navigate")))
                 .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                     "ok": true, "result": true
                 })))
@@ -1106,8 +1131,7 @@ mod github_api_tests {
             .mount(&server)
             .await;
         Mock::given(method("POST"))
-            .and(path("/tabs/t1/evaluate"))
-            .and(body_partial_json(json!({ "timeout": 3000 })))
+            .and(path("/tabs/t1/navigate"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "result": true })),
             )

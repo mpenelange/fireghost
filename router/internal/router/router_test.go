@@ -1921,6 +1921,7 @@ func TestScrapeNon2xxFallbackExcludesTerminalStatusesAndErrors(t *testing.T) {
 		{name: "unprocessable connection reset", status: 422, body: `{"success":false,"error":"connection reset by peer"}`, wantCloudCall: true},
 		{name: "unprocessable invalid URL", status: 422, body: `{"success":false,"error":"Invalid URL supplied"}`},
 		{name: "unprocessable robots", status: 422, body: `{"success":false,"error":"Blocked by robots.txt"}`},
+		{name: "unprocessable login required", status: 422, body: `{"success":false,"error":"Login required: reddit.com served a sign-in page instead of the requested content","error_code":"login_required"}`},
 		{name: "robots", status: 403, body: `{"success":false,"error":"Blocked by robots.txt"}`},
 		{name: "invalid URL", status: 500, body: `{"success":false,"error":"Invalid URL supplied"}`},
 	}
