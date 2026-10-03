@@ -325,7 +325,8 @@ async fn spawn_camofox_mock() -> String {
 }
 
 /// Like [`spawn_camofox_mock`], but every document evaluate answers with
-/// `evaluation`. The final-URL probe still reports [`PUBLIC_FINAL_URL`].
+/// `evaluation`. The final-URL probe still reports [`PUBLIC_FINAL_URL`], and the
+/// chunked-retrieval length probe reports 2,000,000 units.
 async fn spawn_camofox_mock_with_evaluation(evaluation: Value) -> String {
     let app = Router::new()
         .route("/tabs", post(create_tab))
@@ -343,6 +344,17 @@ async fn spawn_camofox_mock_with_evaluation(evaluation: Value) -> String {
                         return Json(json!({
                             "ok": true,
                             "result": PUBLIC_FINAL_URL,
+                            "resultType": "string",
+                            "truncated": false,
+                        }));
+                    }
+                    if body["expression"]
+                        .as_str()
+                        .is_some_and(|e| e.contains("outerHTML.length"))
+                    {
+                        return Json(json!({
+                            "ok": true,
+                            "result": "2000000",
                             "resultType": "string",
                             "truncated": false,
                         }));
@@ -390,9 +402,9 @@ async fn fetch_rejects_truncated_evaluation_placeholder() {
     // Camofox replaces oversized outerHTML with this diagnostic string. It is
     // not page content, even though evaluation returned HTTP 200 and ok:true.
     // The renderer retries in slices (see
-    // `fetch_reassembles_document_over_camofox_result_cap`); when every
-    // evaluate keeps answering with the placeholder, the fetch must fail
-    // rather than scrape the diagnostic.
+    // `fetch_reassembles_document_over_camofox_result_cap`), halving the slice
+    // each time one is truncated; when even the minimum slice comes back as the
+    // placeholder, the fetch must fail rather than scrape the diagnostic.
     let base = spawn_camofox_mock_with_evaluation(json!({
         "ok": true,
         "result": "[Truncated: result was 1201774 bytes, max 1048576]",
@@ -407,7 +419,8 @@ async fn fetch_rejects_truncated_evaluation_placeholder() {
         .await;
 
     assert!(
-        matches!(&result, Err(crw_core::error::CrwError::RendererError(_))),
+        matches!(&result, Err(crw_core::error::CrwError::RendererError(message))
+            if message.contains("truncated even at the minimum chunk size")),
         "truncated evaluation must fail instead of scraping its diagnostic: {result:?}"
     );
 }
