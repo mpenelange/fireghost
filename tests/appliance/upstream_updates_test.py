@@ -95,7 +95,7 @@ class UpstreamManifestTest(unittest.TestCase):
         self.assertEqual(set(data), {"schemaVersion", "sources", "images"})
         self.assertEqual(
             data["sources"]["crwVendor"]["reviewedCommit"],
-            "84f12bb3ef4c4111142e4da894444f2052fea493",
+            "796d8c9fa695165867ba8a778f39c9e575e8e154",
         )
         self.assertEqual(
             data["sources"]["crwVendor"]["ref"],
