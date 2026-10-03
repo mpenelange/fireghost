@@ -683,7 +683,15 @@ impl CamofoxRenderer {
     /// (JS string semantics); the expression never ends a slice on a lone
     /// high surrogate, and the next offset advances by the received slice's
     /// UTF-16 length, so multibyte characters are never split.
-    async fn evaluate_html_chunked(&self, tab_id: &str, deadline: Deadline) -> CrwResult<String> {
+    ///
+    /// Returns the HTML plus a caller-facing warning when it is incomplete:
+    /// cut at [`MAX_CHUNKED_HTML_UNITS`], or stopped early because the document
+    /// shrank mid-retrieval. A partial document is never returned silently.
+    async fn evaluate_html_chunked(
+        &self,
+        tab_id: &str,
+        deadline: Deadline,
+    ) -> CrwResult<(String, Option<String>)> {
         let path = format!("/tabs/{tab_id}/evaluate");
         let total: usize = self
             .post_decode_within::<EvaluateResponse>(
@@ -744,7 +752,25 @@ impl CamofoxRenderer {
             html.push_str(&piece);
             start += advanced;
         }
-        Ok(html)
+        let warning = if start < end {
+            tracing::warn!(
+                tab_id,
+                received_units = start,
+                total_units = total,
+                "camofox: document shrank during chunked retrieval; returning partial HTML"
+            );
+            Some(format!(
+                "camofox_document_incomplete: document changed during retrieval; \
+                 kept {start} of {total} UTF-16 units"
+            ))
+        } else if total > end {
+            Some(format!(
+                "camofox_document_truncated: kept the first {end} of {total} UTF-16 units"
+            ))
+        } else {
+            None
+        };
+        Ok((html, warning))
     }
 
     /// Best-effort `DELETE /tabs/{id}` — never fails the caller. Uses a fixed
@@ -1012,13 +1038,13 @@ impl PageFetcher for CamofoxRenderer {
             Ok(r) if r.truncated || r.result.as_deref().is_some_and(is_truncation_placeholder) => {
                 self.evaluate_html_chunked(&tab_id, deadline).await
             }
-            Ok(r) => Ok(r.result.unwrap_or_default()),
+            Ok(r) => Ok((r.result.unwrap_or_default(), None)),
             Err(e) => Err(e),
         };
 
         // 4b. Clearance capture: only for a challenge-free document, only when a
         //     cache is wired. Never fails the fetch.
-        if let Ok(h) = &html
+        if let Ok((h, _)) = &html
             && !h.is_empty()
             && !detector::looks_like_cloudflare_challenge(h)
         {
@@ -1028,7 +1054,7 @@ impl PageFetcher for CamofoxRenderer {
         // 5. Best-effort close — never fail the fetch on cleanup.
         self.close_tab(&tab_id).await;
 
-        let html = html?;
+        let (html, partial_warning) = html?;
         if html.is_empty() {
             return Err(CrwError::RendererError(
                 "camofox: evaluate returned empty document".to_string(),
@@ -1054,7 +1080,7 @@ impl PageFetcher for CamofoxRenderer {
             warning: None,
             render_decision: None,
             credit_cost: 0,
-            warnings: Vec::new(),
+            warnings: partial_warning.into_iter().collect(),
             wall: None,
             truncated: false,
             deadline_exceeded: deadline.expired(),

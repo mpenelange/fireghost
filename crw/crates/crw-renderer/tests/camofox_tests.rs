@@ -695,6 +695,66 @@ async fn fetch_reassembles_document_over_camofox_result_cap() {
     );
     assert_eq!(&result.html, big_html());
     assert!(result.html.ends_with("<h1>the end</h1></body></html>"));
+    assert!(
+        result.warnings.is_empty(),
+        "a complete document carries no warning: {:?}",
+        result.warnings
+    );
+}
+
+/// Like `evaluate_big`, but the length probe reports more than the document
+/// holds, as when a script rewrites the page mid-retrieval: slices past the
+/// real end come back empty.
+async fn evaluate_big_shrinking(Path(id): Path<String>, Json(body): Json<Value>) -> Json<Value> {
+    let expr = body["expression"].as_str().unwrap_or_default();
+    if expr.contains("outerHTML.length") {
+        return Json(json!({
+            "ok": true,
+            "result": (big_html().len() + 100_000).to_string(),
+            "resultType": "string",
+            "truncated": false,
+        }));
+    }
+    if let Some((_, tail)) = expr.rsplit_once("outerHTML,") {
+        let start: usize = tail.split(',').next().unwrap().parse().unwrap();
+        if start >= big_html().len() {
+            return Json(
+                json!({ "ok": true, "result": "", "resultType": "string", "truncated": false }),
+            );
+        }
+    }
+    evaluate_big(Path(id), Json(body)).await
+}
+
+#[tokio::test]
+async fn fetch_warns_when_chunked_document_comes_back_incomplete() {
+    let app = Router::new()
+        .route("/tabs", post(create_tab))
+        .route("/tabs/{id}/navigate", post(navigate))
+        .route("/tabs/{id}/wait", post(wait))
+        .route("/tabs/{id}/evaluate", post(evaluate_big_shrinking))
+        .route("/tabs/{id}", delete(close_tab));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let base = format!("http://{addr}");
+    let renderer = CamofoxRenderer::new("camofox", &base, None, Duration::from_secs(10));
+
+    let result = renderer
+        .fetch("https://example.com/big", &HashMap::new(), None, deadline())
+        .await
+        .expect("a partial document is still returned");
+    assert_eq!(&result.html, big_html());
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("camofox_document_incomplete:")),
+        "partial document must be announced: {:?}",
+        result.warnings
+    );
 }
 
 #[tokio::test]
