@@ -209,9 +209,9 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         third_party = [
             value
             for value in re.findall(r"(?m)^\s+image:\s*(.+)$", compose)
-            if "camofox-browser" in value or "lightpanda/browser" in value
+            if "camofox-browser" in value or "lightpanda/browser" in value or "byparr" in value
         ]
-        self.assertEqual(len(third_party), 2)
+        self.assertEqual(len(third_party), 3)
         for image in third_party:
             self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
 

@@ -1,12 +1,25 @@
-# Renderer ladder: direct HTTP, then LightPanda, then Camofox.
+# Renderer ladder: direct HTTP, Chrome-impersonated HTTP, LightPanda, Camofox,
+# then the Byparr challenge solver for pages still behind an anti-bot wall.
 [renderer]
 mode = "auto"
+
+# Plain HTTP with Chrome's TLS and HTTP/2 fingerprint (wreq/BoringSSL), tried
+# before any browser. Fingerprint-checking bot managers (e.g. Akamai) often pass
+# it; the short budget keeps the extra hop cheap on pages it cannot help.
+[renderer.impersonated]
+enabled = true
+timeout_ms = 4000
 
 [renderer.lightpanda]
 ws_url = "ws://lightpanda:9222/"
 
 [renderer.camofox]
 base_url = "http://camofox:9377"
+
+# Last tier: solves anti-bot challenges (Cloudflare and similar) in its own
+# Camoufox, and only runs when a page is still challenged after Camofox.
+[renderer.byparr]
+base_url = "http://byparr:8191"
 
 [search]
 camofox_pool_size = 4

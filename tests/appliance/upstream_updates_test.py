@@ -115,7 +115,7 @@ class UpstreamManifestTest(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("valid: 2 sources, 2 images", result.stdout)
+        self.assertIn("valid: 2 sources, 3 images", result.stdout)
 
     def test_check_reports_current_changed_and_unavailable(self):
         data = manifest()

@@ -161,6 +161,37 @@ services:
           # state and burst above 512 during cold launch.
           pids: 1024
 
+  byparr:
+    labels:
+      traefik.enable: "false"
+    image: ghcr.io/thephaseless/byparr@sha256:874f719518f617d03a60e03411fc5d090647e1a877041e81f8dc965927c7deb6
+    restart: unless-stopped
+    # Anti-bot challenge solver (FlareSolverr-compatible API on byparr:8191),
+    # used by CRW as its last renderer tier. Internal only: no published port
+    # and no authentication, so it must never be routed or exposed.
+    networks:
+      - appliance
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    # Each solve launches its own Camoufox (two concurrently by default).
+    shm_size: 2g
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+          pids: 1024
+
   lightpanda:
     labels:
       traefik.enable: "false"

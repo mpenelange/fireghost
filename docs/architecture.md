@@ -7,7 +7,7 @@ appliance publishes one loopback endpoint: the Go router at
 `127.0.0.1:33000`. The router accepts the Firecrawl-compatible `/v2/search` and
 `/v2/scrape` APIs, plus `/health` and `/metrics`.
 
-Requests go to CRW first. CRW uses direct HTTP, then LightPanda at `ws://lightpanda:9222/`, then Camofox at `http://camofox:9377`. Those three services have no host ports. The single `appliance` bridge permits outbound retrieval while service names provide internal discovery.
+Requests go to CRW first. CRW uses direct HTTP, then a Chrome-impersonated HTTP fetch (same TLS and HTTP/2 fingerprint as Chrome, in-process), then LightPanda at `ws://lightpanda:9222/`, then Camofox at `http://camofox:9377`, and finally the Byparr challenge solver at `http://byparr:8191` for pages still behind an anti-bot challenge. LightPanda, Camofox, and Byparr have no host ports; Byparr has no authentication and must stay internal. The single `appliance` bridge permits outbound retrieval while service names provide internal discovery.
 
 Successful router responses and the cloud-credit ledger live in `router-data`. Browser profiles live in `camofox-profiles`. Router, CRW, and LightPanda roots are read-only with writable scratch space in tmpfs. Camofox is the deliberate exception: Camoufox creates a Firefox `glxtest` helper and font caches beneath `/home/node/.cache` at runtime, so that container keeps an ephemeral writable root while still dropping all capabilities, using `no-new-privileges`, and exposing no host port.
 
