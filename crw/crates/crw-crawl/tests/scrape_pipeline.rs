@@ -47,6 +47,7 @@ impl PageFetcher for Tier {
             wall: None,
             truncated: self.truncated,
             deadline_exceeded: false,
+            status_synthetic: false,
             captured_responses: Vec::new(),
         })
     }

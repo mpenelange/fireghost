@@ -2485,6 +2485,7 @@ mod tests {
             wall: None,
             truncated: false,
             deadline_exceeded: false,
+            status_synthetic: false,
             captured_responses: Vec::new(),
         }
     }

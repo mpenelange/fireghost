@@ -257,16 +257,17 @@ fn is_origin_navigation_failure(e: &CrwError) -> bool {
     }
 }
 
-/// Camofox does not expose the browser navigation response status or final
-/// URL directly. Its fetcher probes the Navigation Timing `responseStatus`, but
-/// falls back to a synthetic HTTP 200 when the probe is unavailable. When the
-/// direct origin request already proved that the resource is 404/410, preserve
-/// that status after Camofox hydrates the body. Other JS renderers observe
-/// their own status and are left untouched.
+/// Camofox does not expose the browser navigation response status directly.
+/// Its fetcher probes the Navigation Timing `responseStatus` and, only when
+/// that probe is unavailable, reports a synthetic 200 (`status_synthetic`).
+/// When the direct origin request already proved that the resource is 404/410,
+/// preserve that status over the synthetic one after Camofox hydrates the body.
+/// A status Camofox actually observed, and every other JS renderer's status,
+/// is left untouched.
 fn preserve_unobserved_origin_status(origin: &FetchResult, rendered: &mut FetchResult) {
     if matches!(origin.status_code, 404 | 410)
         && rendered.status_code == 200
-        && rendered.final_url.is_none()
+        && rendered.status_synthetic
         && rendered.rendered_with.as_deref() == Some("camofox")
     {
         rendered.status_code = origin.status_code;
@@ -2689,6 +2690,8 @@ mod tests {
     #[derive(Clone)]
     enum MockBehavior {
         Ok(String),
+        /// A 200 the renderer did not observe (Camofox without a status probe).
+        OkSyntheticStatus(String),
         OkStatus(u16, String),
         Err(String),
         #[cfg(feature = "impersonated")]
@@ -2707,8 +2710,11 @@ mod tests {
             _wait_for_ms: Option<u64>,
             _deadline: crw_core::Deadline,
         ) -> CrwResult<FetchResult> {
+            let status_synthetic = matches!(self.behavior, MockBehavior::OkSyntheticStatus(_));
             let (status, html) = match &self.behavior {
-                MockBehavior::Ok(html) => (200u16, html.clone()),
+                MockBehavior::Ok(html) | MockBehavior::OkSyntheticStatus(html) => {
+                    (200u16, html.clone())
+                }
                 MockBehavior::OkStatus(s, html) => (*s, html.clone()),
                 MockBehavior::Err(msg) => return Err(CrwError::RendererError(msg.clone())),
                 #[cfg(feature = "impersonated")]
@@ -2735,6 +2741,7 @@ mod tests {
                 wall: None,
                 truncated: false,
                 deadline_exceeded: false,
+                status_synthetic,
                 captured_responses: Vec::new(),
             })
         }
@@ -2800,6 +2807,7 @@ mod tests {
                 wall: None,
                 truncated: false,
                 deadline_exceeded: false,
+                status_synthetic: false,
                 captured_responses: Vec::new(),
             })
         }
@@ -4675,7 +4683,7 @@ mod tests {
         }) as Arc<dyn PageFetcher>;
         let camofox = Arc::new(MockFetcher {
             name: "camofox",
-            behavior: MockBehavior::Ok(rich_html("HYDRATED-NOT-FOUND-")),
+            behavior: MockBehavior::OkSyntheticStatus(rich_html("HYDRATED-NOT-FOUND-")),
         }) as Arc<dyn PageFetcher>;
         let mut r = make_renderer_with_mocks(vec![camofox]);
         r.http = origin;
@@ -4700,6 +4708,44 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning == "origin_status_preserved_from_http: 404")
+        );
+    }
+
+    #[tokio::test]
+    async fn observed_camofox_200_is_not_overwritten_by_origin_404() {
+        // The Navigation Timing probe saw a real 200 (a client-routed page the
+        // origin 404s to plain HTTP): Camofox's own status wins.
+        let origin = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::OkStatus(404, rich_html("NOT-FOUND-")),
+        }) as Arc<dyn PageFetcher>;
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(rich_html("RECOVERED-SPA-")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![camofox]);
+        r.http = origin;
+        r.render_js_default = None;
+
+        let result = r
+            .fetch(
+                "https://example.com/client-route",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(result.rendered_with.as_deref(), Some("camofox"));
+        assert!(
+            !result
+                .warnings
+                .iter()
+                .any(|warning| warning.starts_with("origin_status_preserved_from_http"))
         );
     }
 

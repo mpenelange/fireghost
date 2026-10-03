@@ -1162,6 +1162,10 @@ async fn fetch_reports_the_documents_real_status() {
         .expect("fetch succeeds");
 
     assert_eq!(result.status_code, 404);
+    assert!(
+        !result.status_synthetic,
+        "an observed status is not synthetic"
+    );
 }
 
 /// Without a usable status probe (an HTML answer, as older servers give for
@@ -1177,6 +1181,10 @@ async fn fetch_falls_back_to_200_when_the_status_probe_is_unusable() {
         .expect("fetch succeeds");
 
     assert_eq!(result.status_code, 200);
+    assert!(
+        result.status_synthetic,
+        "a stand-in 200 must be flagged so the ladder can prefer an origin 404"
+    );
 }
 
 /// Live: a real Camoufox browser waits out a challenge page that clears itself

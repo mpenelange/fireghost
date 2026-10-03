@@ -1916,6 +1916,7 @@ impl CdpRenderer {
             wall: None,
             truncated,
             deadline_exceeded: deadline.remaining().is_zero(),
+            status_synthetic: false,
             captured_responses,
         })
     }
@@ -2030,6 +2031,7 @@ impl CdpRenderer {
             wall: None,
             truncated,
             deadline_exceeded: deadline.remaining().is_zero(),
+            status_synthetic: false,
             captured_responses,
         })
     }

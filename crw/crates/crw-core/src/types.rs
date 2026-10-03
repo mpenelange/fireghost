@@ -2402,6 +2402,11 @@ pub struct FetchResult {
     /// Set when `Deadline::remaining() == 0` was observed at result-build time.
     /// Stricter than `truncated` — caller's whole budget is spent.
     pub deadline_exceeded: bool,
+    /// True when `status_code` was not observed from the wire but filled in as
+    /// a stand-in 200 (Camofox when its Navigation Timing probe fails). Lets
+    /// the ladder trust an origin 404/410 over it without overriding a status
+    /// the browser really saw.
+    pub status_synthetic: bool,
     /// XHR/fetch responses captured during navigation. Empty unless the
     /// renderer ran with network capture enabled. Used by extraction as a
     /// fallback content source when DOM-based extraction is low quality.

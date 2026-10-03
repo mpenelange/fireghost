@@ -990,8 +990,11 @@ impl PageFetcher for CamofoxRenderer {
             return Err(e);
         }
 
-        // Best-effort: without it the page is reported as a 200, as before.
-        let status_code = self.nav_status(&tab_id, deadline).await.unwrap_or(200);
+        // Best-effort: without it the page is reported as a 200, as before,
+        // flagged as synthetic so the ladder can prefer an origin 404/410.
+        let observed_status = self.nav_status(&tab_id, deadline).await;
+        let status_synthetic = observed_status.is_none();
+        let status_code = observed_status.unwrap_or(200);
 
         // 4. Evaluate the rendered DOM, send + body decode bounded by the budget.
         //    A document larger than camofox's 1 MiB result cap comes back as a
@@ -1055,6 +1058,7 @@ impl PageFetcher for CamofoxRenderer {
             wall: None,
             truncated: false,
             deadline_exceeded: deadline.expired(),
+            status_synthetic,
             captured_responses: Vec::new(),
         })
     }

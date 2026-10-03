@@ -305,6 +305,7 @@ impl PageFetcher for ByparrRenderer {
             wall: None,
             truncated: false,
             deadline_exceeded: deadline.expired(),
+            status_synthetic: false,
             captured_responses: Vec::new(),
         })
     }
