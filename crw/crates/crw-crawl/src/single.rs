@@ -572,38 +572,11 @@ async fn scrape_url_inner(
     // and stamp a typed verdict onto ScrapeData so v1/v2/crawl/batch inherit one
     // decision. Runs before the summary-mode markdown strip below (~L620) so the
     // recovered markdown is still populated for the anti-over-trigger guard.
-    data.block = classify_block(
-        fetch_result.status_code,
-        fetch_result.content_type.as_deref(),
-        &fetch_result.html,
-        data.markdown.as_deref(),
+    stamp_block_verdict(
+        &mut data,
+        &fetch_result,
         extraction_cfg.http_retry_threshold_bytes,
-        &fetch_result.url,
-        fetch_result.final_url.as_deref(),
-    );
-    if data.block.is_none() && data.http_error().is_some() {
-        data.block = classify_error_page_wall(fetch_result.status_code, &fetch_result.html);
-    }
-    // The wall the renderer ladder recognized on this body. Covers what
-    // `classify_block` cannot re-derive: a vendor block served with HTTP 200 and
-    // enough prose to pass its markdown guard. Trusted only for an error-page
-    // sized body, because the ladder's vendor markers include the Cloudflare
-    // loader that cleared pages carry too, and a cleared page is bigger.
-    if data.block.is_none() && data.is_error_page_sized() {
-        data.block = fetch_result.wall.clone();
-    }
-    if data.block.is_none()
-        && let Some(reason) = detect_login_wall(
-            fetch_result
-                .final_url
-                .as_deref()
-                .unwrap_or(&fetch_result.url),
-            &fetch_result.html,
-            data.markdown.as_deref(),
-        )
-    {
-        return Err(crw_core::error::CrwError::LoginRequired(reason));
-    }
+    )?;
     // Surface redirect mismatch as warning. Helps detect cases like
     // northernair.ca/history.htm silently 302'ing to the homepage — extraction
     // looks "successful" but the user got the wrong page.
@@ -1391,6 +1364,51 @@ pub(crate) fn classify_block(
         vendor: r.signal.class_name().to_string(),
         reason: r.reason,
     })
+}
+
+/// Stamp the page-level verdict onto `data`, or fail with `LoginRequired`.
+///
+/// A known site's sign-in wall is checked FIRST: served as a small 4xx it also
+/// matches the generic error-page and structural wall classifiers, and those
+/// verdicts read as retryable anti-bot blocks to callers such as the Fireghost
+/// router, which would then send the request to a cloud fallback. A sign-in
+/// page is final and must never leave the appliance.
+fn stamp_block_verdict(
+    data: &mut ScrapeData,
+    fetch_result: &FetchResult,
+    http_retry_threshold_bytes: usize,
+) -> CrwResult<()> {
+    if let Some(reason) = detect_login_wall(
+        fetch_result
+            .final_url
+            .as_deref()
+            .unwrap_or(&fetch_result.url),
+        &fetch_result.html,
+        data.markdown.as_deref(),
+    ) {
+        return Err(crw_core::error::CrwError::LoginRequired(reason));
+    }
+    data.block = classify_block(
+        fetch_result.status_code,
+        fetch_result.content_type.as_deref(),
+        &fetch_result.html,
+        data.markdown.as_deref(),
+        http_retry_threshold_bytes,
+        &fetch_result.url,
+        fetch_result.final_url.as_deref(),
+    );
+    if data.block.is_none() && data.http_error().is_some() {
+        data.block = classify_error_page_wall(fetch_result.status_code, &fetch_result.html);
+    }
+    // The wall the renderer ladder recognized on this body. Covers what
+    // `classify_block` cannot re-derive: a vendor block served with HTTP 200 and
+    // enough prose to pass its markdown guard. Trusted only for an error-page
+    // sized body, because the ladder's vendor markers include the Cloudflare
+    // loader that cleared pages carry too, and a cleared page is bigger.
+    if data.block.is_none() && data.is_error_page_sized() {
+        data.block = fetch_result.wall.clone();
+    }
+    Ok(())
 }
 
 /// Extracted text at or above this size is real content, not a bare sign-in
@@ -2694,6 +2712,54 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn login_wall_wins_over_wall_classifiers_on_small_4xx_page() {
+        // Served as a small 403, the sign-in page also reads as an error-page
+        // wall. That verdict would let a caller retry it on a cloud fallback;
+        // the sign-in check must run first and end the scrape.
+        let mut fetch = sample_fetch(403, REDDIT_LOGIN_WALL);
+        fetch.url = "https://old.reddit.com/r/selfhosted/".into();
+        let mut data = ScrapeData::default();
+        data.metadata.status_code = 403;
+        data.markdown = Some(LOGIN_WALL_MARKDOWN.into());
+
+        let mut without_login_check = data.clone();
+        without_login_check.block = classify_block(
+            fetch.status_code,
+            fetch.content_type.as_deref(),
+            &fetch.html,
+            without_login_check.markdown.as_deref(),
+            100,
+            &fetch.url,
+            None,
+        );
+        if without_login_check.block.is_none() && without_login_check.http_error().is_some() {
+            without_login_check.block = classify_error_page_wall(fetch.status_code, &fetch.html);
+        }
+        assert!(
+            without_login_check.block.is_some(),
+            "precondition: the bare page is classified as a wall"
+        );
+
+        match stamp_block_verdict(&mut data, &fetch, 100) {
+            Err(crw_core::error::CrwError::LoginRequired(reason)) => {
+                assert!(reason.contains("reddit.com"), "{reason}")
+            }
+            other => panic!("expected LoginRequired, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stamp_block_verdict_leaves_ordinary_pages_alone() {
+        let html = "<html><body><article>A normal page with real prose.</article></body></html>";
+        let fetch = sample_fetch(200, html);
+        let mut data = ScrapeData::default();
+        data.metadata.status_code = 200;
+        data.markdown = Some("A normal page with real prose. ".repeat(100));
+        stamp_block_verdict(&mut data, &fetch, 100).expect("not a sign-in wall");
+        assert!(data.block.is_none(), "{:?}", data.block);
     }
 
     #[test]
