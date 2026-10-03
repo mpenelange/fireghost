@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crw_core::types::{ChangeTrackingResult, CrawlState, CrawlStatus, ScrapeData};
+use crw_core::types::{ChangeTrackingResult, CrawlState, CrawlStatus, LlmUsage, ScrapeData};
 
 /// Firecrawl v2 `Document`. Field order/casing matches the live API.
 #[derive(Debug, Serialize)]
@@ -39,6 +39,11 @@ pub struct V2Document {
     pub change_tracking: Option<ChangeTrackingResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning: Option<String>,
+    /// Token usage for any LLM call this scrape triggered. Not a Firecrawl
+    /// field: `/v1` has always carried it (`ScrapeData::llm_usage`) and `/v2`
+    /// dropped it. Omitted when no LLM ran, so the Firecrawl shape is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_usage: Option<LlmUsage>,
     pub metadata: V2Metadata,
 }
 
@@ -98,10 +103,13 @@ pub fn to_v2_document(data: ScrapeData, proxy_used: &str, scrape_id: String) -> 
         concurrency_limited: false,
         // Engine does not price requests (the SaaS layer bills); surface
         // whatever the engine attributed, defaulting to 1 like the live API.
-        credits_used: if data.credit_cost == 0 {
-            1
-        } else {
-            data.credit_cost
+        // A blocked page is 0: nobody is charged for it, the envelope total at
+        // `build_crawl_status` already excludes it, and this field disagreeing
+        // was the only place a refused page still advertised a credit.
+        credits_used: match (data.block.is_some(), data.credit_cost) {
+            (true, _) => 0,
+            (false, 0) => 1,
+            (false, c) => c,
         },
         scrape_id,
         page_count: m.page_count,
@@ -119,7 +127,14 @@ pub fn to_v2_document(data: ScrapeData, proxy_used: &str, scrape_id: String) -> 
         json: data.json,
         summary: data.summary,
         change_tracking: data.change_tracking,
-        warning: data.warning,
+        // `V2Document` has no `block`, so a URL retained only as a placeholder
+        // would otherwise reach a /v2 caller as an empty document with nothing
+        // to explain it. `warning` is part of the frozen shape and is exactly
+        // where Firecrawl surfaces a per-document problem.
+        warning: data
+            .warning
+            .or_else(|| data.block.as_ref().map(|b| b.reason.clone())),
+        llm_usage: data.llm_usage,
         metadata,
     }
 }
@@ -133,6 +148,11 @@ pub struct V2CrawlStatus {
     pub status: &'static str,
     pub total: u32,
     pub completed: u32,
+    /// How many of `completed` came back a block or an origin error page.
+    /// Additive to the Firecrawl envelope (their SDKs ignore unknown keys) and
+    /// load-bearing: the SaaS bills off `completed`, and without this the
+    /// blocked-page billing fix would be inert on every `/v2` status surface.
+    pub blocked: u32,
     pub credits_used: u32,
     pub expires_at: String,
     /// Pagination cursor; `null` once the job is `completed` and no further
@@ -211,9 +231,16 @@ pub fn build_crawl_status(
         None
     };
 
+    // A blocked page is not billed, so it must not be counted here either. A
+    // batch URL whose scrape returns `Err` now pushes a placeholder carrying
+    // `block` and bumps `blocked`, so it is excluded here for the same reason a
+    // wall is, and `completed - blocked` no longer over-counts it. The two are
+    // still not identical: this sum prices a multi-page PDF per page, while
+    // `completed - blocked` counts documents.
     let credits_used: u32 = state
         .data
         .iter()
+        .filter(|d| d.block.is_none())
         .map(|d| if d.credit_cost == 0 { 1 } else { d.credit_cost })
         .sum();
 
@@ -222,6 +249,7 @@ pub fn build_crawl_status(
         status: status_str(state.status),
         total: state.total.max(total_docs as u32),
         completed: state.completed,
+        blocked: state.blocked,
         credits_used,
         expires_at: expires_at_rfc3339(created_at, job_ttl_secs),
         next,
@@ -277,12 +305,77 @@ mod tests {
     use super::*;
     use crw_core::types::PageMetadata;
 
+    /// An LLM scrape on /v2 carries its token usage, as /v1 does.
+    #[test]
+    fn v2_document_carries_llm_usage() {
+        let mut data = fake_doc("https://example.com/p");
+        data.json = Some(serde_json::json!({"name": "x"}));
+        data.llm_usage = Some(LlmUsage {
+            input_tokens: 631,
+            output_tokens: 45,
+            total_tokens: 676,
+            estimated_cost_usd: None,
+            model: "DeepSeek-V4-Pro".to_string(),
+            provider: "openai-compatible".to_string(),
+            cache_hit_input_tokens: None,
+            cache_miss_input_tokens: None,
+            truncated: false,
+            calls: 1,
+            executed_summaries: 0,
+            answer_executed: false,
+        });
+
+        let doc = to_v2_document(data, "basic", "sid".to_string());
+        let usage = doc
+            .llm_usage
+            .as_ref()
+            .expect("llm_usage must survive the v2 mapping");
+        assert_eq!(usage.input_tokens, 631);
+        assert_eq!(usage.output_tokens, 45);
+
+        // And it reaches the wire under the camelCase key.
+        let wire = serde_json::to_value(&doc).unwrap();
+        assert_eq!(wire["llmUsage"]["inputTokens"], 631);
+        assert_eq!(wire["llmUsage"]["outputTokens"], 45);
+    }
+
+    /// The frozen Firecrawl shape is unchanged when no LLM ran: `skip_serializing_if`
+    /// must keep the key out entirely rather than emitting `"llmUsage": null`.
+    #[test]
+    fn v2_document_omits_llm_usage_when_no_llm_ran() {
+        let doc = to_v2_document(
+            fake_doc("https://example.com/p"),
+            "basic",
+            "sid".to_string(),
+        );
+        let wire = serde_json::to_value(&doc).unwrap();
+        assert!(
+            wire.get("llmUsage").is_none(),
+            "non-LLM scrapes must not grow a new key"
+        );
+    }
+
     #[test]
     fn rfc3339_matches_known_epoch() {
         // Unix epoch.
         assert_eq!(rfc3339_utc(0), "1970-01-01T00:00:00.000Z");
         // Widely-referenced round value: 1_700_000_000 == 2023-11-14T22:13:20Z.
         assert_eq!(rfc3339_utc(1_700_000_000), "2023-11-14T22:13:20.000Z");
+    }
+
+    /// `block` is set on an anti-bot wall, an origin error page, and now on a
+    /// URL the crawl could not read at all. None of the three is billed, so
+    /// none of them may report a credit on the document either.
+    #[test]
+    fn a_blocked_document_reports_zero_credits() {
+        let mut data = fake_doc("https://x");
+        data.credit_cost = 0;
+        data.block = Some(crw_core::types::BlockOutcome {
+            vendor: crw_core::types::HTTP_ERROR_VENDOR.to_string(),
+            reason: "CDN could not reach origin".to_string(),
+        });
+        let doc = to_v2_document(data, "basic", "sid".to_string());
+        assert_eq!(doc.metadata.credits_used, 0);
     }
 
     fn fake_doc(url: &str) -> ScrapeData {
@@ -320,6 +413,7 @@ mod tests {
             content_type: Some("text/html".into()),
             change_tracking: None,
             block: None,
+            truncated: false,
         }
     }
 
@@ -330,6 +424,7 @@ mod tests {
             status,
             total,
             completed,
+            blocked: 0,
             data: (0..n)
                 .map(|i| fake_doc(&format!("https://x/{i}")))
                 .collect(),

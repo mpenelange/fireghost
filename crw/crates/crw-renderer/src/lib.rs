@@ -39,18 +39,22 @@ pub mod breaker;
 pub mod browser;
 #[cfg(feature = "cdp")]
 pub mod browser_pool;
+pub mod byparr;
 #[cfg(feature = "camofox")]
 pub mod camofox;
 #[cfg(feature = "cdp")]
 pub mod cdp;
 #[cfg(feature = "cdp")]
 pub mod cdp_conn;
+pub mod clearance;
 pub mod detector;
 pub mod egress;
 #[cfg(feature = "cdp")]
 pub mod health_telemetry;
 pub mod host_limiter;
 pub mod http_only;
+#[cfg(feature = "impersonated")]
+pub mod impersonated;
 pub mod preference;
 pub mod traits;
 
@@ -62,7 +66,7 @@ use crw_core::config::{BUILTIN_UA_POOL, RendererConfig, RendererMode, StealthCon
 use crw_core::error::{CrwError, CrwResult};
 use crw_core::metrics::metrics;
 use crw_core::types::{
-    FailoverErrorKind, FetchResult, RenderDecision, RendererKind, resolve_render_js,
+    BlockOutcome, FailoverErrorKind, FetchResult, RenderDecision, RendererKind, resolve_render_js,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -88,6 +92,8 @@ fn renderer_kind_for(name: &str) -> Option<RendererKind> {
         "chrome" => Some(RendererKind::Chrome),
         "chrome_proxy" => Some(RendererKind::ChromeProxy),
         "camofox" => Some(RendererKind::Camofox),
+        "byparr" => Some(RendererKind::Byparr),
+        "impersonated-http" => Some(RendererKind::ImpersonatedHttp),
         _ => None,
     }
 }
@@ -135,6 +141,12 @@ fn tier_timeouts_from(
         RendererKind::ChromeProxy,
         std::time::Duration::from_millis(config.chrome_proxy_timeout()),
     );
+    if let Some(b) = &config.byparr {
+        m.insert(
+            RendererKind::Byparr,
+            std::time::Duration::from_millis(b.timeout_ms),
+        );
+    }
     m
 }
 
@@ -150,13 +162,24 @@ fn credit_for(kind: RendererKind) -> u32 {
         RendererKind::ChromeProxy => 2,
         // Camofox is the heavy/stealth tier — same internal cost as Chrome.
         RendererKind::Camofox => 2,
+        // A full browser solve, like Camofox.
+        RendererKind::Byparr => 2,
+        // One plain HTTP request; same cost as the HTTP tier.
+        RendererKind::ImpersonatedHttp => 1,
     }
 }
 
 /// Stamp `render_decision` and `credit_cost` for an HTTP-only result.
 /// `requested_renderer` is taken into account: if the user explicitly
 /// pinned `"http"` we mark it as `UserPinned`, otherwise `AutoDefault`.
-fn stamp_http_decision(result: &mut FetchResult, requested_renderer: Option<&str>) {
+/// `decision` is the `render_route_decision_total` label: `success` for an HTTP
+/// result that needed no browser, `jsLadderExhausted` for an HTTP body returned
+/// because every JS tier failed.
+fn stamp_http_decision(
+    result: &mut FetchResult,
+    requested_renderer: Option<&str>,
+    decision: &'static str,
+) {
     if result.render_decision.is_some() {
         return;
     }
@@ -169,7 +192,7 @@ fn stamp_http_decision(result: &mut FetchResult, requested_renderer: Option<&str
     // Mirror the JS-renderer metric so dashboards see HTTP routing too.
     metrics()
         .render_route_decision_total
-        .with_label_values(&[kind.as_str(), "success"])
+        .with_label_values(&[kind.as_str(), decision])
         .inc();
 }
 
@@ -204,10 +227,6 @@ fn pick_ua<'a>(default_ua: &'a str, stealth: &'a StealthConfig) -> String {
 /// when both fail. Getting it wrong in the permissive direction (treating our fault as
 /// the origin's) would blame the caller for our outage, so the match is deliberately
 /// narrow.
-///
-/// `Timeout` is NOT included: a JS-tier timeout is just as likely to be a local CDP
-/// websocket/command timeout as a slow origin, and it already maps to 504 on its own,
-/// which is the honest answer either way.
 fn is_origin_navigation_failure(e: &CrwError) -> bool {
     match e {
         CrwError::TargetUnreachable(_) => true,
@@ -216,17 +235,34 @@ fn is_origin_navigation_failure(e: &CrwError) -> bool {
         // discovery) carry different messages and keep their own error.
         CrwError::RendererError(msg) => {
             let m = msg.to_ascii_lowercase();
-            m.contains("navigation failed") || m.contains("net::err_")
+            m.contains("navigation failed")
+                || m.contains("net::err_")
+                // "we could not confirm where this origin points" — the CDP
+                // destination re-check collapses NXDOMAIN and a resolver
+                // brown-out into one `Unresolved`. Absence of evidence, not
+                // evidence against the HTTP tier's independent finding. Without
+                // this a dead host exits as 500 `renderer_error` instead of 422
+                // `target_unreachable`.
+                || m.contains("outbound destination check unavailable")
         }
+        // A JS-tier timeout does not refute the HTTP tier's positive finding. Callers
+        // only consult this when the HTTP error was already `TargetUnreachable`, i.e.
+        // the origin failed to connect; a browser that then also gets no answer is
+        // absence of evidence, not evidence against. A host that blackholes SYNs hangs
+        // every tier, so lightpanda/camofox report a plain timeout and never a
+        // `net::ERR_*`. The breaker path (`is_origin_fault_for_breaker`) excludes
+        // timeouts itself, so a hung renderer still trips globally.
+        CrwError::Timeout(_) => true,
         _ => false,
     }
 }
 
-/// Camofox 2.4.6 does not expose the browser navigation response status or
-/// final URL, so its fetcher necessarily reports a synthetic HTTP 200. When
-/// the direct origin request already proved that the resource is 404/410,
-/// preserve that status after Camofox hydrates the body. Other JS renderers
-/// observe their own status and are left untouched.
+/// Camofox does not expose the browser navigation response status or final
+/// URL directly. Its fetcher probes the Navigation Timing `responseStatus`, but
+/// falls back to a synthetic HTTP 200 when the probe is unavailable. When the
+/// direct origin request already proved that the resource is 404/410, preserve
+/// that status after Camofox hydrates the body. Other JS renderers observe
+/// their own status and are left untouched.
 fn preserve_unobserved_origin_status(origin: &FetchResult, rendered: &mut FetchResult) {
     if matches!(origin.status_code, 404 | 410)
         && rendered.status_code == 200
@@ -241,12 +277,154 @@ fn preserve_unobserved_origin_status(origin: &FetchResult, rendered: &mut FetchR
     }
 }
 
+/// Is this failure the ORIGIN's fault, for breaker-scoping purposes only?
+///
+/// Deliberately narrower than [`is_origin_navigation_failure`], which decides
+/// error ATTRIBUTION and is generous about `net::ERR_*` on purpose. The breaker
+/// asks whether the failure says anything about the TIER's own health. A proxy
+/// tunnel that will not open, and a box that lost its network, share the
+/// `net::ERR_` shape of a dead origin, but those are ours and must keep reaching
+/// the global window.
+fn is_origin_fault_for_breaker(e: &CrwError) -> bool {
+    if let CrwError::RendererError(m) = e {
+        let u = m.to_ascii_uppercase();
+        if u.contains("ERR_TUNNEL_CONNECTION_FAILED")
+            || u.contains("ERR_PROXY_CONNECTION_FAILED")
+            || u.contains("ERR_NETWORK_CHANGED")
+            || u.contains("ERR_INTERNET_DISCONNECTED")
+            // Firefox's own error-page codes for the same classes, as camofox
+            // reports them (`about:neterror?e=proxyConnectFailure`).
+            || u.contains("PROXYCONNECTFAILURE")
+            || u.contains("PROXYRESOLVEFAILURE")
+            || u.contains("NETOFFLINE")
+        {
+            return false;
+        }
+    }
+    is_origin_navigation_failure(e)
+}
+
+/// Prefix of the `warning` set when a JS escalation failed and the HTTP body was
+/// returned in its place. Public because it is BOTH the caller-facing
+/// explanation and the signal `crw_crawl::single` reads to skip a second
+/// escalation round that would re-run a ladder this request already exhausted.
+/// A shared constant so the producer and that consumer cannot drift.
+pub const JS_ESCALATION_FAILED: &str = "js_escalation_failed:";
+
+/// Soft-block / soft-error status codes where the body often contains real
+/// content despite the status header. Sources:
+///   - UA/header-based bot filters: 401, 403, 405, 406, 412
+///   - Rate limits: 429
+///   - Geo gates: 451
+///   - Origin overload: 503
+///   - "Not found" SPAs that 404 the route but render content via JS
+///     hydration: 404, 410
+///   - Origin error that still serves a usable page: 500
+///
+/// Firecrawl-comparison (April 2026 bench): the JS render path recovered
+/// content in ~25/99 such cases that HTTP alone could not. Shared by the auto
+/// and forced-JS arms of `fetch`, which must agree on what counts as a body
+/// worth warning about.
+fn is_soft_block_status(status_code: u16) -> bool {
+    matches!(
+        status_code,
+        401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
+    )
+}
+
+/// Hard-block status set: egress-recoverable blocks only, NOT the softer
+/// 404/405/406/410/412/451/500 shapes that often carry real bodies. The
+/// impersonated hop's status trigger.
+#[cfg(feature = "impersonated")]
+fn is_hard_block_status(status_code: u16) -> bool {
+    matches!(status_code, 401 | 403 | 429 | 503) || (520..=530).contains(&status_code)
+}
+
+/// Is this wall one a Chrome TLS fingerprint cannot clear because the vendor
+/// gates on JS execution? Firing the impersonated hop on these only burns
+/// budget before the ladder: the hop's own accept gate rejects them anyway.
+#[cfg(feature = "impersonated")]
+fn is_fingerprint_vendor_wall(
+    cf_challenge: bool,
+    vendor_block: Option<&str>,
+    antibot_signal: crw_extract::antibot::AntibotSignal,
+) -> bool {
+    use crw_extract::antibot::AntibotSignal;
+    cf_challenge
+        || matches!(
+            vendor_block,
+            Some("datadome" | "perimeterx" | "kasada" | "akamai" | "imperva")
+        )
+        || matches!(
+            antibot_signal,
+            AntibotSignal::Cloudflare
+                | AntibotSignal::Datadome
+                | AntibotSignal::PerimeterX
+                | AntibotSignal::Akamai
+                | AntibotSignal::Imperva
+                | AntibotSignal::Kasada
+        )
+}
+
+/// An HTTP-tier error the Chrome fingerprint could plausibly fix: a failure
+/// after the connection was established (a reset or protocol error once the
+/// origin saw our request). Excludes the shapes no client fixes: a non-page
+/// body, a dead target, a slow origin and an oversize body. Connect-phase
+/// failures, TLS handshake included, arrive as `TargetUnreachable` from the
+/// plain tier and stay excluded: retrying them would double the connect
+/// timeout on a dead host.
+#[cfg(feature = "impersonated")]
+fn fingerprint_shaped_error(e: &CrwError) -> bool {
+    !matches!(e, CrwError::UnsupportedContentType(_))
+        && !matches!(e, CrwError::TargetUnreachable(_))
+        && !matches!(e, CrwError::Timeout(_))
+        && !matches!(e, CrwError::HttpError(m) if m.starts_with("Response too large"))
+}
+
+/// Why the impersonated hop fired; label for logs and the route-decision
+/// metric, and the source of the Failover reason.
+#[cfg(feature = "impersonated")]
+#[derive(Clone, Copy)]
+enum ImpersonatedTrigger {
+    /// Body/header wall or hard-block status on the plain HTTP response.
+    Wall,
+    /// The plain HTTP fetch itself failed at the transport layer.
+    Transport,
+}
+
+#[cfg(feature = "impersonated")]
+impl ImpersonatedTrigger {
+    fn as_str(self) -> &'static str {
+        match self {
+            ImpersonatedTrigger::Wall => "wall",
+            ImpersonatedTrigger::Transport => "transport",
+        }
+    }
+}
+
 /// Minimum remaining request budget for a network attempt to be worth making.
 /// Below this a CDP tier cannot complete its handshake and returns a fabricated
 /// `Timeout after Nms` (single-digit N) while still consuming a pool slot.
 /// Guards the main ladder loop, the breaker leak-through arm, and the HTTP
 /// tier's proxy retry (`http_only`).
-pub(crate) const MIN_TIER_BUDGET: Duration = Duration::from_millis(500);
+pub const MIN_TIER_BUDGET: Duration = Duration::from_millis(500);
+
+/// True when SOME tier can plausibly clear an IP-reputation block: the camofox
+/// stealth tier, the byparr solver, or a usable fallback HTTP proxy.
+///
+/// Every input is the REAL constructed thing, never a config flag or an env var:
+/// a `camofox` entry present in `js_renderers`, and the concrete fetcher's
+/// `has_ratelimit_proxy()` — a malformed `CRW_HTTP_RATELIMIT_PROXY_URL` leaves the
+/// client `None`, and a typo must not be mistaken for a recovery egress.
+fn has_recovery_tier(
+    js_renderers: &[Arc<dyn PageFetcher>],
+    http_fallback_proxy_ready: bool,
+) -> bool {
+    js_renderers
+        .iter()
+        .any(|r| matches!(r.name(), "camofox" | "byparr"))
+        || http_fallback_proxy_ready
+}
 
 /// Composite renderer that tries multiple backends in order.
 pub struct FallbackRenderer {
@@ -254,6 +432,16 @@ pub struct FallbackRenderer {
     js_renderers: Vec<Arc<dyn PageFetcher>>,
     /// Global default for `render_js` when a request doesn't specify one.
     render_js_default: Option<bool>,
+    /// Is there any tier that could actually clear an IP-reputation block —
+    /// the camofox stealth tier or a fallback HTTP proxy?
+    ///
+    /// Gates the `SiteBlocked` breaker classification. Ignoring a site block in
+    /// the failure window only pays off when something downstream can recover
+    /// the page. Where nothing can, every tier egresses from the same banned IP,
+    /// so suppressing the breaker would make a permanently blocked host re-walk
+    /// the whole serial ladder on every request. There, the breaker keeps its
+    /// brake and behaviour is unchanged.
+    has_recovery_tier: bool,
     /// Per-host renderer preference learning (auto-mode only).
     preferences: Arc<HostPreferences>,
     /// Per-host + global circuit breakers per renderer.
@@ -272,6 +460,18 @@ pub struct FallbackRenderer {
     /// decides whether a 200-status block page is a soft failure (escalate
     /// toward `chrome_proxy`) or a genuine success.
     antibot: crw_core::config::AntibotConfig,
+    /// Cloudflare clearance (cookies + UA) per host, written by the Camofox
+    /// tier, read before every HTTP-tier fetch. See [`clearance`].
+    clearance: Arc<clearance::ClearanceCache>,
+    /// Whether the HTTP tier egresses through a configured proxy. A cached
+    /// `cf_clearance` is bound to the egress IP, so it is never injected then.
+    http_has_proxy: bool,
+    /// Chrome-impersonating HTTP tier (wreq): the auto-chain hop between the
+    /// plain HTTP tier and the JS ladder, and the `renderer =
+    /// "impersonated-http"` pin. Outside `js_renderers`, the breaker and
+    /// `has_recovery_tier`: it changes the fingerprint, not the egress IP.
+    #[cfg(feature = "impersonated")]
+    impersonated: Option<Arc<dyn PageFetcher>>,
     /// Chrome browser-context pool handle for graceful drain on shutdown.
     /// `None` when the pool is disabled or the chrome tier isn't configured.
     #[cfg(feature = "cdp")]
@@ -302,14 +502,46 @@ impl FallbackRenderer {
         proxy: Option<&str>,
         stealth: &StealthConfig,
     ) -> CrwResult<Self> {
+        // Refuse a malformed proxy here rather than let the HTTP client drop it
+        // and send the traffic out directly. Empty means "no proxy".
+        if let Some(p) = proxy.filter(|p| !p.trim().is_empty()) {
+            crw_core::validate_proxy_url(p).map_err(CrwError::InvalidRequest)?;
+        }
         let effective_ua = pick_ua(user_agent, stealth);
         let inject_headers = stealth.enabled && stealth.inject_headers;
-        let http = Arc::new(http_only::HttpFetcher::with_timeout(
+        let http_concrete = http_only::HttpFetcher::with_timeout(
             &effective_ua,
             proxy,
             inject_headers,
             std::time::Duration::from_millis(config.http_timeout()),
-        )) as Arc<dyn PageFetcher>;
+        );
+        // Read off the CONCRETE fetcher: once coerced to `Arc<dyn PageFetcher>` the
+        // proxy-availability question is no longer askable, and asking the env var
+        // instead would call a malformed URL a working recovery egress.
+        let http_fallback_proxy_ready = http_concrete.has_ratelimit_proxy();
+        let http_has_proxy = http_concrete.has_static_proxy();
+        let clearance = Arc::new(clearance::ClearanceCache::with_defaults());
+        let http = Arc::new(http_concrete) as Arc<dyn PageFetcher>;
+
+        // Chrome-impersonation HTTP tier. Constructed BEFORE the mode=none
+        // early return: it is an HTTP strategy, so "no JS" keeps it; only the
+        // `impersonated.enabled = false` kill switch removes it. A build
+        // failure is a hard error, never a silent fall-through to a
+        // non-impersonating client. Honours the operator's static proxy.
+        #[cfg(feature = "impersonated")]
+        let impersonated: Option<Arc<dyn PageFetcher>> = if config.impersonated_in_chain() {
+            let tier = impersonated::ImpersonatedFetcher::new(
+                proxy,
+                Duration::from_millis(config.impersonated_timeout()),
+            )?;
+            tracing::info!(
+                timeout_ms = config.impersonated_timeout(),
+                "impersonated-http tier enabled"
+            );
+            Some(Arc::new(tier) as Arc<dyn PageFetcher>)
+        } else {
+            None
+        };
 
         // A pinned backend (Lightpanda/Chrome/Playwright) must have CDP compiled in
         // AND its matching endpoint configured. `Auto` and `None` remain functional
@@ -340,12 +572,19 @@ impl FallbackRenderer {
                 http,
                 js_renderers,
                 render_js_default: config.render_js_default,
+                // `mode = none` builds no JS tier at all, so the only possible
+                // recovery is the HTTP fallback proxy.
+                has_recovery_tier: http_fallback_proxy_ready,
                 preferences: Arc::new(HostPreferences::with_defaults()),
                 breakers: Arc::new(BreakerRegistry::with_defaults()),
                 tier_timeouts: tier_timeouts_from(config),
                 requests_per_second: 0.0,
                 per_host_max_concurrent: 1,
                 antibot: config.antibot.clone(),
+                clearance: Arc::clone(&clearance),
+                http_has_proxy,
+                #[cfg(feature = "impersonated")]
+                impersonated,
                 #[cfg(feature = "cdp")]
                 chrome_pool: None,
             });
@@ -356,12 +595,13 @@ impl FallbackRenderer {
             Arc<browser_pool::BrowserContextPool<cdp_conn::CdpConnection>>,
         > = None;
 
+        #[cfg(any(feature = "cdp", feature = "camofox"))]
+        let want = |m: RendererMode| -> bool {
+            matches!(config.mode, RendererMode::Auto) || config.mode == m
+        };
+
         #[cfg(feature = "cdp")]
         {
-            let want = |m: RendererMode| -> bool {
-                matches!(config.mode, RendererMode::Auto) || config.mode == m
-            };
-
             if want(RendererMode::Lightpanda) {
                 if let Some(lp) = &config.lightpanda {
                     js_renderers.push(Arc::new(
@@ -381,20 +621,56 @@ impl FallbackRenderer {
                     ));
                 }
             }
-            // Camofox (Firefox via camofox-browser REST) takes Chrome's slot:
-            // tried after LightPanda and before the CDP chrome tiers. It is not
-            // CDP, so it carries no browser-context pool.
-            #[cfg(feature = "camofox")]
-            if want(RendererMode::Camofox)
-                && let Some(cf) = &config.camofox
-            {
-                js_renderers.push(Arc::new(camofox::CamofoxRenderer::new(
+        }
+
+        // Camofox (Firefox via camofox-browser REST) takes Chrome's slot:
+        // tried after LightPanda and before the CDP chrome tiers. It is not
+        // CDP, so it carries no browser-context pool and does not depend on
+        // the `cdp` feature — a camofox-only build must still register it.
+        #[cfg(feature = "camofox")]
+        if want(RendererMode::Camofox) {
+            if let Some(cf) = &config.camofox {
+                let mut tier = camofox::CamofoxRenderer::new(
                     "camofox",
                     &cf.base_url,
                     cf.api_key.clone(),
                     Duration::from_millis(config.chrome_timeout()),
-                )));
+                )
+                .with_challenge_wait(Duration::from_millis(cf.challenge_wait_ms));
+                if cf.clearance_reuse {
+                    tier = tier.with_clearance_cache(Arc::clone(&clearance));
+                }
+                js_renderers.push(Arc::new(tier));
+            } else if matches!(config.mode, RendererMode::Camofox) {
+                return Err(CrwError::ConfigError(
+                    "renderer.mode = \"camofox\" but [renderer.camofox] base_url is not \
+                     configured"
+                        .into(),
+                ));
             }
+        }
+        // Byparr (challenge solver) goes last: `fetch_with_js` only runs it once
+        // an attempt came back as an anti-bot challenge. Plain HTTP, so it is
+        // not feature-gated and joins whatever mode is pinned.
+        if let Some(b) = &config.byparr {
+            let mut tier = byparr::ByparrRenderer::new(
+                &b.base_url,
+                Duration::from_millis(b.timeout_ms),
+                b.max_concurrent,
+            );
+            if b.clearance_reuse {
+                tier = tier.with_clearance_cache(Arc::clone(&clearance));
+            }
+            js_renderers.push(Arc::new(tier));
+        }
+
+        #[cfg(not(feature = "camofox"))]
+        if matches!(config.mode, RendererMode::Camofox) {
+            return Err(CrwError::ConfigError(
+                "renderer.mode = \"camofox\" but this binary was built without the `camofox` \
+                 feature"
+                    .into(),
+            ));
         }
 
         // Spawn the process-wide CDP telemetry sampler. Idempotent —
@@ -410,16 +686,22 @@ impl FallbackRenderer {
             );
         }
 
+        let recovery_tier_available = has_recovery_tier(&js_renderers, http_fallback_proxy_ready);
         Ok(Self {
             http,
             js_renderers,
             render_js_default: config.render_js_default,
+            has_recovery_tier: recovery_tier_available,
             preferences: Arc::new(HostPreferences::with_defaults()),
             breakers: Arc::new(BreakerRegistry::with_defaults()),
             tier_timeouts: tier_timeouts_from(config),
             requests_per_second: 0.0,
             per_host_max_concurrent: 1,
             antibot: config.antibot.clone(),
+            clearance,
+            http_has_proxy,
+            #[cfg(feature = "impersonated")]
+            impersonated,
             #[cfg(feature = "cdp")]
             chrome_pool,
         })
@@ -464,6 +746,24 @@ impl FallbackRenderer {
         self
     }
 
+    /// Replace the HTTP tier and the JS ladder with the given fetchers. For tests
+    /// in other crates that drive the full ladder without a network or browser.
+    #[doc(hidden)]
+    pub fn with_fetchers(
+        mut self,
+        http: Arc<dyn PageFetcher>,
+        js_renderers: Vec<Arc<dyn PageFetcher>>,
+    ) -> Self {
+        self.http = http;
+        self.js_renderers = js_renderers;
+        self
+    }
+
+    /// Access the Cloudflare clearance cache (tests, admin endpoints).
+    pub fn clearance(&self) -> Arc<clearance::ClearanceCache> {
+        Arc::clone(&self.clearance)
+    }
+
     /// Access the host preferences cache (for admin endpoints, tests).
     pub fn preferences(&self) -> Arc<HostPreferences> {
         Arc::clone(&self.preferences)
@@ -474,10 +774,280 @@ impl FallbackRenderer {
         Arc::clone(&self.breakers)
     }
 
+    /// Is some tier configured that could actually clear an IP-reputation block?
+    /// Exposed for the integration test that pins the self-host trade-off; see
+    /// the field docs.
+    pub fn has_recovery_tier(&self) -> bool {
+        self.has_recovery_tier
+    }
+
     /// Names of the configured JS renderers in fallback order.
     /// Used for startup logs and tests — does not leak internal types.
     pub fn js_renderer_names(&self) -> Vec<&str> {
         self.js_renderers.iter().map(|r| r.name()).collect()
+    }
+
+    /// Is the Chrome-impersonation HTTP tier present in this build and config?
+    pub fn has_impersonated_tier(&self) -> bool {
+        #[cfg(feature = "impersonated")]
+        {
+            self.impersonated.is_some()
+        }
+        #[cfg(not(feature = "impersonated"))]
+        {
+            false
+        }
+    }
+
+    /// The renderer names a request may pin on this instance: the impersonated
+    /// HTTP tier when present, then the JS ladder. The single vocabulary both
+    /// pin-validation surfaces (crw-server `state.rs`, crw-crawl `single.rs`)
+    /// check against.
+    pub fn available_renderer_names(&self) -> Vec<&str> {
+        let mut names = Vec::new();
+        if self.has_impersonated_tier() {
+            names.push("impersonated-http");
+        }
+        names.extend(self.js_renderer_names());
+        names
+    }
+
+    /// Replace the impersonated tier. For tests that drive the ladder without
+    /// a network.
+    #[cfg(feature = "impersonated")]
+    #[doc(hidden)]
+    pub fn with_impersonated(mut self, tier: Option<Arc<dyn PageFetcher>>) -> Self {
+        self.impersonated = tier;
+        self
+    }
+
+    /// Did the impersonated tier come back holding a WALL? The pin's verdict,
+    /// and the first half of the hop's. Not `JsBodyChecks::accepted()`: that
+    /// also fails on a thin body and on soft 404/410/500 statuses, so a
+    /// pinned crawl would report every dead link as an anti-bot block.
+    /// `StructuralFailure` is excluded for the same reason: it means "thin or
+    /// empty body", not "a vendor said no".
+    #[cfg(feature = "impersonated")]
+    fn impersonation_blocked(&self, result: &FetchResult) -> bool {
+        let checks = JsBodyChecks::assess(result, &self.antibot);
+        self.impersonation_blocked_with(result, &checks)
+    }
+
+    /// Same verdict as [`Self::impersonation_blocked`], taking an already-assessed
+    /// [`JsBodyChecks`] so a caller that also needs the checks for other purposes
+    /// (`impersonation_accepted`) does not assess the body twice.
+    #[cfg(feature = "impersonated")]
+    fn impersonation_blocked_with(&self, result: &FetchResult, checks: &JsBodyChecks) -> bool {
+        use crw_extract::antibot::AntibotSignal;
+        if matches!(
+            result.warning.as_deref(),
+            Some("cloudflare_mitigated") | Some("waf_challenge")
+        ) {
+            return true;
+        }
+        is_hard_block_status(result.status_code)
+            || checks.is_bot_wall
+            || checks.vendor_block.is_some()
+            || checks.cf_challenge
+            || (checks.antibot.signal.is_blocked()
+                && checks.antibot.signal != AntibotSignal::StructuralFailure)
+    }
+
+    /// Accept predicate for the AUTO-CHAIN hop: may this response end the
+    /// chain here, with no browser tier ever running? Stricter than
+    /// `impersonation_blocked` and than `accepted()` alone: the hop feeds
+    /// PRE-render HTML, and a TLS-gated SPA answers with a shell that passes
+    /// the 50-char text gate. So the auto arm's own JS-escalation triggers
+    /// are applied to the hop body too; the hop can only ever end a chain the
+    /// ladder would also have ended.
+    #[cfg(feature = "impersonated")]
+    fn impersonation_accepted(&self, result: &FetchResult) -> bool {
+        let checks = JsBodyChecks::assess(result, &self.antibot);
+        if self.impersonation_blocked_with(result, &checks) || !checks.accepted() {
+            return false;
+        }
+        !detector::needs_js_rendering(&result.html)
+            && !(detector::looks_like_thin_html(&result.html)
+                && detector::warrants_browser_retry(&result.html))
+    }
+
+    /// `antibot::classify` behind the configured gate.
+    #[cfg(feature = "impersonated")]
+    fn antibot_signal(&self, status_code: u16, html: &str) -> crw_extract::antibot::AntibotSignal {
+        if self.antibot.enabled {
+            crw_extract::antibot::classify(Some(status_code), html).signal
+        } else {
+            crw_extract::antibot::AntibotSignal::None
+        }
+    }
+
+    /// One Chrome-impersonated retry between the plain-HTTP tier and the JS
+    /// ladder. The caller fires it ONLY on wall-shaped triggers or a
+    /// transport error, never on SPA/thin/empty shapes, and never on a
+    /// fingerprint-vendor wall. Returns the accepted result, or `None` to
+    /// continue exactly as today.
+    #[cfg(feature = "impersonated")]
+    async fn try_impersonated_hop(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+        deadline: crw_core::Deadline,
+        trigger: ImpersonatedTrigger,
+    ) -> Option<FetchResult> {
+        let fetcher = self.impersonated.as_ref()?;
+        // Budget split: the hop runs BEFORE the ladder on the SHARED request
+        // deadline, so without a cap a tarpitting wall host drains the budget
+        // the browser tiers needed. Half is the split. A reserve is only owed
+        // when there IS a ladder to protect: an HTTP-only deployment hands
+        // the hop the whole remaining budget.
+        let remaining = deadline.remaining();
+        if remaining < MIN_TIER_BUDGET {
+            return None;
+        }
+        let deadline = if self.js_renderers.is_empty() {
+            deadline
+        } else {
+            let share = remaining / 2;
+            if share < MIN_TIER_BUDGET {
+                return None;
+            }
+            crw_core::Deadline::now_plus(share)
+        };
+        let kind = RendererKind::ImpersonatedHttp;
+        match fetcher.fetch(url, headers, None, deadline).await {
+            Ok(mut r) => {
+                if self.impersonation_accepted(&r) {
+                    r.credit_cost = credit_for(kind);
+                    r.render_decision = Some(RenderDecision::Failover {
+                        chain: vec![RendererKind::Http, kind],
+                        reason: match trigger {
+                            ImpersonatedTrigger::Wall => FailoverErrorKind::VendorBlock,
+                            ImpersonatedTrigger::Transport => FailoverErrorKind::NetworkError,
+                        },
+                    });
+                    metrics()
+                        .render_route_decision_total
+                        .with_label_values(&[kind.as_str(), "success"])
+                        .inc();
+                    Some(r)
+                } else {
+                    tracing::info!(
+                        url,
+                        trigger = trigger.as_str(),
+                        status_code = r.status_code,
+                        "impersonated hop still blocked; continuing to the ladder"
+                    );
+                    metrics()
+                        .render_route_decision_total
+                        .with_label_values(&[kind.as_str(), "blocked"])
+                        .inc();
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::info!(
+                    url,
+                    trigger = trigger.as_str(),
+                    "impersonated hop failed: {e}"
+                );
+                metrics()
+                    .render_route_decision_total
+                    .with_label_values(&[kind.as_str(), "error"])
+                    .inc();
+                None
+            }
+        }
+    }
+
+    /// Serve the `renderer = "impersonated-http"` pin. A wall surfaces as an
+    /// error (the hard-pin "failures must surface" contract), never as a
+    /// billed success. It does NOT run the auto-chain accept gate: the pin
+    /// has no ladder to fall through to, so a PDF, a 404 or a thin page
+    /// comes back as the result it is, exactly as a hard browser pin does.
+    #[cfg(feature = "impersonated")]
+    async fn fetch_pinned_impersonated(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+        wait_for_ms: Option<u64>,
+        deadline: crw_core::Deadline,
+    ) -> CrwResult<FetchResult> {
+        let kind = RendererKind::ImpersonatedHttp;
+        metrics()
+            .user_pin_total
+            .with_label_values(&[kind.as_str()])
+            .inc();
+        let route = |decision: &'static str| {
+            metrics()
+                .render_route_decision_total
+                .with_label_values(&[kind.as_str(), decision])
+                .inc();
+        };
+        let Some(fetcher) = self.impersonated.as_ref() else {
+            route("error");
+            return Err(CrwError::RendererError(
+                "the impersonated-http tier is not available in this build or config".into(),
+            ));
+        };
+        let mut r = match fetcher.fetch(url, headers, wait_for_ms, deadline).await {
+            Ok(r) => r,
+            Err(e) => {
+                route("error");
+                return Err(e);
+            }
+        };
+        if self.impersonation_blocked(&r) {
+            tracing::warn!(
+                url,
+                status_code = r.status_code,
+                "pinned impersonated-http result looks blocked; surfacing as an error"
+            );
+            route("blocked");
+            return Err(CrwError::RendererError(
+                "impersonated-http: the response carries an anti-bot block \
+                 (vendor wall class); the pinned tier refuses to bill it as a success"
+                    .into(),
+            ));
+        }
+        let is_pdf = r.content_type.as_deref() == Some("application/pdf");
+        if !is_pdf && html_body_text_len(&r.html) < Self::MIN_RENDERED_TEXT_LEN {
+            r.warnings.push(format!(
+                "Pinned renderer 'impersonated-http' returned thin content (text_len={}). \
+                 Omit the renderer field for auto-failover.",
+                html_body_text_len(&r.html)
+            ));
+        }
+        r.credit_cost = credit_for(kind);
+        r.render_decision = Some(RenderDecision::UserPinned { renderer: kind });
+        route("success");
+        Ok(r)
+    }
+
+    #[cfg(not(feature = "impersonated"))]
+    async fn fetch_pinned_impersonated(
+        &self,
+        _url: &str,
+        _headers: &HashMap<String, String>,
+        _wait_for_ms: Option<u64>,
+        _deadline: crw_core::Deadline,
+    ) -> CrwResult<FetchResult> {
+        Err(CrwError::RendererError(
+            "the impersonated-http tier is not available in this build or config".into(),
+        ))
+    }
+
+    /// Which tier a post-LightPanda escalation should aim at, or `None` when
+    /// this pool has nothing above lightpanda and the escalation should be
+    /// skipped rather than dispatched.
+    ///
+    /// A pinned name the pool does not hold is a hard error, not a fallback, so
+    /// the target must come from the tiers actually constructed. On this fork
+    /// that is camofox when configured.
+    pub fn lightpanda_escalation_target(&self) -> Option<&str> {
+        self.js_renderers
+            .iter()
+            .map(|r| r.name())
+            .find(|name| *name != "lightpanda")
     }
 
     /// Fetch a URL with smart mode: HTTP first, then JS if needed.
@@ -505,9 +1075,7 @@ impl FallbackRenderer {
         let _host_permit = if let Some(key) = host_key.as_deref() {
             let remaining = deadline.remaining();
             if remaining.is_zero() {
-                return Err(CrwError::Timeout(
-                    deadline.overrun().as_millis().max(1) as u64
-                ));
+                return Err(CrwError::Timeout(deadline.requested_ms()));
             }
             match tokio::time::timeout(
                 remaining,
@@ -531,9 +1099,7 @@ impl FallbackRenderer {
                 }
                 Ok(Err(_)) => return Err(CrwError::RendererError("host limiter closed".into())),
                 Err(_) => {
-                    return Err(CrwError::Timeout(
-                        deadline.overrun().as_millis().max(1) as u64
-                    ));
+                    return Err(CrwError::Timeout(deadline.requested_ms()));
                 }
             }
         } else {
@@ -551,17 +1117,53 @@ impl FallbackRenderer {
         );
         // A non-"auto" pinned renderer is a hard pin — failures must surface.
         let is_hard_pinned = matches!(requested_renderer, Some(name) if name != "auto");
+        // The one wire-level pin that never executes JS: served ahead of the
+        // render_js match so a `render_js_default` cannot divert it into the
+        // forced-JS arm it cannot serve.
+        if requested_renderer == Some("impersonated-http") {
+            return self
+                .fetch_pinned_impersonated(url, headers, wait_for_ms, deadline)
+                .await;
+        }
         match effective {
             Some(false) => {
-                let mut r = self.http.fetch(url, headers, None, deadline).await?;
-                stamp_http_decision(&mut r, requested_renderer);
+                let mut r = self.http_fetch(url, headers, deadline).await?;
+                stamp_http_decision(&mut r, requested_renderer, "success");
                 Ok(r)
             }
             Some(true) => {
                 // Fetch via HTTP first to check content type — PDFs can't be JS-rendered.
-                let mut http_result = self.http.fetch(url, headers, None, deadline).await?;
+                // An HTTP-tier failure is not terminal when a JS renderer exists: the
+                // caller asked for a browser render (a pinned renderer implies this
+                // branch), so escalate the way auto mode does. Previously a pinned
+                // camofox scrape of an origin slower than the HTTP tier's timeout
+                // 502'd here without ever reaching camofox.
+                let mut http_result = match self.http_fetch(url, headers, deadline).await {
+                    Ok(r) => r,
+                    // `UnsupportedContentType` is excluded on purpose: the body is
+                    // not a web page at all (a .docx ZIP, an image), which no
+                    // renderer can fix. Escalating one costs a full ladder climb
+                    // and still fails, with the precise content type lost behind
+                    // the ladder's generic "no usable content".
+                    Err(e)
+                        if !self.js_renderers.is_empty()
+                            && !matches!(e, CrwError::UnsupportedContentType(_)) =>
+                    {
+                        return self
+                            .escalate_after_http_failure(
+                                e,
+                                url,
+                                headers,
+                                wait_for_ms,
+                                requested_renderer,
+                                deadline,
+                            )
+                            .await;
+                    }
+                    Err(e) => return Err(e),
+                };
                 if http_result.content_type.as_deref() == Some("application/pdf") {
-                    stamp_http_decision(&mut http_result, requested_renderer);
+                    stamp_http_decision(&mut http_result, requested_renderer, "success");
                     return Ok(http_result);
                 }
 
@@ -577,14 +1179,82 @@ impl FallbackRenderer {
                         "JS rendering requested but no renderer available; HTTP fallback used"
                             .into(),
                     );
-                    stamp_http_decision(&mut result, requested_renderer);
+                    stamp_http_decision(&mut result, requested_renderer, "success");
                     Ok(result)
                 } else {
-                    let mut rendered = self
-                        .fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
-                        .await?;
-                    preserve_unobserved_origin_status(&http_result, &mut rendered);
-                    Ok(rendered)
+                    // The HTTP body was already fetched above for the content-type
+                    // check, so when the JS ladder fails there is a valid document
+                    // in hand — returning `Err` instead of that body is a straight
+                    // recall loss, and the auto arm below has never done it.
+                    //
+                    // Unlike auto, the fallback here is ALWAYS announced. Auto can
+                    // swap silently because the caller expressed no preference; a
+                    // `renderJs:true` caller asked for a browser and must be able
+                    // to tell they did not get one.
+                    let is_auth_blocked = is_soft_block_status(http_result.status_code);
+                    let started_at = std::time::Instant::now();
+                    let challenged = http_result.warning.as_deref() == Some("cloudflare_mitigated")
+                        || detector::looks_like_cloudflare_challenge(&http_result.html)
+                        || detector::looks_like_generic_bot_wall(&http_result.html);
+                    match self
+                        .fetch_with_js(
+                            url,
+                            headers,
+                            wait_for_ms,
+                            requested_renderer,
+                            challenged,
+                            deadline,
+                        )
+                        .await
+                    {
+                        Ok(mut js_result) => {
+                            preserve_unobserved_origin_status(&http_result, &mut js_result);
+                            Ok(js_result)
+                        }
+                        // An explicit renderer pin is a caller contract that
+                        // forbids silent substitution: fail closed. So does a
+                        // shell that IS the wall the ladder just refused to clear:
+                        // returning it hands back exactly what every tier
+                        // rejected. A shell that is not a wall still substitutes.
+                        Err(e)
+                            if is_hard_pinned
+                                || detector::looks_like_generic_bot_wall(&http_result.html) =>
+                        {
+                            Err(e)
+                        }
+                        Err(e) => {
+                            if is_auth_blocked {
+                                tracing::error!(
+                                    url,
+                                    status_code = http_result.status_code,
+                                    "JS escalation failed for soft-block status; surfacing HTTP shell with warning: {e}"
+                                );
+                            } else {
+                                tracing::warn!(
+                                    "JS rendering failed, falling back to HTTP result: {e}"
+                                );
+                            }
+                            let warning = format!("{JS_ESCALATION_FAILED} {e}");
+                            http_result.warning = Some(match http_result.warning.take() {
+                                Some(prev) => format!("{warning}; {prev}"),
+                                None => warning,
+                            });
+                            // `elapsed_ms` came from the HTTP fetch alone, so it
+                            // would report a few hundred ms for a request that
+                            // spent the whole deadline in the ladder.
+                            http_result.elapsed_ms = http_result
+                                .elapsed_ms
+                                .saturating_add(started_at.elapsed().as_millis() as u64);
+                            // Labelled apart from ordinary HTTP traffic: a plain
+                            // `success` reads as "no browser was needed".
+                            stamp_http_decision(
+                                &mut http_result,
+                                requested_renderer,
+                                "jsLadderExhausted",
+                            );
+                            Ok(http_result)
+                        }
+                    }
                 }
             }
             None => {
@@ -594,69 +1264,80 @@ impl FallbackRenderer {
                 // sites that reject reqwest's TLS/UA fingerprint succeed via a
                 // real Chromium navigation. Bench analysis: 10/147 false
                 // "unreachable" + 5/147 "http_502" map to this branch.
-                let mut result = match self.http.fetch(url, headers, None, deadline).await {
-                    Ok(r) => r,
-                    Err(e) if !self.js_renderers.is_empty() => {
-                        tracing::info!(
-                            url,
-                            error = %e,
-                            "HTTP fetch failed, escalating to JS renderer"
-                        );
-                        return self
-                            .fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
+                let fetched = self.http_fetch(url, headers, deadline).await;
+                // Chrome-impersonation hop on a TRANSPORT failure that happened
+                // after the connection was up (see `fingerprint_shaped_error`),
+                // BEFORE the JS escalation below. When it returns None the match
+                // that follows is byte-identical to the pre-hop ladder.
+                #[cfg(feature = "impersonated")]
+                let fetched = match fetched {
+                    Err(e) if fingerprint_shaped_error(&e) => {
+                        if let Some(r) = self
+                            .try_impersonated_hop(
+                                url,
+                                headers,
+                                deadline,
+                                ImpersonatedTrigger::Transport,
+                            )
                             .await
-                            .map_err(|js_err| {
-                                tracing::warn!("Both HTTP and JS failed: http={e}, js={js_err}");
-                                // When the HTTP tier could not reach the origin AND the JS tier
-                                // failed navigating to that same origin, the origin is the root
-                                // cause: surface TargetUnreachable (422 — the caller handed us a
-                                // dead target) instead of the JS tier's RendererError, which
-                                // falls through to a 500 and reads as "our server broke".
-                                //
-                                // A JS failure can also be OUR fault (pool exhausted, CDP
-                                // discovery failed, pinned renderer missing). Those keep their
-                                // own error, or we would blame the caller for our outage.
-                                match (&e, &js_err) {
-                                    (CrwError::TargetUnreachable(_), js)
-                                        if is_origin_navigation_failure(js) =>
-                                    {
-                                        e
-                                    }
-                                    _ => js_err,
-                                }
-                            });
+                        {
+                            return Ok(r);
+                        }
+                        Err(e)
+                    }
+                    other => other,
+                };
+                let mut result = match fetched {
+                    Ok(r) => r,
+                    // `UnsupportedContentType` is excluded on purpose: the body is
+                    // not a web page at all (a .docx ZIP, an image), which no
+                    // renderer can fix. Escalating one costs a full ladder climb
+                    // and still fails, with the precise content type lost behind
+                    // the ladder's generic "no usable content".
+                    Err(e)
+                        if !self.js_renderers.is_empty()
+                            && !matches!(e, CrwError::UnsupportedContentType(_)) =>
+                    {
+                        return self
+                            .escalate_after_http_failure(
+                                e,
+                                url,
+                                headers,
+                                wait_for_ms,
+                                requested_renderer,
+                                deadline,
+                            )
+                            .await;
                     }
                     Err(e) => return Err(e),
                 };
 
                 // PDFs don't need JS rendering — return immediately.
                 if result.content_type.as_deref() == Some("application/pdf") {
-                    stamp_http_decision(&mut result, requested_renderer);
+                    stamp_http_decision(&mut result, requested_renderer, "success");
                     return Ok(result);
                 }
 
                 let needs_js = detector::needs_js_rendering(&result.html);
-                let cf_header_signal = result.warning.as_deref() == Some("cloudflare_mitigated");
+                // Either header-announced vendor challenge (`cf-mitigated` or
+                // `x-amzn-waf-action`). Independent of status and body, so it
+                // catches the AWS-WAF shape that carries NO body to inspect:
+                // HTTP 202 + content-length 0, which every body detector misses.
+                //
+                // The AWS half is additionally gated on `!is_hard_pinned`: the
+                // pinned path surfaces a JS failure as an error instead of falling
+                // back to the HTTP body, so letting the new signal escalate a pinned
+                // request would convert today's `Ok`-with-an-empty-202 into a 5xx.
+                let cf_header_signal = match result.warning.as_deref() {
+                    Some("cloudflare_mitigated") => true,
+                    Some("waf_challenge") => !is_hard_pinned,
+                    _ => false,
+                };
                 let is_generic_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
                 let is_blocked = cf_header_signal
                     || detector::looks_like_cloudflare_challenge(&result.html)
                     || is_generic_bot_wall;
-                // Soft-block / soft-error status codes where the body often
-                // contains real content despite the status header. Sources:
-                //   - UA/header-based bot filters: 401, 403, 405, 406, 412
-                //   - Rate limits: 429
-                //   - Geo gates: 451
-                //   - Origin overload: 503
-                //   - "Not found" SPAs that 404 the route but render content
-                //     via JS hydration: 404, 410
-                //   - Origin error that still serves a usable page: 500
-                // Firecrawl-comparison (April 2026 bench): the JS render
-                // path recovered content in ~25/99 such cases that HTTP
-                // alone could not.
-                let is_auth_blocked = matches!(
-                    result.status_code,
-                    401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
-                );
+                let is_auth_blocked = is_soft_block_status(result.status_code);
                 // Post-fetch thin-content trigger: HTTP returned 2xx but the
                 // body has effectively no extractable text. Catches sites whose
                 // SPA marker we don't recognize (no `id="root"`, no
@@ -673,9 +1354,56 @@ impl FallbackRenderer {
                 let is_thin_content = is_2xx
                     && detector::looks_like_thin_html(&result.html)
                     && detector::warrants_browser_retry(&result.html);
+                // A 2xx with a literally empty body carries no content by
+                // definition, and `warrants_browser_retry` structurally cannot
+                // fire on it (there is no markup to find a script tag in), so the
+                // thin-content path above misses it entirely and the empty
+                // response is returned to the caller as a success. Observed on
+                // AWS-WAF hosts that answer 202 + content-length 0.
+                //
+                // Narrow on purpose: 204/205/206 legitimately carry no (full) body;
+                // non-HTML content types gain nothing from a browser; a hard-pinned
+                // renderer surfaces JS failures as an error rather than falling back
+                // to the HTTP body, so escalating here would turn today's
+                // empty-but-Ok into a hard 5xx.
+                let is_empty_2xx = is_2xx
+                    && !is_hard_pinned
+                    && !matches!(result.status_code, 204..=206)
+                    && crw_core::is_html_like_content_type(result.content_type.as_deref())
+                    && result.html.trim().is_empty();
+
+                // Chrome-impersonation hop between the plain HTTP tier and the
+                // JS ladder, on WALL-shaped triggers only. Tier presence is the
+                // FIRST conjunct so a config-disabled tier pays none of the
+                // vendor-wall scans. The gate relies on SPA, thin and empty
+                // shapes not also being wall-shaped. A body that is both (a
+                // bot wall that is also an SPA shell) does hop, and the
+                // accept gate then rejects it; that gate is the backstop.
+                // It never fires on a fingerprint-vendor wall (those
+                // need JS no HTTP client can fake). Independent of
+                // `js_renderers`: an HTTP-only deployment gets the fix with
+                // zero browsers.
+                #[cfg(feature = "impersonated")]
+                if self.impersonated.is_some()
+                    && (is_blocked || is_hard_block_status(result.status_code))
+                    && !is_fingerprint_vendor_wall(
+                        cf_header_signal || detector::looks_like_cloudflare_challenge(&result.html),
+                        detector::looks_like_vendor_block(&result.html),
+                        self.antibot_signal(result.status_code, &result.html),
+                    )
+                    && let Some(r) = self
+                        .try_impersonated_hop(url, headers, deadline, ImpersonatedTrigger::Wall)
+                        .await
+                {
+                    return Ok(r);
+                }
 
                 if !self.js_renderers.is_empty()
-                    && (needs_js || is_blocked || is_auth_blocked || is_thin_content)
+                    && (needs_js
+                        || is_blocked
+                        || is_auth_blocked
+                        || is_thin_content
+                        || is_empty_2xx)
                 {
                     if is_auth_blocked {
                         tracing::info!(
@@ -705,48 +1433,69 @@ impl FallbackRenderer {
                         );
                     }
                     match self
-                        .fetch_with_js(url, headers, wait_for_ms, requested_renderer, deadline)
+                        .fetch_with_js(
+                            url,
+                            headers,
+                            wait_for_ms,
+                            requested_renderer,
+                            is_blocked,
+                            deadline,
+                        )
                         .await
                     {
                         Ok(mut js_result) => {
                             preserve_unobserved_origin_status(&result, &mut js_result);
                             Ok(js_result)
                         }
-                        Err(e) if is_hard_pinned => {
-                            // User explicitly pinned a renderer — surface the error
-                            // instead of silently returning the (likely useless) HTTP body.
+                        Err(e)
+                            if is_hard_pinned
+                                || detector::looks_like_generic_bot_wall(&result.html) =>
+                        {
+                            // Pinned: the caller's contract forbids substitution.
+                            // Wall: see the sibling arm — the shell is the very
+                            // thing the ladder rejected, so it is not a fallback.
                             Err(e)
                         }
                         Err(e) => {
                             // For `is_auth_blocked` (4xx/5xx soft-block status codes), the
                             // HTTP body is almost certainly an error shell — falling back
-                            // to it silently misleads the caller. Surface the JS failure
-                            // through a warning so the post-extract layer can decide.
-                            // For `needs_js` / `is_blocked` / `is_thin_content`, the HTTP
-                            // body still has *some* useful content so the silent fallback
-                            // remains the safer default.
+                            // to it silently misleads the caller. For `needs_js` /
+                            // `is_blocked` / `is_thin_content`, the HTTP body still has
+                            // *some* useful content, so the fallback itself stays silent
+                            // and only the log level differs.
+                            //
+                            // The warning tag does NOT differ. `JS_ESCALATION_FAILED` is
+                            // how `crw_crawl::single` learns the ladder is spent
+                            // (`js_ladder_exhausted`); tagging only the soft-block arm let
+                            // a body-detected block on a plain 200 — the canonical
+                            // Turnstile-over-200 shape — re-run the ENTIRE ladder against
+                            // a site that had just failed it.
                             if is_auth_blocked {
                                 tracing::error!(
                                     url,
                                     status_code = result.status_code,
                                     "JS escalation failed for soft-block status; surfacing HTTP shell with warning: {e}"
                                 );
-                                let warning = format!("js_escalation_failed: {e}");
-                                result.warning = Some(match result.warning.take() {
-                                    Some(prev) => format!("{warning}; {prev}"),
-                                    None => warning,
-                                });
                             } else {
                                 tracing::warn!(
                                     "JS rendering failed, falling back to HTTP result: {e}"
                                 );
                             }
-                            stamp_http_decision(&mut result, requested_renderer);
+                            let warning = format!("{JS_ESCALATION_FAILED} {e}");
+                            result.warning = Some(match result.warning.take() {
+                                Some(prev) => format!("{warning}; {prev}"),
+                                None => warning,
+                            });
+                            stamp_http_decision(
+                                &mut result,
+                                requested_renderer,
+                                "jsLadderExhausted",
+                            );
                             Ok(result)
                         }
                     }
                 } else {
-                    stamp_http_decision(&mut result, requested_renderer);
+                    stamp_http_decision(&mut result, requested_renderer, "success");
                     Ok(result)
                 }
             }
@@ -758,12 +1507,129 @@ impl FallbackRenderer {
     /// next renderer in the chain is tried.
     const MIN_RENDERED_TEXT_LEN: usize = 50;
 
+    /// The HTTP-tier fetch, with Cloudflare clearance reuse. When the cache
+    /// holds a live entry for the host and nothing forbids it (proxy egress,
+    /// latched host, caller-supplied Cookie/User-Agent), the cached cookies
+    /// and user agent go out with the request. If the origin still answers
+    /// with a challenge, the entry is dropped so the next render refreshes it.
+    async fn http_fetch(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+        deadline: crw_core::Deadline,
+    ) -> CrwResult<FetchResult> {
+        let Some((host, clearance)) = self.clearance_for(url, headers).await else {
+            return self.http.fetch(url, headers, None, deadline).await;
+        };
+        let mut injected = headers.clone();
+        injected.insert("Cookie".to_string(), clearance.cookie_header(&host));
+        injected.insert("User-Agent".to_string(), clearance.user_agent.clone());
+        metrics()
+            .clearance_reuse_total
+            .with_label_values(&["hit"])
+            .inc();
+        let result = self.http.fetch(url, &injected, None, deadline).await?;
+        let challenged = result.warning.as_deref() == Some("cloudflare_mitigated")
+            || detector::looks_like_cloudflare_challenge(&result.html);
+        if challenged {
+            tracing::info!(url, host = %host, "cached cf_clearance rejected by origin, dropping it");
+            self.clearance.invalidate(&host).await;
+            metrics()
+                .clearance_reuse_total
+                .with_label_values(&["invalidated"])
+                .inc();
+        }
+        Ok(result)
+    }
+
+    /// Host + clearance entry to inject for `url`, or `None` when reuse does
+    /// not apply.
+    async fn clearance_for(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+    ) -> Option<(String, Arc<clearance::Clearance>)> {
+        if self.http_has_proxy {
+            return None;
+        }
+        if headers
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("cookie") || k.eq_ignore_ascii_case("user-agent"))
+        {
+            return None;
+        }
+        let host = url::Url::parse(url).ok()?.host_str()?.to_owned();
+        if egress::global().should_proxy(&host).await {
+            return None;
+        }
+        match self.clearance.get(&host).await {
+            Some(c) if c.covers(&host) => Some((host, c)),
+            _ => {
+                metrics()
+                    .clearance_reuse_total
+                    .with_label_values(&["miss"])
+                    .inc();
+                None
+            }
+        }
+    }
+
+    /// The HTTP tier failed but a JS renderer exists: escalate to it. If the
+    /// JS tier fails too, pick the error that names the root cause.
+    async fn escalate_after_http_failure(
+        &self,
+        http_err: CrwError,
+        url: &str,
+        headers: &HashMap<String, String>,
+        wait_for_ms: Option<u64>,
+        requested_renderer: Option<&str>,
+        deadline: crw_core::Deadline,
+    ) -> CrwResult<FetchResult> {
+        tracing::info!(
+            url,
+            error = %http_err,
+            "HTTP fetch failed, escalating to JS renderer"
+        );
+        // No body to judge, so no evidence of a challenge.
+        self.fetch_with_js(
+            url,
+            headers,
+            wait_for_ms,
+            requested_renderer,
+            false,
+            deadline,
+        )
+        .await
+        .map_err(|js_err| {
+            tracing::warn!("Both HTTP and JS failed: http={http_err}, js={js_err}");
+            // When the HTTP tier could not reach the origin AND the JS tier
+            // failed navigating to that same origin, the origin is the root
+            // cause: surface TargetUnreachable (422 — the caller handed us a
+            // dead target) instead of the JS tier's RendererError, which
+            // falls through to a 500 and reads as "our server broke".
+            //
+            // A JS failure can also be OUR fault (pool exhausted, CDP
+            // discovery failed, pinned renderer missing). Those keep their
+            // own error, or we would blame the caller for our outage.
+            match (&http_err, &js_err) {
+                (CrwError::TargetUnreachable(_), js) if is_origin_navigation_failure(js) => {
+                    http_err
+                }
+                _ => js_err,
+            }
+        })
+    }
+
+    /// Run the JS ladder. `challenge_hint` says the HTTP tier's body was an
+    /// anti-bot challenge or wall; it (or an earlier JS body that was one) is
+    /// what lets the Byparr solver run, since every solve launches a browser.
     async fn fetch_with_js(
         &self,
         url: &str,
         headers: &HashMap<String, String>,
         wait_for_ms: Option<u64>,
         requested_renderer: Option<&str>,
+        challenge_hint: bool,
         deadline: crw_core::Deadline,
     ) -> CrwResult<FetchResult> {
         let host = host_of(url);
@@ -821,6 +1687,7 @@ impl FallbackRenderer {
         let mut last_error = None;
         let mut last_failover_reason: Option<FailoverErrorKind> = None;
         let mut thin_result: Option<FetchResult> = None;
+        let mut challenge_seen = challenge_hint;
         // Snapshot for the leak-through fallback below. The main loop
         // consumes `renderers`; we keep a parallel reference list so a
         // single skipped renderer can still get a shot when its host
@@ -829,6 +1696,14 @@ impl FallbackRenderer {
 
         for renderer in renderers {
             let kind = renderer_kind_for(renderer.name());
+
+            if kind == Some(RendererKind::Byparr) && !challenge_seen {
+                tracing::debug!(
+                    url,
+                    "no anti-bot challenge seen, skipping the byparr solver"
+                );
+                continue;
+            }
 
             // Skip empty hosts: don't pollute breaker/preference caches
             // with the "" key when URL parsing failed.
@@ -849,7 +1724,7 @@ impl FallbackRenderer {
             // that were actually invoked.
             let remaining = deadline.remaining();
             if remaining < MIN_TIER_BUDGET {
-                tracing::debug!(
+                tracing::info!(
                     renderer = renderer.name(),
                     remaining_ms = remaining.as_millis() as u64,
                     "budget below minimum tier budget, skipping renderer"
@@ -868,7 +1743,11 @@ impl FallbackRenderer {
                 // every other `last_error` assignment in this function does. Assign
                 // unconditionally for the same reason: `get_or_insert_with` would let an
                 // earlier tier's `RendererError` survive and map to 500 instead of 504.
-                last_error = Some(CrwError::Timeout(remaining.as_millis().max(1) as u64));
+                //
+                // Report the REQUESTED budget, not `remaining`: that is below
+                // MIN_TIER_BUDGET by definition here and ~0 in practice, so it read as
+                // `Timeout after 1ms` to a caller given 30s.
+                last_error = Some(CrwError::Timeout(deadline.requested_ms()));
                 continue;
             }
 
@@ -900,7 +1779,7 @@ impl FallbackRenderer {
             // (see `ProbeGuard::drop`), so the breaker is left as we found it.
             let remaining = deadline.remaining();
             if remaining < MIN_TIER_BUDGET {
-                tracing::debug!(
+                tracing::info!(
                     renderer = renderer.name(),
                     remaining_ms = remaining.as_millis() as u64,
                     "budget drained while acquiring breaker permit, skipping renderer"
@@ -911,7 +1790,9 @@ impl FallbackRenderer {
                         .with_label_values(&[k.as_str(), "budgetSkipped"])
                         .inc();
                 }
-                last_error = Some(CrwError::Timeout(remaining.as_millis().max(1) as u64));
+                // Same reasoning as the floor above: report the requested budget,
+                // never the sub-minimum remainder.
+                last_error = Some(CrwError::Timeout(deadline.requested_ms()));
                 continue;
             }
 
@@ -930,47 +1811,23 @@ impl FallbackRenderer {
             };
             match renderer.fetch(url, headers, wait_for_ms, deadline).await {
                 Ok(mut result) => {
-                    let text_len = html_body_text_len(&result.html);
-                    let is_placeholder = detector::looks_like_loading_placeholder(&result.html);
-                    let failed_render = detector::looks_like_failed_render(&result.html);
-                    let is_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
-                    let vendor_block = detector::looks_like_vendor_block(&result.html);
-                    // Size-independent Cloudflare interstitial check: modern
-                    // managed challenges are 100-300KB with the challenge marker
-                    // deep in the body, which the size-capped detectors above
-                    // miss — the challenge text would be returned as content.
-                    let cf_challenge = detector::looks_like_cloudflare_challenge(&result.html);
-                    // Mirrors the HTTP-tier escalation set (lib.rs:658). A JS
-                    // renderer can return 200 with bot HTML or 403 with content
-                    // — without this check, both slip through as "valid".
-                    let is_status_blocked = matches!(
-                        result.status_code,
-                        401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
-                    );
-                    // The comprehensive 3-tier antibot classifier. The
-                    // `detector` heuristics above only know a fixed phrase
-                    // list + 8 named vendors; `classify()` additionally
-                    // recognises Reddit-class WAF pages ("blocked by network
-                    // security") served with HTTP 200 that otherwise slip
-                    // through as success. Always runs for telemetry when
-                    // `enabled`; only forces escalation when
-                    // `escalate_in_failover` is on (the kill switch).
-                    let antibot = if self.antibot.enabled {
-                        crw_extract::antibot::classify(Some(result.status_code), &result.html)
-                    } else {
-                        crw_extract::antibot::AntibotResult::none()
-                    };
-                    let antibot_blocked =
-                        self.antibot.escalate_in_failover && antibot.signal.is_blocked();
-                    if text_len >= Self::MIN_RENDERED_TEXT_LEN
-                        && !is_placeholder
-                        && failed_render.is_none()
-                        && !is_bot_wall
-                        && vendor_block.is_none()
-                        && !cf_challenge
-                        && !is_status_blocked
-                        && !antibot_blocked
-                    {
+                    let body = JsBodyChecks::assess(&result, &self.antibot);
+                    let accepted = body.accepted();
+                    let body_site_blocked = body.site_blocked(result.status_code);
+                    let rejection = body.rejection_warning(renderer.name(), result.status_code);
+                    let wall = body.wall();
+                    let JsBodyChecks {
+                        text_len,
+                        is_placeholder,
+                        failed_render,
+                        is_bot_wall,
+                        vendor_block,
+                        cf_challenge,
+                        is_status_blocked,
+                        antibot,
+                        antibot_blocked,
+                    } = body;
+                    if accepted {
                         // Capture the promotion state BEFORE record_success
                         // clears the latch — otherwise AutoPromoted decisions
                         // race against the success path and downgrade to AutoDefault.
@@ -1049,12 +1906,35 @@ impl FallbackRenderer {
                         None => FailoverErrorKind::PlaceholderContent,
                     };
                     last_failover_reason = Some(err_kind.clone());
+                    challenge_seen |=
+                        cf_challenge || is_bot_wall || vendor_block.is_some() || antibot_blocked;
                     if let Some(k) = trackable {
                         // Thin/placeholder/failed render → classify against
                         // attempt context so deadline-clamped attempts don't
                         // poison the breaker.
-                        let outcome = classify_outcome(false, false, false, &attempt_ctx);
-                        self.breakers.record_outcome(&host, k, outcome).await;
+                        //
+                        // A site-side block is not a tier failure: every tier
+                        // egressing from this IP sees the same wall, so counting it
+                        // tripped the per-host breaker for lightpanda AND camofox and
+                        // left the ladder with nothing to run. Computed FRESH per
+                        // attempt so one tier's block cannot mask the next tier's
+                        // genuine render failure. Omits 404/405/406/410/412/451/500 —
+                        // those are not site-side blocks.
+                        let site_blocked = body_site_blocked;
+                        let outcome = classify_outcome(
+                            false,
+                            false,
+                            false,
+                            site_blocked && self.has_recovery_tier,
+                            &attempt_ctx,
+                        );
+                        // Host-scoped: the tier answered, and this is a verdict on
+                        // the body it returned. Written to the global window, one
+                        // busy domain reaches `min_calls` on its own and disables
+                        // the tier for every host.
+                        self.breakers
+                            .record_scoped_outcome(&host, k, None, Some(outcome))
+                            .await;
                         if k == RendererKind::Lightpanda
                             && let Some(target) =
                                 self.preferences.record_failure(&host, &err_kind).await
@@ -1124,43 +2004,8 @@ impl FallbackRenderer {
                     // accumulating bodies), but stitch later renderers'
                     // warnings onto it so debug output reflects every attempt.
                     let mut annotated = result;
-                    let attempt_warning = if let Some(reason) = failed_render {
-                        format!(
-                            "{} returned a failed render ({})",
-                            renderer.name(),
-                            reason.as_str()
-                        )
-                    } else if is_placeholder {
-                        format!("{} returned a loading placeholder", renderer.name())
-                    } else if let Some(vendor) = vendor_block {
-                        format!(
-                            "{} returned a vendor anti-bot block ({vendor})",
-                            renderer.name()
-                        )
-                    } else if is_bot_wall {
-                        format!(
-                            "{} returned a generic anti-bot interstitial",
-                            renderer.name()
-                        )
-                    } else if is_status_blocked {
-                        format!(
-                            "{} returned HTTP {} (treated as blocked)",
-                            renderer.name(),
-                            annotated.status_code
-                        )
-                    } else if antibot_blocked {
-                        format!(
-                            "{} returned an anti-bot block ({}: {})",
-                            renderer.name(),
-                            antibot.signal.class_name(),
-                            antibot.reason
-                        )
-                    } else {
-                        format!(
-                            "{} returned thin content (text_len={text_len})",
-                            renderer.name()
-                        )
-                    };
+                    annotated.wall = wall;
+                    let attempt_warning = rejection;
                     if is_bot_wall || vendor_block.is_some() || is_status_blocked || antibot_blocked
                     {
                         // Surface bot-wall as a RendererError so, if every
@@ -1236,8 +2081,18 @@ impl FallbackRenderer {
                     last_failover_reason = Some(err_kind.clone());
                     if let Some(k) = trackable {
                         let was_timeout = matches!(e, CrwError::Timeout(_));
-                        let outcome = classify_outcome(false, false, was_timeout, &attempt_ctx);
-                        self.breakers.record_outcome(&host, k, outcome).await;
+                        let outcome =
+                            classify_outcome(false, false, was_timeout, false, &attempt_ctx);
+                        // A renderer error with no response to inspect is not proof
+                        // the TIER is sick: a dead origin produces the same shape,
+                        // and every tier egressing from this box sees it. Origin
+                        // faults stay host-scoped. Timeouts are excluded on purpose:
+                        // a hung CDP pool also times out, and that IS a tier signal.
+                        let global =
+                            (!is_origin_fault_for_breaker(&e) || was_timeout).then_some(outcome);
+                        self.breakers
+                            .record_scoped_outcome(&host, k, global, Some(outcome))
+                            .await;
                         if k == RendererKind::Lightpanda {
                             let _ = self.preferences.record_failure(&host, &err_kind).await;
                         }
@@ -1306,18 +2161,20 @@ impl FallbackRenderer {
                 let res = renderer.fetch(url, headers, wait_for_ms, deadline).await;
                 match res {
                     Ok(mut result) => {
-                        let text_len = html_body_text_len(&result.html);
-                        let is_placeholder = detector::looks_like_loading_placeholder(&result.html);
-                        let failed_render = detector::looks_like_failed_render(&result.html);
+                        let body = JsBodyChecks::assess(&result, &self.antibot);
                         let truncated = result.truncated;
-                        // A large CF challenge shell has body text > 50 and no
-                        // placeholder/failed marker, so guard it explicitly or it
-                        // would leak through this path as success.
-                        let content_ok = text_len >= Self::MIN_RENDERED_TEXT_LEN
-                            && !is_placeholder
-                            && failed_render.is_none()
-                            && !detector::looks_like_cloudflare_challenge(&result.html);
-                        let outcome = classify_outcome(content_ok, truncated, false, &attempt_ctx);
+                        let content_ok = body.accepted();
+                        // Same rule as the serial loop: a wall is not this tier's
+                        // fault, so the leak arm must not advance the host window
+                        // with it.
+                        let site_blocked = body.site_blocked(result.status_code);
+                        let outcome = classify_outcome(
+                            content_ok,
+                            truncated,
+                            false,
+                            site_blocked && self.has_recovery_tier,
+                            &attempt_ctx,
+                        );
                         // Record host only — global stays untouched so the
                         // existing trip can finish its cooldown naturally.
                         self.breakers
@@ -1329,17 +2186,33 @@ impl FallbackRenderer {
                                 Some(RenderDecision::AutoDefault { chosen: k });
                             return Ok(result);
                         }
-                        // Thin/placeholder on leak path → fall through to
-                        // the normal "no JS renderer" return below.
+                        // Thin/placeholder/blocked on the leak path → fall through
+                        // to the normal return below.
+                        //
+                        // Keep the body as the thin candidate rather than dropping
+                        // it. The tail returns `Err(last_error)` when `thin_result`
+                        // is None, so dropping a rejected body would turn a response
+                        // this path used to return as `Ok` into a 5xx;
+                        // `classify_block` downstream still surfaces it as blocked.
+                        // The leak arm only runs when `thin_result` is None.
+                        let rejection = body.rejection_warning(renderer.name(), result.status_code);
+                        result.wall = body.wall();
                         last_error = Some(CrwError::RendererError(format!(
-                            "leak attempt on {} returned thin content (text_len={text_len})",
-                            renderer.name()
+                            "leak attempt: {rejection}"
                         )));
+                        result.warnings.push(rejection.clone());
+                        result.warning = Some(match result.warning.take() {
+                            Some(prev) => format!("{prev}; {rejection}"),
+                            None => rejection,
+                        });
+                        thin_result = Some(result);
                         break;
                     }
                     Err(e) => {
                         let was_timeout = matches!(e, CrwError::Timeout(_));
-                        let outcome = classify_outcome(false, false, was_timeout, &attempt_ctx);
+                        // No response body to inspect → a genuine tier signal.
+                        let outcome =
+                            classify_outcome(false, false, was_timeout, false, &attempt_ctx);
                         self.breakers
                             .record_scoped_outcome(&host, k, None, Some(outcome))
                             .await;
@@ -1382,6 +2255,22 @@ impl FallbackRenderer {
                 );
                 result.warnings.push(hint);
             }
+            // A wall no tier could clear is not content. Every tier already
+            // classified it — that verdict is exactly why the result landed in
+            // `thin_result` instead of being accepted — and this was the one place
+            // that discarded it: the interstitial went back under `success: true`
+            // and an agent read it as the page.
+            //
+            // Scoped deliberately to the generic phrase-list wall. A genuinely thin
+            // but real page still ships, because returning the best available body
+            // is the point of this tail.
+            if detector::looks_like_generic_bot_wall(&result.html) {
+                return Err(CrwError::HttpError(format!(
+                    "blocked by an anti-bot wall that none of the {} renderer tier(s) \
+                     attempted could clear",
+                    chain.len().max(1),
+                )));
+            }
             Ok(result)
         } else {
             Err(last_error
@@ -1400,14 +2289,158 @@ impl FallbackRenderer {
     }
 }
 
+/// The checks a JS tier's body must pass before the ladder accepts it. One
+/// definition for the serial loop and the leak-through arm: the leak arm used to
+/// carry its own copy without the status and classifier checks, and returned a
+/// 403 page as a clean render.
+struct JsBodyChecks {
+    text_len: usize,
+    is_placeholder: bool,
+    failed_render: Option<detector::FailedRenderReason>,
+    is_bot_wall: bool,
+    vendor_block: Option<&'static str>,
+    cf_challenge: bool,
+    is_status_blocked: bool,
+    antibot: crw_extract::antibot::AntibotResult,
+    antibot_blocked: bool,
+}
+
+impl JsBodyChecks {
+    fn assess(result: &FetchResult, antibot_cfg: &crw_core::config::AntibotConfig) -> Self {
+        let html = &result.html;
+        // The comprehensive 3-tier antibot classifier. The `detector` heuristics
+        // only know a fixed phrase list + 8 named vendors; `classify()`
+        // additionally recognises Reddit-class WAF pages ("blocked by network
+        // security") served with HTTP 200 that otherwise slip through as success.
+        // Always runs for telemetry when `enabled`; only forces escalation when
+        // `escalate_in_failover` is on (the kill switch).
+        let antibot = if antibot_cfg.enabled {
+            crw_extract::antibot::classify(Some(result.status_code), html)
+        } else {
+            crw_extract::antibot::AntibotResult::none()
+        };
+        let antibot_blocked = antibot_cfg.escalate_in_failover && antibot.signal.is_blocked();
+        Self {
+            text_len: html_body_text_len(html),
+            is_placeholder: detector::looks_like_loading_placeholder(html),
+            failed_render: detector::looks_like_failed_render(html),
+            is_bot_wall: detector::looks_like_generic_bot_wall(html),
+            vendor_block: detector::looks_like_vendor_block(html),
+            // Size-independent Cloudflare interstitial check: modern managed
+            // challenges are 100-300KB with the challenge marker deep in the
+            // body, which the size-capped detectors above miss — the challenge
+            // text would be returned as content.
+            cf_challenge: detector::looks_like_cloudflare_challenge(html),
+            // Mirrors the HTTP-tier escalation set. A JS renderer can return 200
+            // with bot HTML or 403 with content — without this check, both slip
+            // through as "valid".
+            is_status_blocked: matches!(
+                result.status_code,
+                401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
+            ),
+            antibot,
+            antibot_blocked,
+        }
+    }
+
+    fn accepted(&self) -> bool {
+        self.text_len >= FallbackRenderer::MIN_RENDERED_TEXT_LEN
+            && !self.is_placeholder
+            && self.failed_render.is_none()
+            && !self.is_bot_wall
+            && self.vendor_block.is_none()
+            && !self.cf_challenge
+            && !self.is_status_blocked
+            && !self.antibot_blocked
+    }
+
+    /// Why the body was not accepted, for the result's warnings.
+    fn rejection_warning(&self, renderer: &str, status_code: u16) -> String {
+        if let Some(reason) = self.failed_render {
+            format!("{renderer} returned a failed render ({})", reason.as_str())
+        } else if self.is_placeholder {
+            format!("{renderer} returned a loading placeholder")
+        } else if let Some(vendor) = self.vendor_block {
+            format!("{renderer} returned a vendor anti-bot block ({vendor})")
+        } else if self.is_bot_wall {
+            format!("{renderer} returned a generic anti-bot interstitial")
+        } else if self.is_status_blocked {
+            format!("{renderer} returned HTTP {status_code} (treated as blocked)")
+        } else if self.antibot_blocked {
+            format!(
+                "{renderer} returned an anti-bot block ({}: {})",
+                self.antibot.signal.class_name(),
+                self.antibot.reason
+            )
+        } else {
+            format!(
+                "{renderer} returned thin content (text_len={})",
+                self.text_len
+            )
+        }
+    }
+
+    /// The wall this body is, when a wall signal is why it was rejected. A
+    /// blocked status alone is not one: `ScrapeData::http_error` owns that.
+    fn wall(&self) -> Option<BlockOutcome> {
+        let outcome = |vendor: &str, reason: String| {
+            Some(BlockOutcome {
+                vendor: vendor.to_string(),
+                reason,
+            })
+        };
+        if let Some(vendor) = self.vendor_block {
+            outcome(vendor, format!("{vendor} block page"))
+        } else if self.cf_challenge {
+            outcome(
+                "cloudflare",
+                "cloudflare challenge interstitial".to_string(),
+            )
+        } else if self.antibot_blocked
+            && self.antibot.signal != crw_extract::antibot::AntibotSignal::StructuralFailure
+        {
+            outcome(
+                self.antibot.signal.class_name(),
+                self.antibot.reason.clone(),
+            )
+        } else if self.is_bot_wall {
+            outcome("generic_block", "anti-bot interstitial".to_string())
+        } else {
+            None
+        }
+    }
+
+    /// The origin refused us rather than the tier failing. Omits
+    /// 404/405/406/410/412/451/500 — those are not site-side blocks.
+    fn site_blocked(&self, status_code: u16) -> bool {
+        matches!(status_code, 401 | 403 | 429 | 503)
+            || (520..=530).contains(&status_code)
+            || self.is_bot_wall
+            || self.vendor_block.is_some()
+            || self.cf_challenge
+            || self.antibot.signal.is_blocked()
+    }
+}
+
 /// Rough estimate of visible text length in an HTML document.
 /// Strips tags and collapses whitespace. Used to detect "thin" renders
 /// where a renderer returned HTML but failed to execute JavaScript.
 fn html_body_text_len(html: &str) -> usize {
     // Extract body content if present, otherwise use entire HTML.
+    //
+    // The closing tag is searched from `start`, not from 0. Searching the whole
+    // document finds the FIRST `</body>` anywhere, which on a page that mentions
+    // the literal string before its real body — a script writing markup, an
+    // escaped snippet in a docs page, plain malformed HTML — lands BEFORE the
+    // opening tag. `&html[start..end]` then panics with
+    // "byte range starts at 198294 but ends at 197897" and kills the request.
+    // Seen in production 2026-08-11, 9 times in 30 minutes.
     let body = if let Some(start) = html.find("<body") {
         let start = html[start..].find('>').map(|i| start + i + 1).unwrap_or(0);
-        let end = html.find("</body>").unwrap_or(html.len());
+        let end = html[start..]
+            .find("</body>")
+            .map(|i| start + i)
+            .unwrap_or(html.len());
         &html[start..end]
     } else {
         html
@@ -1444,9 +2477,57 @@ mod tests {
     use crw_core::config::CdpEndpoint;
     use std::time::Duration;
 
+    /// Camofox reports a dead proxy as a Firefox error page wrapped in
+    /// "navigation failed". That is our egress, not the origin, so it must keep
+    /// reaching the global breaker window.
+    #[test]
+    fn firefox_proxy_error_page_is_not_an_origin_fault() {
+        let proxy = CrwError::RendererError(
+            "camofox: navigation failed, page did not load: proxyConnectFailure".into(),
+        );
+        assert!(!is_origin_fault_for_breaker(&proxy));
+        let dns = CrwError::RendererError(
+            "camofox: navigation failed, page did not load: dnsNotFound".into(),
+        );
+        assert!(is_origin_fault_for_breaker(&dns));
+    }
+
     /// Generous deadline used by tests that don't care about budget enforcement.
     fn tdl() -> crw_core::Deadline {
         crw_core::Deadline::now_plus(Duration::from_secs(60))
+    }
+
+    #[test]
+    fn body_text_len_survives_a_closing_tag_before_the_opening_one() {
+        // A page that prints the literal "</body>" before its real body — a script
+        // writing markup, an escaped snippet in documentation, or plain malformed
+        // HTML. Searching the whole document for the closing tag found this one,
+        // producing end < start and panicking on the slice. Production hit it 9
+        // times in 30 minutes on 2026-08-11.
+        let html = concat!(
+            "<html><head><script>var tpl = \"</body>\";</script></head>",
+            "<body><p>real content here</p></body></html>"
+        );
+        assert!(html.find("</body>").unwrap() < html.find("<body").unwrap());
+        assert!(html_body_text_len(html) > 0);
+    }
+
+    #[test]
+    fn body_text_len_measures_only_the_body() {
+        let html = "<html><head><title>ignored</title></head><body>hello there</body></html>";
+        // "hello there" collapses to 11 visible characters; the head must not count.
+        assert_eq!(html_body_text_len(html), 11);
+    }
+
+    #[test]
+    fn body_text_len_handles_a_missing_closing_tag() {
+        let html = "<html><body><p>unclosed document";
+        assert!(html_body_text_len(html) > 0);
+    }
+
+    #[test]
+    fn body_text_len_handles_no_body_at_all() {
+        assert!(html_body_text_len("<html><p>fragment</p></html>") > 0);
     }
 
     fn base_cfg(mode: RendererMode) -> RendererConfig {
@@ -1456,12 +2537,96 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "camofox")]
+    #[test]
+    fn camofox_tier_builds_with_clearance_and_challenge_config() {
+        use crw_core::config::CamofoxEndpoint;
+        let cfg = RendererConfig {
+            mode: RendererMode::Camofox,
+            camofox: Some(CamofoxEndpoint {
+                base_url: "http://127.0.0.1:1".into(),
+                api_key: None,
+                challenge_wait_ms: 5_000,
+                clearance_reuse: false,
+            }),
+            ..Default::default()
+        };
+        let r = FallbackRenderer::new(&cfg, "crw-test", None, &StealthConfig::default())
+            .expect("camofox tier builds");
+        assert_eq!(r.js_renderer_names(), vec!["camofox"]);
+        assert!(r.clearance().is_empty());
+    }
+
+    #[test]
+    fn new_refuses_a_malformed_proxy_instead_of_going_direct() {
+        let cfg = base_cfg(RendererMode::None);
+        let Err(err) = FallbackRenderer::new(
+            &cfg,
+            "crw-test",
+            Some("http://user:hunter2@[not-a-host"),
+            &StealthConfig::default(),
+        ) else {
+            panic!("a malformed proxy must fail construction");
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("Invalid proxy URL"), "{msg}");
+        assert!(!msg.contains("hunter2"), "{msg}");
+        // Empty still means "no proxy".
+        assert!(
+            FallbackRenderer::new(&cfg, "crw-test", Some(" "), &StealthConfig::default()).is_ok()
+        );
+    }
+
     #[test]
     fn new_mode_none_ok_no_js_renderers() {
         let cfg = base_cfg(RendererMode::None);
         let r = FallbackRenderer::new(&cfg, "crw-test", None, &StealthConfig::default()).unwrap();
         assert!(r.js_renderer_names().is_empty());
         assert_eq!(r.render_js_default, None);
+    }
+
+    /// The escalation after a thin LightPanda body must name a tier the pool
+    /// holds. Pinning a name it does not hold is a hard error, so the old
+    /// literal "chrome" failed every escalation on this fork's ladder.
+    #[cfg(all(feature = "cdp", feature = "camofox"))]
+    #[test]
+    fn lightpanda_escalation_target_picks_a_tier_the_pool_actually_holds() {
+        let target = |cfg: &RendererConfig| {
+            let r =
+                FallbackRenderer::new(cfg, "crw-test", None, &StealthConfig::default()).unwrap();
+            r.lightpanda_escalation_target().map(str::to_string)
+        };
+        let lp = || {
+            Some(CdpEndpoint {
+                ws_url: "ws://127.0.0.1:9222/".into(),
+            })
+        };
+
+        // Fork ladder: lightpanda then camofox. The escalation lands on camofox.
+        assert_eq!(
+            target(&RendererConfig {
+                mode: RendererMode::Auto,
+                lightpanda: lp(),
+                camofox: Some(crw_core::config::CamofoxEndpoint {
+                    base_url: "http://127.0.0.1:9377".into(),
+                    api_key: None,
+                    challenge_wait_ms: 20_000,
+                    clearance_reuse: true,
+                }),
+                ..Default::default()
+            }),
+            Some("camofox".to_string())
+        );
+
+        // Nothing above lightpanda: no target, so no unsatisfiable pin.
+        assert_eq!(
+            target(&RendererConfig {
+                mode: RendererMode::Auto,
+                lightpanda: lp(),
+                ..Default::default()
+            }),
+            None
+        );
     }
 
     #[test]
@@ -1526,6 +2691,11 @@ mod tests {
         Ok(String),
         OkStatus(u16, String),
         Err(String),
+        #[cfg(feature = "impersonated")]
+        HttpErr(String),
+        #[cfg(feature = "impersonated")]
+        Unreachable(String),
+        Timeout,
     }
 
     #[async_trait::async_trait]
@@ -1541,6 +2711,13 @@ mod tests {
                 MockBehavior::Ok(html) => (200u16, html.clone()),
                 MockBehavior::OkStatus(s, html) => (*s, html.clone()),
                 MockBehavior::Err(msg) => return Err(CrwError::RendererError(msg.clone())),
+                #[cfg(feature = "impersonated")]
+                MockBehavior::HttpErr(msg) => return Err(CrwError::HttpError(msg.clone())),
+                #[cfg(feature = "impersonated")]
+                MockBehavior::Unreachable(msg) => {
+                    return Err(CrwError::TargetUnreachable(msg.clone()));
+                }
+                MockBehavior::Timeout => return Err(CrwError::Timeout(2_500)),
             };
             Ok(FetchResult {
                 url: url.to_string(),
@@ -1555,6 +2732,7 @@ mod tests {
                 render_decision: None,
                 credit_cost: 0,
                 warnings: Vec::new(),
+                wall: None,
                 truncated: false,
                 deadline_exceeded: false,
                 captured_responses: Vec::new(),
@@ -1619,6 +2797,7 @@ mod tests {
                 render_decision: None,
                 credit_cost: 0,
                 warnings: Vec::new(),
+                wall: None,
                 truncated: false,
                 deadline_exceeded: false,
                 captured_responses: Vec::new(),
@@ -1632,6 +2811,373 @@ mod tests {
         }
         async fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    #[cfg(feature = "impersonated")]
+    mod impersonated_ladder {
+        use super::*;
+
+        fn wall_403() -> Arc<dyn PageFetcher> {
+            Arc::new(MockFetcher {
+                name: "http",
+                behavior: MockBehavior::OkStatus(
+                    403,
+                    "<html><body>Access denied</body></html>".to_string(),
+                ),
+            })
+        }
+
+        fn spa_shell() -> String {
+            "<html><body><div id=\"root\"></div><script src=\"/app.js\"></script></body></html>"
+                .to_string()
+        }
+
+        /// An SPA shell with enough visible text (>200 chars) to clear the
+        /// `JsBodyChecks::accepted()` thin-content gate on its own, so
+        /// `impersonation_accepted` reaches its `needs_js_rendering` check
+        /// instead of being rejected earlier by the thin-body check. A single
+        /// `<script src>` does not trip `needs_js_rendering` once body text is
+        /// over 200 chars (that heuristic only fires on a short body); five
+        /// script tags do, via the "bundler-heavy SPA" branch (short-of-1000-char
+        /// body + 5 or more `<script>` tags). Confirmed against
+        /// `detector::needs_js_rendering`.
+        fn rich_spa_shell() -> String {
+            format!(
+                "<html><body><div id=\"root\"></div>\
+                 <script src=\"/a.js\"></script><script src=\"/b.js\"></script>\
+                 <script src=\"/c.js\"></script><script src=\"/d.js\"></script>\
+                 <script src=\"/e.js\"></script>\
+                 <p>{}</p></body></html>",
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(5)
+            )
+        }
+
+        fn counting(
+            name: &'static str,
+        ) -> (Arc<dyn PageFetcher>, Arc<std::sync::atomic::AtomicUsize>) {
+            let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let f = Arc::new(CountingFetcher {
+                name,
+                calls: Arc::clone(&calls),
+            }) as Arc<dyn PageFetcher>;
+            (f, calls)
+        }
+
+        fn renderer(
+            http: Arc<dyn PageFetcher>,
+            imp: Option<Arc<dyn PageFetcher>>,
+            js: Vec<Arc<dyn PageFetcher>>,
+        ) -> FallbackRenderer {
+            make_renderer_with_mocks(Vec::new())
+                .with_fetchers(http, js)
+                .with_impersonated(imp)
+        }
+
+        async fn auto_fetch(r: &FallbackRenderer) -> CrwResult<FetchResult> {
+            r.fetch(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+        }
+
+        #[test]
+        fn default_config_constructs_the_tier_and_kill_switch_removes_it() {
+            let on = FallbackRenderer::new(
+                &RendererConfig::default(),
+                "crw-test",
+                None,
+                &StealthConfig::default(),
+            )
+            .unwrap();
+            assert!(on.has_impersonated_tier());
+            assert_eq!(on.available_renderer_names(), vec!["impersonated-http"]);
+
+            let mut cfg = RendererConfig::default();
+            cfg.impersonated.enabled = false;
+            let off =
+                FallbackRenderer::new(&cfg, "crw-test", None, &StealthConfig::default()).unwrap();
+            assert!(!off.has_impersonated_tier());
+            assert!(off.available_renderer_names().is_empty());
+        }
+
+        #[tokio::test]
+        async fn wall_hops_to_impersonated_before_js() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::Ok(rich_html("IMP-")),
+            }) as Arc<dyn PageFetcher>;
+            let (lp, lp_calls) = counting("lightpanda");
+            let r = renderer(wall_403(), Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("IMP-"));
+            assert_eq!(res.credit_cost, 1);
+            assert_eq!(
+                res.render_decision,
+                Some(RenderDecision::Failover {
+                    chain: vec![RendererKind::Http, RendererKind::ImpersonatedHttp],
+                    reason: FailoverErrorKind::VendorBlock,
+                })
+            );
+            assert_eq!(lp_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn transport_error_hops_to_impersonated_before_js() {
+            let http = Arc::new(MockFetcher {
+                name: "http",
+                behavior: MockBehavior::HttpErr(
+                    "https://example.com: connection reset by peer".into(),
+                ),
+            }) as Arc<dyn PageFetcher>;
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::Ok(rich_html("IMP-")),
+            }) as Arc<dyn PageFetcher>;
+            let (lp, lp_calls) = counting("lightpanda");
+            let r = renderer(http, Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("IMP-"));
+            assert_eq!(
+                res.render_decision,
+                Some(RenderDecision::Failover {
+                    chain: vec![RendererKind::Http, RendererKind::ImpersonatedHttp],
+                    reason: FailoverErrorKind::NetworkError,
+                })
+            );
+            assert_eq!(lp_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn unreachable_target_does_not_hop() {
+            let http = Arc::new(MockFetcher {
+                name: "http",
+                behavior: MockBehavior::Unreachable(
+                    "Could not reach https://example.com: tls handshake eof".into(),
+                ),
+            }) as Arc<dyn PageFetcher>;
+            let (imp, imp_calls) = counting("impersonated-http");
+            let lp = Arc::new(MockFetcher {
+                name: "lightpanda",
+                behavior: MockBehavior::Ok(rich_html("LP-")),
+            }) as Arc<dyn PageFetcher>;
+            let r = renderer(http, Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert_eq!(imp_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+            assert!(res.html.contains("LP-"));
+        }
+
+        #[tokio::test]
+        async fn clean_site_never_consults_impersonated() {
+            let http = Arc::new(MockFetcher {
+                name: "http",
+                behavior: MockBehavior::Ok(rich_html("HTTP-")),
+            }) as Arc<dyn PageFetcher>;
+            let (imp, imp_calls) = counting("impersonated-http");
+            let (lp, _) = counting("lightpanda");
+            let r = renderer(http, Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("HTTP-"));
+            assert_eq!(res.rendered_with.as_deref(), Some("http"));
+            assert_eq!(imp_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn still_blocked_hop_continues_to_ladder() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::OkStatus(403, "<html><body>denied</body></html>".into()),
+            }) as Arc<dyn PageFetcher>;
+            let lp = Arc::new(MockFetcher {
+                name: "lightpanda",
+                behavior: MockBehavior::Ok(rich_html("LP-")),
+            }) as Arc<dyn PageFetcher>;
+            let r = renderer(wall_403(), Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("LP-"));
+        }
+
+        #[tokio::test]
+        async fn spa_shell_skips_impersonated() {
+            let http = Arc::new(MockFetcher {
+                name: "http",
+                behavior: MockBehavior::Ok(spa_shell()),
+            }) as Arc<dyn PageFetcher>;
+            let (imp, imp_calls) = counting("impersonated-http");
+            let lp = Arc::new(MockFetcher {
+                name: "lightpanda",
+                behavior: MockBehavior::Ok(rich_html("LP-")),
+            }) as Arc<dyn PageFetcher>;
+            let r = renderer(http, Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("LP-"));
+            assert_eq!(imp_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn hop_body_that_needs_js_continues_to_ladder() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::Ok(rich_spa_shell()),
+            }) as Arc<dyn PageFetcher>;
+            let lp = Arc::new(MockFetcher {
+                name: "lightpanda",
+                behavior: MockBehavior::Ok(rich_html("LP-")),
+            }) as Arc<dyn PageFetcher>;
+            let r = renderer(wall_403(), Some(imp), vec![lp]);
+            let res = auto_fetch(&r).await.unwrap();
+            assert!(res.html.contains("LP-"));
+        }
+
+        #[tokio::test]
+        async fn pinned_wall_shaped_result_errors() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::OkStatus(403, "<html><body>denied</body></html>".into()),
+            }) as Arc<dyn PageFetcher>;
+            let (http, http_calls) = counting("http");
+            let r = renderer(http, Some(imp), Vec::new());
+            let res = r
+                .fetch(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    Some("impersonated-http"),
+                    tdl(),
+                )
+                .await;
+            assert!(
+                matches!(res, Err(CrwError::RendererError(_))),
+                "got: {res:?}"
+            );
+            assert_eq!(http_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn pinned_404_is_returned_as_is() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::OkStatus(404, rich_html("GONE-")),
+            }) as Arc<dyn PageFetcher>;
+            let (http, _) = counting("http");
+            let r = renderer(http, Some(imp), Vec::new());
+            let res = r
+                .fetch(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    Some("impersonated-http"),
+                    tdl(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status_code, 404);
+            assert_eq!(res.credit_cost, 1);
+            assert_eq!(
+                res.render_decision,
+                Some(RenderDecision::UserPinned {
+                    renderer: RendererKind::ImpersonatedHttp
+                })
+            );
+        }
+
+        #[tokio::test]
+        async fn pinned_thin_body_warns_instead_of_erroring() {
+            let imp = Arc::new(MockFetcher {
+                name: "impersonated-http",
+                behavior: MockBehavior::Ok("<html><body>ok</body></html>".into()),
+            }) as Arc<dyn PageFetcher>;
+            let (http, _) = counting("http");
+            let r = renderer(http, Some(imp), Vec::new());
+            let res = r
+                .fetch(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    Some("impersonated-http"),
+                    tdl(),
+                )
+                .await
+                .unwrap();
+            assert!(
+                res.warnings.iter().any(|w| w.contains("thin content")),
+                "warnings: {:?}",
+                res.warnings
+            );
+        }
+
+        #[tokio::test]
+        async fn pin_without_tier_errors() {
+            let (http, _) = counting("http");
+            let r = renderer(http, None, Vec::new());
+            let res = r
+                .fetch(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    Some("impersonated-http"),
+                    tdl(),
+                )
+                .await;
+            assert!(
+                matches!(res, Err(CrwError::RendererError(_))),
+                "got: {res:?}"
+            );
+        }
+
+        /// End-to-end AUTO chain against the real wall: plain HTTP first, the
+        /// impersonated hop clears it, no browser tier exists in this
+        /// renderer, so the hop MUST be what wins. The wall is served per
+        /// request (rate and egress dependent), so both outcomes are asserted
+        /// for internal consistency.
+        #[tokio::test]
+        #[ignore]
+        async fn live_auto_chain_serves_amazon_via_the_hop() {
+            let r = FallbackRenderer::new(
+                &RendererConfig::default(),
+                "crw-test",
+                None,
+                &StealthConfig::default(),
+            )
+            .unwrap();
+            let res = r
+                .fetch(
+                    "https://www.amazon.it/dp/B0FHQGLXBP",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    None,
+                    crw_core::Deadline::from_request_ms(45_000),
+                )
+                .await
+                .unwrap();
+            assert!(
+                res.html.to_lowercase().contains("nene toys"),
+                "neither tier served the product page"
+            );
+            match res.rendered_with.as_deref() {
+                Some("impersonated-http") => assert_eq!(
+                    res.render_decision,
+                    Some(RenderDecision::Failover {
+                        chain: vec![RendererKind::Http, RendererKind::ImpersonatedHttp],
+                        reason: FailoverErrorKind::VendorBlock,
+                    })
+                ),
+                Some("http") => assert!(
+                    !detector::looks_like_generic_bot_wall(&res.html),
+                    "the plain tier's result IS the wall; the hop should have fired"
+                ),
+                other => panic!("unexpected rendered_with: {other:?}"),
+            }
         }
     }
 
@@ -1653,6 +3199,7 @@ mod tests {
                 &HashMap::new(),
                 None,
                 None,
+                false,
                 crw_core::Deadline::from_request_ms(0),
             )
             .await
@@ -1700,6 +3247,243 @@ mod tests {
         }
     }
 
+    /// A tier that keeps returning THIN content must not be disabled for every
+    /// host, and this pins it at the call site rather than at the registry.
+    ///
+    /// The registry-level tests only prove `record_scoped_outcome` behaves; they
+    /// pass whether or not the ladder actually calls it. A mutation reverting the
+    /// serial thin arm to `record_outcome` left all 995 other tests green, which
+    /// is the gap this closes. A thin body is a verdict about the PAGE, so it
+    /// belongs to the host tier: the 1000-URL bench traced roughly 12% of
+    /// failures to false global trips from exactly this.
+    #[tokio::test]
+    async fn thin_content_does_not_open_the_global_tier() {
+        // Under MIN_RENDERED_TEXT_LEN (50), so every attempt classifies as thin
+        // rather than acceptable, and nothing here is a wall or a hard block.
+        let thin = "<html><body>tiny</body></html>";
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(thin.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(thin.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, chrome]);
+        r.breakers = Arc::new(BreakerRegistry::new(BreakerConfig {
+            base_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_secs(300),
+            ..BreakerConfig::default()
+        }));
+
+        for _ in 0..80 {
+            let _ = r
+                .fetch(
+                    "https://thin-host.example/page",
+                    &HashMap::new(),
+                    Some(true),
+                    None,
+                    None,
+                    tdl(),
+                )
+                .await;
+        }
+
+        assert_eq!(
+            r.breakers
+                .global_for(RendererKind::Lightpanda)
+                .snapshot()
+                .state,
+            "closed",
+            "a thin body is a judgement about the page, so it must not disable \
+             the tier for every other host"
+        );
+        assert_eq!(
+            r.breakers
+                .host_for("thin-host.example", RendererKind::Lightpanda)
+                .await
+                .snapshot()
+                .state,
+            "open",
+            "the host tier must still learn this host renders thin"
+        );
+    }
+
+    /// The other half of the origin carve-out, and the one a mutation test showed
+    /// nothing was guarding.
+    ///
+    /// `is_origin_fault_for_breaker` returns true for `CrwError::Timeout(_)`,
+    /// because it is shared with the error-attribution path where that arm is
+    /// correct. The breaker path must undo it with `&& !was_timeout`, or a hung
+    /// CDP pool, which times out on every host, would stop reaching the global
+    /// window and nothing would ever conclude the tier is sick. Dropping that
+    /// clause is a one-token mutation that left all 995 other tests green, which
+    /// is exactly why this test exists.
+    #[tokio::test]
+    async fn tier_timeouts_still_open_the_global_tier() {
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Timeout,
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Timeout,
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, chrome]);
+        r.breakers = Arc::new(BreakerRegistry::new(BreakerConfig {
+            base_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_secs(300),
+            ..BreakerConfig::default()
+        }));
+
+        // Spread across distinct hosts, which is what a genuinely sick tier looks
+        // like and what a single dead origin does not.
+        for i in 0..80 {
+            let _ = r
+                .fetch(
+                    &format!("https://host{i}.example/page"),
+                    &HashMap::new(),
+                    Some(true),
+                    None,
+                    None,
+                    tdl(),
+                )
+                .await;
+        }
+
+        assert_eq!(
+            r.breakers
+                .global_for(RendererKind::Lightpanda)
+                .snapshot()
+                .state,
+            "open",
+            "a tier timing out on every host must still trip globally, or a hung \
+             pool is never caught"
+        );
+    }
+
+    /// A dead ORIGIN must not disable a renderer tier for every other host.
+    ///
+    /// The serial error arm used to write its outcome to the global window as
+    /// well as the host one, on the stated premise that "the renderer itself
+    /// errored (no response to inspect), which is a genuine tier signal". A dead
+    /// origin produces exactly that shape: six hours of production held 24
+    /// net::ERR_ABORTED, 10 PeerFailedVerification, 5 ERR_CERT_DATE_INVALID and
+    /// more, every one the target's fault and every one advancing the global
+    /// window. Two of the four observed global trips came from here.
+    ///
+    /// Eighty such failures across eighty DISTINCT hosts is far past
+    /// `min_calls: 50` at `failure_rate_threshold: 0.80`, so this test fails
+    /// against the old code and passes only once the outcome is host-scoped.
+    #[tokio::test]
+    async fn origin_navigation_failures_do_not_open_the_global_tier() {
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Err(
+                "Renderer error: Navigation failed: net::ERR_CONNECTION_REFUSED".into(),
+            ),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(rich_html("CAMOFOX-OK")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, chrome]);
+        // Long cooldown so a half-open transition cannot mask the verdict under
+        // parallel test load, matching the sibling breaker test above.
+        r.breakers = Arc::new(BreakerRegistry::new(BreakerConfig {
+            base_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_secs(300),
+            ..BreakerConfig::default()
+        }));
+
+        // One dead origin, hammered. 80 failures is past `min_calls: 50` at
+        // `failure_rate_threshold: 0.80`, so this is exactly the shape that used
+        // to take the tier out for everyone: in production one domain
+        // contributed 38 of the ~214 lightpanda outcomes that reached any window
+        // in six hours.
+        for _ in 0..80 {
+            let _ = r
+                .fetch(
+                    "https://dead-origin.example/page",
+                    &HashMap::new(),
+                    Some(true),
+                    None,
+                    None,
+                    tdl(),
+                )
+                .await;
+        }
+
+        assert_eq!(
+            r.breakers
+                .global_for(RendererKind::Lightpanda)
+                .snapshot()
+                .state,
+            "closed",
+            "one dead origin must not disable lightpanda for every other host"
+        );
+        assert_eq!(
+            r.breakers
+                .host_for("dead-origin.example", RendererKind::Lightpanda)
+                .await
+                .snapshot()
+                .state,
+            "open",
+            "the host tier must still learn that this origin is unreachable"
+        );
+    }
+
+    /// A skipped tier must report the budget the CALLER was given, never the
+    /// sub-minimum remainder that is left when the skip fires.
+    ///
+    /// Regression guard for the production bug this pairs with: `remaining` is by
+    /// definition below MIN_TIER_BUDGET on that branch and in production is ~0, so
+    /// it rendered as the literal `Timeout after 1ms` on requests that had been
+    /// granted 30s and had spent ~25s of it walking the ladder. The sibling test
+    /// above only asserts the Timeout *variant*, so without this the exact bug can
+    /// come back without failing anything.
+    #[tokio::test]
+    async fn budget_skip_reports_the_requested_budget_not_the_remainder() {
+        let slow_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let slow = Arc::new(SlowFailingFetcher {
+            name: "lightpanda",
+            burn: Duration::from_millis(1_200),
+            calls: slow_calls.clone(),
+        });
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let chrome = Arc::new(CountingFetcher {
+            name: "camofox",
+            calls: calls.clone(),
+        });
+        let r = make_renderer_with_mocks(vec![slow, chrome]);
+
+        let err = r
+            .fetch_with_js(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                false,
+                crw_core::Deadline::from_request_ms(1_500),
+            )
+            .await
+            .expect_err("both tiers must fail");
+
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "camofox must be skipped for lack of budget, or this test proves nothing"
+        );
+        match err {
+            CrwError::Timeout(ms) => assert_eq!(
+                ms, 1_500,
+                "a budget skip must report the requested budget (1500ms), not the \
+                 sub-minimum remainder; got {ms}ms"
+            ),
+            other => panic!("expected Timeout, got {other:?}"),
+        }
+    }
+
     /// A tier that fails for a real reason, followed by a tier skipped for lack of
     /// budget, must still report Timeout (504) — not the earlier RendererError (500).
     /// Guards against reintroducing `get_or_insert_with` here.
@@ -1727,6 +3511,7 @@ mod tests {
                 &HashMap::new(),
                 None,
                 None,
+                false,
                 crw_core::Deadline::from_request_ms(1_500),
             )
             .await
@@ -1753,33 +3538,282 @@ mod tests {
     /// the JS tier's generic RendererError. `TargetUnreachable` maps to 422 (the caller
     /// gave us a dead target); `RendererError` falls through to a 500 and reads as "our
     /// server broke".
+    /// A 200-status vendor wall must tag the ladder as exhausted, exactly like a
+    /// 403 one does.
+    ///
+    /// `crw_crawl::single` reads `JS_ESCALATION_FAILED` off the warning to decide
+    /// whether the ladder is spent (`js_ladder_exhausted`). The tag used to be
+    /// attached only on the `is_auth_blocked` arm, so a wall served under HTTP
+    /// 200 — the canonical Turnstile shape — came back untagged and the whole
+    /// ladder ran a SECOND time against a site that had just failed it, on a
+    /// deadline it had already spent.
+    #[tokio::test]
+    async fn js_escalation_failure_tags_exhaustion_on_a_200_wall() {
+        let js = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Err("Timeout after 5000ms".to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![js]);
+        // HTTP 200 carrying a challenge shell: escalation fires via `is_blocked`,
+        // NOT `is_auth_blocked` — the arm that never tagged.
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::OkStatus(
+                200,
+                "<html><head><title>Just a moment...</title></head><body>\
+                 <div id=\"cf-browser-verification\"></div></body></html>"
+                    .to_string(),
+            ),
+        });
+        r.render_js_default = None; // auto branch
+        let exhausted = || {
+            metrics()
+                .render_route_decision_total
+                .with_label_values(&["http", "jsLadderExhausted"])
+                .get()
+        };
+        let exhausted_before = exhausted();
+
+        let result = r
+            .fetch(
+                "https://walled.example",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect("falls back to the HTTP shell");
+
+        let warning = result.warning.unwrap_or_default();
+        assert!(
+            warning.contains(JS_ESCALATION_FAILED),
+            "a 200-status wall must report the ladder as exhausted so the caller \
+             does not re-run it; got {warning:?}"
+        );
+        // Counted as a fallback, not as an HTTP result that needed no browser.
+        assert!(exhausted() > exhausted_before);
+    }
+
+    /// An HTTP tier that cannot reach the origin at all.
+    struct Unreachable;
+    #[async_trait::async_trait]
+    impl PageFetcher for Unreachable {
+        async fn fetch(
+            &self,
+            url: &str,
+            _h: &HashMap<String, String>,
+            _w: Option<u64>,
+            _d: crw_core::Deadline,
+        ) -> CrwResult<FetchResult> {
+            Err(CrwError::TargetUnreachable(format!(
+                "Could not reach {url}"
+            )))
+        }
+        fn name(&self) -> &str {
+            "http"
+        }
+        fn supports_js(&self) -> bool {
+            false
+        }
+        async fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    /// Prod shipped an anti-bot interstitial to a paying customer as
+    /// `success: true` with `creditCost: 1`, because the ladder tail returned
+    /// the best thin result without re-reading the verdict every tier had
+    /// already reached. Live case: https://www.prlib.ru/en/history/619410 on
+    /// 2026-09-03, "Security Check / Checking your browser", 95 chars.
+    #[tokio::test]
+    async fn wall_the_whole_ladder_failed_to_clear_is_not_a_success() {
+        let wall = "<html><body><h1>Security Check</h1>\
+                    <p>Checking your browser before accessing the site</p></body></html>";
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(wall.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(wall.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, camofox]);
+        // The HTTP tier cannot reach the origin, so the JS ladder actually runs
+        // — the real shape of the prod case, where HTTP escalated and every JS
+        // tier then hit the same wall.
+        r.http = Arc::new(Unreachable);
+
+        let out = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await;
+
+        match out {
+            Err(CrwError::HttpError(msg)) => {
+                assert!(
+                    msg.contains("anti-bot wall"),
+                    "expected the wall to be named, got: {msg}"
+                );
+            }
+            Ok(r) => panic!(
+                "a wall no tier could clear must not ship as a success: rendered_with={:?} html={:?}",
+                r.rendered_with, r.html
+            ),
+            Err(e) => panic!("expected HttpError naming the wall, got {e:?}"),
+        }
+    }
+
+    /// The other half of the same gate: a page that is merely thin, with no
+    /// wall phrasing, must still ship. Returning the best available body is the
+    /// point of the ladder tail and the recall invariant rests on it.
+    #[tokio::test]
+    async fn thin_but_real_page_still_ships_from_the_ladder_tail() {
+        let thin = "<html><body><h1>Notice</h1><p>Short but genuine page.</p></body></html>";
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(thin.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(thin.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, camofox]);
+        // The forced-JS arm fetches HTTP first for the content-type check, so
+        // the real fetcher would answer before the ladder ever runs.
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::Ok(thin.to_string()),
+        });
+
+        let out = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await;
+        assert!(
+            out.is_ok(),
+            "a thin but wall-free body must still be returned, got {:?}",
+            out.err()
+        );
+    }
+
+    /// The ladder correctly refuses a wall, and then the HTTP-shell fallback
+    /// hands the same wall back anyway. Prod log, 2026-09-03: "JS escalation
+    /// failed for soft-block status; surfacing HTTP shell with warning: ...
+    /// blocked by an anti-bot wall that none of the 3 renderer tier(s)
+    /// attempted could clear". The ladder's verdict has to survive that
+    /// substitution, or rejecting the wall upstream buys nothing.
+    #[tokio::test]
+    async fn http_shell_fallback_does_not_resurrect_a_wall() {
+        let wall = "<html><body><h1>Security Check</h1>\
+                    <p>Checking your browser before accessing the site</p></body></html>";
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(wall.to_string()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp]);
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::Ok(wall.to_string()),
+        });
+
+        let out = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await;
+        assert!(
+            out.is_err(),
+            "the wall must not come back through the HTTP shell: {:?}",
+            out.ok().map(|r| (r.rendered_with, r.html.len()))
+        );
+    }
+
+    /// The same rule when the JS tier TIMES OUT instead of reporting a navigation
+    /// error. A host that blackholes SYNs hangs the browser rather than producing a
+    /// `net::ERR_*`, so this is the shape the class actually takes in production: it
+    /// surfaced as a 504 that paged the 5xx watchdog, told the caller to raise a
+    /// `timeout` no host would ever answer, and billed them for it.
+    #[tokio::test]
+    async fn unreachable_origin_beats_js_timeout() {
+        let js = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Timeout,
+        });
+        let mut r = make_renderer_with_mocks(vec![js]);
+        r.http = Arc::new(Unreachable);
+        r.render_js_default = None; // auto branch
+
+        let err = r
+            .fetch(
+                "https://dead.example",
+                &HashMap::new(),
+                None, // render_js: auto
+                None, // wait_for_ms
+                None, // requested_renderer
+                tdl(),
+            )
+            .await
+            .expect_err("both tiers fail");
+
+        assert!(
+            matches!(err, CrwError::TargetUnreachable(_)),
+            "a dead origin that hangs the browser must surface as TargetUnreachable \
+             (422, refunded), not Timeout (504, billed); got {err:?}"
+        );
+    }
+
+    /// camofox reports a dead origin as a sanitized 500 on navigate with the tab
+    /// still blank; paired with the HTTP tier's `TargetUnreachable` that must
+    /// surface as 422, not camofox's 500.
+    #[tokio::test]
+    async fn unreachable_origin_beats_camofox_blank_tab_navigation_failure() {
+        let js = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Err(
+                "camofox: navigation failed, page did not load: camofox /tabs/t/navigate \
+                 returned 500 Internal Server Error: Internal server error"
+                    .to_string(),
+            ),
+        });
+        let mut r = make_renderer_with_mocks(vec![js]);
+        r.http = Arc::new(Unreachable);
+        r.render_js_default = None;
+
+        let err = r
+            .fetch(
+                "https://dead.example",
+                &HashMap::new(),
+                None,
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect_err("both tiers fail");
+        assert!(matches!(err, CrwError::TargetUnreachable(_)), "got {err:?}");
+    }
+
     #[tokio::test]
     async fn unreachable_origin_beats_js_renderer_error() {
-        struct Unreachable;
-        #[async_trait::async_trait]
-        impl PageFetcher for Unreachable {
-            async fn fetch(
-                &self,
-                url: &str,
-                _h: &HashMap<String, String>,
-                _w: Option<u64>,
-                _d: crw_core::Deadline,
-            ) -> CrwResult<FetchResult> {
-                Err(CrwError::TargetUnreachable(format!(
-                    "Could not reach {url}"
-                )))
-            }
-            fn name(&self) -> &str {
-                "http"
-            }
-            fn supports_js(&self) -> bool {
-                false
-            }
-            async fn is_available(&self) -> bool {
-                true
-            }
-        }
-
         let js = Arc::new(MockFetcher {
             name: "chrome",
             behavior: MockBehavior::Err("Navigation failed: net::ERR_SSL".to_string()),
@@ -1807,6 +3841,111 @@ mod tests {
         );
     }
 
+    /// An HTTP tier whose origin answered with a body that is not a web page.
+    struct BinaryBody;
+    #[async_trait::async_trait]
+    impl PageFetcher for BinaryBody {
+        async fn fetch(
+            &self,
+            _url: &str,
+            _h: &HashMap<String, String>,
+            _w: Option<u64>,
+            _d: crw_core::Deadline,
+        ) -> CrwResult<FetchResult> {
+            Err(CrwError::UnsupportedContentType(
+                "application/zip (1200 bytes): the body is binary".to_string(),
+            ))
+        }
+        fn name(&self) -> &str {
+            "http"
+        }
+        fn supports_js(&self) -> bool {
+            false
+        }
+        async fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    /// A body that is not a web page must NOT climb the ladder. No browser turns
+    /// a .docx into a page, so escalating one only spends a Chromium/Camoufox
+    /// session before failing anyway, and the ladder's generic "no usable
+    /// content" replaces the content type the caller needs to see.
+    ///
+    /// The call COUNT is the assertion that matters: the error variant alone
+    /// would survive deleting the guard, since the JS tier's own failure loses
+    /// to nothing here.
+    #[tokio::test]
+    async fn unsupported_content_type_does_not_climb_the_ladder_in_auto() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let js = Arc::new(CountingFetcher {
+            name: "chrome",
+            calls: calls.clone(),
+        });
+        let mut r = make_renderer_with_mocks(vec![js]);
+        r.http = Arc::new(BinaryBody);
+        r.render_js_default = None; // auto branch
+
+        let err = r
+            .fetch(
+                "https://example.com/spec.docx",
+                &HashMap::new(),
+                None, // render_js: auto
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect_err("a binary body has nothing to extract");
+
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the JS renderer must never be invoked for a binary body"
+        );
+        assert!(
+            matches!(err, CrwError::UnsupportedContentType(_)),
+            "the content type must reach the caller, not the ladder's generic \
+             failure; got {err:?}"
+        );
+    }
+
+    /// Same rule on the forced-JS arm. `renderJs: true` (and every screenshot
+    /// request, which is routed down this arm) fetches over HTTP first for the
+    /// content-type check, so it hits the identical guard.
+    #[tokio::test]
+    async fn unsupported_content_type_does_not_climb_the_ladder_when_js_is_forced() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let js = Arc::new(CountingFetcher {
+            name: "chrome",
+            calls: calls.clone(),
+        });
+        let mut r = make_renderer_with_mocks(vec![js]);
+        r.http = Arc::new(BinaryBody);
+
+        let err = r
+            .fetch(
+                "https://example.com/spec.docx",
+                &HashMap::new(),
+                Some(true), // render_js: on
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect_err("a binary body has nothing to extract");
+
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "an explicit renderJs:true must not spend a browser on a binary body"
+        );
+        assert!(
+            matches!(err, CrwError::UnsupportedContentType(_)),
+            "got {err:?}"
+        );
+    }
+
     /// Control: with a healthy budget the same tier IS invoked. Guards against the
     /// floor silently disabling the ladder.
     #[tokio::test]
@@ -1819,7 +3958,14 @@ mod tests {
         let r = make_renderer_with_mocks(vec![mock]);
 
         let res = r
-            .fetch_with_js("https://example.com", &HashMap::new(), None, None, tdl())
+            .fetch_with_js(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                false,
+                tdl(),
+            )
             .await
             .expect("healthy budget must render");
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -2019,7 +4165,15 @@ mod tests {
             name: "chrome",
             behavior: MockBehavior::Err("boom".into()),
         }) as Arc<dyn PageFetcher>;
-        let r = make_renderer_with_mocks(vec![chrome]);
+        let mut r = make_renderer_with_mocks(vec![chrome]);
+        // Stub the HTTP tier: the forced-JS arm fetches it before the ladder, so
+        // without this the assertion depends on reaching example.com over the
+        // network — and now that a JS failure can fall back to the HTTP body,
+        // this test is the only thing pinning the hard-pin exclusion.
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::Ok(rich_html("HTTP-")),
+        });
 
         let err = r
             .fetch(
@@ -2033,6 +4187,134 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("boom"));
+    }
+
+    /// `renderJs:true` used to be the only arm that threw away a perfectly good
+    /// HTTP body when the JS ladder failed, so a forced-JS scrape returned a 504
+    /// while holding the document.
+    #[tokio::test]
+    async fn forced_js_failure_falls_back_to_http_body() {
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Err("Timeout after 1ms".into()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![chrome]);
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::Ok(rich_html("HTTP-")),
+        });
+
+        let res = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true), // forced JS
+                None,
+                None, // unpinned
+                tdl(),
+            )
+            .await
+            .expect("a failed JS ladder must not discard a valid HTTP body");
+        assert!(res.html.contains("HTTP-"));
+        // A 2xx fallback is the motivating case and the one most at risk of
+        // going out silently: the caller asked for a browser, is billed either
+        // way, and has nothing else in the response to tell them they got HTTP.
+        assert!(
+            res.warning
+                .as_deref()
+                .is_some_and(|w| w.contains("js_escalation_failed")),
+            "every forced-JS fallback must be announced; got {:?}",
+            res.warning
+        );
+        assert!(
+            res.warning
+                .as_deref()
+                .is_some_and(|w| w.contains(JS_ESCALATION_FAILED)),
+            "single.rs reads this exact prefix to skip re-escalation: {:?}",
+            res.warning
+        );
+    }
+
+    /// A 4xx/5xx body is usually an error shell, so the swap is surfaced rather
+    /// than made silently — same rule the auto arm applies.
+    #[tokio::test]
+    async fn forced_js_failure_on_soft_block_warns() {
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Err("Timeout after 1ms".into()),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![chrome]);
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::OkStatus(403, rich_html("SHELL-")),
+        });
+
+        let res = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect("soft-block bodies still ship, with a warning");
+        assert!(
+            res.warning
+                .as_deref()
+                .is_some_and(|w| w.contains("js_escalation_failed")),
+            "the caller must be able to tell the JS tier failed; got {:?}",
+            res.warning
+        );
+    }
+
+    /// The real production failure is a deadline, and `MockBehavior::Err` can
+    /// only build a `RendererError` — so the timeout shape gets its own fetcher.
+    #[tokio::test]
+    async fn forced_js_timeout_falls_back_to_http_body() {
+        struct TimesOut;
+        #[async_trait::async_trait]
+        impl PageFetcher for TimesOut {
+            async fn fetch(
+                &self,
+                _u: &str,
+                _h: &HashMap<String, String>,
+                _w: Option<u64>,
+                _d: crw_core::Deadline,
+            ) -> CrwResult<FetchResult> {
+                Err(CrwError::Timeout(1))
+            }
+            fn name(&self) -> &str {
+                "chrome"
+            }
+            fn supports_js(&self) -> bool {
+                true
+            }
+            async fn is_available(&self) -> bool {
+                true
+            }
+        }
+
+        let mut r = make_renderer_with_mocks(vec![Arc::new(TimesOut)]);
+        r.http = Arc::new(MockFetcher {
+            name: "http",
+            behavior: MockBehavior::Ok(rich_html("HTTP-")),
+        });
+
+        let res = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect("a ladder timeout must not discard a valid HTTP body");
+        assert!(res.html.contains("HTTP-"));
+        assert_eq!(res.rendered_with.as_deref(), Some("http"));
     }
 
     #[tokio::test]
@@ -2081,6 +4363,141 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// The leak-through arm judged a body with fewer checks than the serial loop:
+    /// a 403 page with enough text went back as a clean `AutoDefault` success,
+    /// where the serial loop rejects it as status-blocked.
+    #[tokio::test]
+    async fn leak_through_rejects_a_blocked_status_like_the_serial_loop() {
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::OkStatus(403, rich_html("FORBIDDEN")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp]);
+        r.breakers = Arc::new(BreakerRegistry::new(BreakerConfig {
+            base_cooldown: Duration::from_secs(300),
+            max_cooldown: Duration::from_secs(300),
+            ..BreakerConfig::default()
+        }));
+        // Trip the GLOBAL lightpanda breaker only; example.com's host breaker
+        // stays clean, which is exactly the leak-through precondition.
+        let global = r.breakers.global_for(RendererKind::Lightpanda);
+        for _ in 0..80 {
+            global.record_outcome(BreakerOutcome::RenderError);
+        }
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect("the rejected body is still returned as the best candidate");
+        assert!(
+            !matches!(
+                result.render_decision,
+                Some(RenderDecision::AutoDefault { .. })
+            ),
+            "a 403 must not be accepted as a clean render, got {:?}",
+            result.render_decision
+        );
+        assert!(
+            result
+                .warning
+                .as_deref()
+                .is_some_and(|w| w.contains("HTTP 403")),
+            "the rejection must be visible, got {:?}",
+            result.warning
+        );
+    }
+
+    /// Every tier hits the same PerimeterX wall served under HTTP 200. The ladder
+    /// returns the body as its best candidate; the verdict must travel with it,
+    /// because the page-level classifier lets a wall with this much prose pass.
+    #[tokio::test]
+    async fn rejected_wall_body_carries_the_ladder_verdict() {
+        let wall = format!(
+            "<html><head><script>window._pxAppId = 'PXabc';</script></head><body>\
+             <h1>Access to this page has been denied</h1><p>{}</p></body></html>",
+            "Press & Hold to confirm you are a human. ".repeat(4)
+        );
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(wall.clone()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(wall),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome]);
+
+        let result = r
+            .fetch(
+                "https://walled.example",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .expect("the wall body is returned as the best candidate");
+        assert_eq!(
+            result.wall.as_ref().map(|w| w.vendor.as_str()),
+            Some("perimeterx")
+        );
+    }
+
+    /// A site block says nothing about tier health, but ignoring it only pays off
+    /// when some tier can clear it (see `tests/site_block_recovery_gate.rs` for
+    /// how the flag is derived). This pins what the flag DOES to the breaker.
+    #[tokio::test]
+    async fn site_block_advances_the_host_window_only_without_a_recovery_tier() {
+        let wall = format!(
+            "<html><head><script>window._pxAppId = 'PXabc';</script></head>\
+             <body><p>{}</p></body></html>",
+            "Press & Hold to confirm you are a human. ".repeat(4)
+        );
+        for recovery in [false, true] {
+            let lp = Arc::new(MockFetcher {
+                name: "lightpanda",
+                behavior: MockBehavior::OkStatus(403, wall.clone()),
+            }) as Arc<dyn PageFetcher>;
+            let mut r = make_renderer_with_mocks(vec![lp]);
+            r.has_recovery_tier = recovery;
+            let _ = r
+                .fetch(
+                    "https://walled.example",
+                    &HashMap::new(),
+                    Some(true),
+                    None,
+                    None,
+                    tdl(),
+                )
+                .await;
+            let snap = r
+                .breakers
+                .host_for("walled.example", RendererKind::Lightpanda)
+                .await
+                .snapshot();
+            if recovery {
+                assert_eq!(
+                    snap.window_call_count, 0,
+                    "with a recovery tier the block must not count against lightpanda"
+                );
+            } else {
+                assert_eq!(
+                    (snap.window_call_count, snap.window_failure_rate),
+                    (1, 1.0),
+                    "with no recovery tier the block keeps counting"
+                );
+            }
+        }
     }
 
     #[tokio::test]
@@ -2349,6 +4766,117 @@ mod tests {
             result.html.contains("CHROME-"),
             "expected chrome output after lightpanda vendor block"
         );
+    }
+
+    fn cf_challenge_html() -> String {
+        format!(
+            "<html><head><title>Just a moment...</title><script src=\"/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1\"></script></head><body>{}</body></html>",
+            "x".repeat(200)
+        )
+    }
+
+    /// Byparr launches a browser per solve, so a tier failure that is not a
+    /// challenge must not reach it.
+    #[tokio::test]
+    async fn byparr_is_skipped_without_a_challenge() {
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Err("navigation failed: boom".into()),
+        }) as Arc<dyn PageFetcher>;
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let byparr = Arc::new(CountingFetcher {
+            name: "byparr",
+            calls: calls.clone(),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![camofox, byparr]);
+
+        let _ = r
+            .fetch_with_js(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                false,
+                tdl(),
+            )
+            .await;
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn byparr_solves_after_a_js_tier_returns_a_challenge() {
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Ok(cf_challenge_html()),
+        }) as Arc<dyn PageFetcher>;
+        let byparr = Arc::new(MockFetcher {
+            name: "byparr",
+            behavior: MockBehavior::Ok(rich_html("BYPARR-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![camofox, byparr]);
+
+        let result = r
+            .fetch_with_js(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                false,
+                tdl(),
+            )
+            .await
+            .expect("byparr clears the challenge");
+
+        assert_eq!(result.rendered_with.as_deref(), Some("byparr"));
+        assert!(result.html.contains("BYPARR-"));
+    }
+
+    /// The HTTP tier saw the challenge; the JS tier before byparr only errored.
+    #[tokio::test]
+    async fn byparr_solves_on_an_http_tier_challenge_hint() {
+        let camofox = Arc::new(MockFetcher {
+            name: "camofox",
+            behavior: MockBehavior::Timeout,
+        }) as Arc<dyn PageFetcher>;
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let byparr = Arc::new(CountingFetcher {
+            name: "byparr",
+            calls: calls.clone(),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![camofox, byparr]);
+
+        let result = r
+            .fetch_with_js(
+                "https://example.com",
+                &HashMap::new(),
+                None,
+                None,
+                true,
+                tdl(),
+            )
+            .await
+            .expect("byparr renders");
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(result.rendered_with.as_deref(), Some("byparr"));
+    }
+
+    #[test]
+    fn byparr_endpoint_registers_last_and_counts_as_recovery() {
+        let cfg = RendererConfig {
+            mode: RendererMode::Auto,
+            byparr: Some(crw_core::config::ByparrEndpoint {
+                base_url: "http://byparr:8191".into(),
+                timeout_ms: 30_000,
+                max_concurrent: 2,
+                clearance_reuse: true,
+            }),
+            ..Default::default()
+        };
+        let r = FallbackRenderer::new(&cfg, "crw-test", None, &StealthConfig::default()).unwrap();
+        assert_eq!(r.js_renderer_names().last(), Some(&"byparr"));
+        assert!(r.has_recovery_tier());
     }
 
     #[tokio::test]

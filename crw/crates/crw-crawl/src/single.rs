@@ -2,12 +2,14 @@ use crw_core::Deadline;
 use crw_core::config::{BUILTIN_UA_POOL, ExtractionConfig, LlmConfig};
 use crw_core::error::CrwResult;
 use crw_core::types::{
-    BlockOutcome, ChangeTrackingMode, FetchResult, OutputFormat, ScrapeData, ScrapeRequest,
-    resolve_pinned_renderer, resolve_render_js,
+    BlockOutcome, ChangeTrackingMode, FetchResult, OutputFormat, RequestedRenderer, ScrapeData,
+    ScrapeRequest, resolve_pinned_renderer, resolve_render_js,
 };
 use crw_renderer::FallbackRenderer;
 use crw_renderer::http_only::HttpFetcher;
 use crw_renderer::traits::PageFetcher;
+use regex::Regex;
+use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
 
 /// Scrape a single URL: fetch → extract → (optional) LLM structured extraction.
@@ -48,6 +50,38 @@ pub async fn scrape_url(
         .await
 }
 
+/// Reject the faults in a scrape template that no fetch can repair, before any
+/// network work. Shared by the single scrape and the batch route, so a bad
+/// template is one 400 on both surfaces rather than one placeholder document
+/// per URL labelled as a block.
+pub fn validate_scrape_template(req: &ScrapeRequest) -> CrwResult<()> {
+    if req.actions.is_some() {
+        return Err(crw_core::error::CrwError::InvalidRequest(
+            "The 'actions' parameter is not yet supported. Use cssSelector or xpath for element targeting.".into()
+        ));
+    }
+    // The impersonated tier executes no JS, so an explicit pin on it is
+    // contradictory with a JS-rendering request.
+    if req.renderer == Some(RequestedRenderer::ImpersonatedHttp) && req.render_js == Some(true) {
+        return Err(crw_core::error::CrwError::InvalidRequest(
+            "renderer 'impersonated-http' never executes JS; remove renderJs:true (or omit it)"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Refuse a BYOK `baseUrl` that points at a private address. It is only used
+/// alongside a BYOK key (`build_byok_llm_config`), so it is only checked then.
+pub async fn validate_byok_base_url(req: &ScrapeRequest) -> CrwResult<()> {
+    if let (Some(base_url), Some(_)) = (&req.base_url, &req.llm_api_key) {
+        crw_core::url_safety::validate_llm_base_url(base_url)
+            .await
+            .map_err(|e| crw_core::error::CrwError::InvalidRequest(format!("baseUrl: {e}")))?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn scrape_url_inner(
     req: &ScrapeRequest,
@@ -59,21 +93,22 @@ async fn scrape_url_inner(
     render_js_default: Option<bool>,
     deadline: Deadline,
 ) -> CrwResult<ScrapeData> {
-    // Reject unsupported `actions` parameter early with a clear error.
-    if req.actions.is_some() {
-        return Err(crw_core::error::CrwError::InvalidRequest(
-            "The 'actions' parameter is not yet supported. Use cssSelector or xpath for element targeting.".into()
-        ));
-    }
+    validate_scrape_template(req)?;
+    validate_byok_base_url(req).await?;
 
     // Determine whether stealth headers should be injected for this request.
     let inject_stealth = req.stealth.unwrap_or(default_stealth);
 
     let pinned = resolve_pinned_renderer(req.renderer);
 
-    // "Pinned implies JS" — if user named a non-auto renderer but didn't set
-    // renderJs, force JS so auto-gating doesn't silently bypass the pin.
-    let effective_render_js_request = if pinned.is_some() && req.render_js.is_none() {
+    // "Pinned implies JS": if the user named a non-auto BROWSER renderer but
+    // didn't set renderJs, force JS so auto-gating doesn't silently bypass
+    // the pin. The impersonated-http tier is the one wire-level pin that
+    // never executes JS (`RequestedRenderer::implies_js`), so it is exempt:
+    // the pin chooses a transport, and a renderJs coercion would divert it
+    // into the forced-JS arm it cannot serve.
+    let pin_implies_js = req.renderer.is_some_and(|r| r.implies_js());
+    let effective_render_js_request = if pin_implies_js && req.render_js.is_none() {
         Some(true)
     } else {
         req.render_js
@@ -86,11 +121,14 @@ async fn scrape_url_inner(
 
     // Validate pinned renderer is available — fail fast with a 400 instead of
     // letting the request reach the dispatcher with a hard-pin to a missing pool.
-    // Skip validation when renderJs:false is honored (HTTP-only ignores the pin).
+    // Skip validation when renderJs:false is honored for a BROWSER pin (HTTP-only
+    // ignores that pin). An impersonated-http pin is validated regardless of the
+    // resolved renderJs: it is a transport choice, and a global
+    // render_js_default=false must not silently drop it to plain HTTP.
     if let Some(name) = pinned
-        && effective_render_js != Some(false)
+        && (effective_render_js != Some(false) || !pin_implies_js)
     {
-        let available = renderer.js_renderer_names();
+        let available = renderer.available_renderer_names();
         if !available.contains(&name) {
             return Err(crw_core::error::CrwError::InvalidRequest(format!(
                 "renderer '{}' not available; configured renderers: [{}]. \
@@ -106,6 +144,11 @@ async fn scrape_url_inner(
     // (b) per-request stealth differs from what the shared renderer was built with.
     let needs_temp_fetcher =
         req.proxy.is_some() || req.stealth.is_some_and(|s| s != default_stealth);
+    // A per-request proxy the client cannot use would otherwise be dropped with a
+    // log line and the page fetched from the server's own address.
+    if let Some(p) = req.proxy.as_deref().filter(|p| !p.trim().is_empty()) {
+        crw_core::validate_proxy_url(p).map_err(crw_core::error::CrwError::InvalidRequest)?;
+    }
 
     let mut fetch_result = if needs_temp_fetcher {
         let proxy = req.proxy.as_deref();
@@ -117,7 +160,11 @@ async fn scrape_url_inner(
             user_agent.to_string()
         };
 
-        if effective_render_js == Some(false) {
+        // An impersonated-http pin is a transport choice the shared renderer
+        // serves from its early pin arm; the temp HTTP fetcher must not
+        // swallow it. (The pin then ignores the per-request proxy: known gap,
+        // see docs/docs/configuration.md.)
+        if effective_render_js == Some(false) && !matches!(pinned, Some("impersonated-http")) {
             // HTTP-only: safe to use a temp HttpFetcher with custom proxy/stealth.
             let temp_http = HttpFetcher::new(&effective_ua, proxy, inject_stealth);
             temp_http
@@ -180,6 +227,7 @@ async fn scrape_url_inner(
     ) -> crw_extract::OwnedExtractInput {
         crw_extract::OwnedExtractInput {
             raw_html: fr.html.clone(),
+            content_type: fr.content_type.clone(),
             source_url: fr.url.clone(),
             status_code: fr.status_code,
             rendered_with: fr.rendered_with.clone(),
@@ -316,22 +364,88 @@ async fn scrape_url_inner(
         // the document has no DOM to escalate into.
         && fetch_result.content_type.as_deref() != Some("application/pdf");
 
-        let escalate_for_quality =
-            !md_is_byte_thin && md_is_low_quality && fetch_result.html.len() > 5000;
+        let escalate_for_quality = escalate_for_quality(
+            md_is_byte_thin,
+            md_is_low_quality,
+            fetch_result.status_code,
+            &fetch_result.html,
+            fetch_result.content_type.as_deref(),
+        );
+        // A request whose JS ladder already failed comes back as an HTTP body
+        // carrying the `js_escalation_failed:` warning. It looks exactly like a
+        // low-tier result, so without this check we would re-run the whole ladder
+        // that was just exhausted, on the same (already spent) deadline, for a
+        // result that cannot differ.
+        let js_ladder_exhausted = fetch_result
+            .warning
+            .as_deref()
+            .is_some_and(|w| w.contains(crw_renderer::JS_ESCALATION_FAILED));
+        // If the prior tier was lightpanda (returned 200 with thin/no content that
+        // fooled the renderer-level thinness check), escalate to the next tier the
+        // pool holds. A pinned name the pool does not hold is a hard error, so the
+        // old literal "chrome" failed every escalation on this fork's ladder and
+        // camofox was never reached. `None` means there is nothing above
+        // lightpanda: skip rather than dispatch, because "auto" would re-render the
+        // same tier for the same thin result.
+        // Otherwise (http tier), pass the caller's pin through, or `None` so the
+        // chain decides.
+        let escalation_target: Option<&str> = if prior_renderer == Some("lightpanda") {
+            renderer.lightpanda_escalation_target()
+        } else {
+            pinned
+        };
+        let has_escalation_target =
+            escalation_target.is_some() || prior_renderer != Some("lightpanda");
+        // The renderer ladder enforces this same floor per tier; apply it one
+        // layer up so we never DISPATCH an escalation that cannot run. `deadline`
+        // is the same one the first fetch already spent, so by this point it is
+        // routinely near-exhausted, and such attempts only burn a pool slot and
+        // hide the real outcome behind a fabricated timeout.
+        let escalation_budget = deadline.remaining();
+        let has_escalation_budget = escalation_budget >= crw_renderer::MIN_TIER_BUDGET;
         let should_escalate = (md_is_byte_thin || escalate_for_quality)
             && used_low_tier
+            && !js_ladder_exhausted
             && should_escalate_status
-            && escalation_eligible;
-        let escalation_target = if should_escalate {
-            post_extract_escalation_target(prior_renderer, pinned, &renderer.js_renderer_names())
-        } else {
-            None
-        };
-        if should_escalate
-            && (prior_renderer == Some("http")
-                || prior_renderer == Some("http_only_fallback")
-                || escalation_target.is_some())
+            && escalation_eligible
+            && has_escalation_target
+            && has_escalation_budget;
+        if (md_is_byte_thin || escalate_for_quality)
+            && used_low_tier
+            && should_escalate_status
+            && escalation_eligible
+            && !has_escalation_budget
         {
+            tracing::debug!(
+                url = %req.url,
+                remaining_ms = escalation_budget.as_millis() as u64,
+                min_ms = crw_renderer::MIN_TIER_BUDGET.as_millis() as u64,
+                "skipping JS escalation: not enough deadline left to attempt it"
+            );
+        }
+        if (md_is_byte_thin || escalate_for_quality)
+            && used_low_tier
+            && should_escalate_status
+            && escalation_eligible
+            && !has_escalation_target
+        {
+            tracing::debug!(
+                url = %req.url,
+                pool = ?renderer.js_renderer_names(),
+                "skipping JS escalation: no tier above lightpanda in this pool"
+            );
+            // Say so on the response as well. The thin body ships as a success,
+            // and without this nothing tells the operator the deployment has no
+            // stronger tier to render the page with.
+            let skip_warning = "JS escalation skipped: no camofox tier is configured above \
+                                lightpanda; add one for full SPA rendering"
+                .to_string();
+            effective_warning = Some(match effective_warning {
+                Some(w) => format!("{w}; {skip_warning}"),
+                None => skip_warning,
+            });
+        }
+        if should_escalate {
             let quality_score_before = md_quality.as_ref().map(|q| q.score);
             tracing::info!(
                 url = %req.url,
@@ -355,66 +469,100 @@ async fn scrape_url_inner(
                 )
                 .await
             {
-                Ok(js_fetch) => {
+                Ok(mut js_fetch) => {
                     // Accept JS result even if status >= 400, as long as it produced
                     // real content. Anti-bot/UA-detection sites frequently return a
                     // 4xx code while still serving the actual page body — the status
                     // is a soft signal, not a content gate.
                     let js_status = js_fetch.status_code;
                     let js_warning = derive_target_warning(&js_fetch);
-                    if let Ok(js_data) =
-                        crate::extract_pool::extract_offloaded(build_owned_extract_input(
-                            &js_fetch,
-                            req,
-                            extraction_cfg,
-                            debug_enabled,
-                            debug_sink.clone(),
-                        ))
-                        .await
+                    match crate::extract_pool::extract_offloaded(build_owned_extract_input(
+                        &js_fetch,
+                        req,
+                        extraction_cfg,
+                        debug_enabled,
+                        debug_sink.clone(),
+                    ))
+                    .await
                     {
-                        let js_md_len = js_data
-                            .markdown
-                            .as_deref()
-                            .map(|s| s.trim().len())
-                            .unwrap_or(0);
-                        let js_md_quality = js_data
-                            .markdown
-                            .as_deref()
-                            .map(crw_extract::quality::analyze_md_only);
-                        let js_score = js_md_quality.as_ref().map(|q| q.score).unwrap_or(0.0);
-                        let before_score = md_quality.as_ref().map(|q| q.score).unwrap_or(0.0);
-                        let http_was_thin = md_is_byte_thin;
-                        let quality_improved = js_score > before_score + 0.05;
-                        let accept =
-                            js_md_len >= retry_threshold && (http_was_thin || quality_improved);
-                        if accept {
-                            data = js_data;
-                            // Replace the original "Target returned 4xx" with the JS
-                            // fetch's warning (which is None for a clean 2xx render),
-                            // so a successful escalation doesn't leak the original
-                            // soft-block status into the response top-level warning.
-                            effective_warning = js_warning;
-                            tracing::info!(
+                        Err(e) => {
+                            tracing::warn!(
                                 url = %req.url,
-                                from_status = fetch_result.status_code,
-                                to_status = js_status,
-                                md_len = js_md_len,
-                                quality_score_before = before_score,
-                                quality_score_after = js_score,
-                                "JS escalation recovered content"
+                                "JS escalation rendered the page but extraction failed, keeping the prior tier's result: {e}"
                             );
-                        } else if js_md_len >= retry_threshold && !http_was_thin {
-                            tracing::info!(
-                                url = %req.url,
-                                before = before_score,
-                                after = js_score,
-                                "JS retry returned worse-quality markdown ({before_score} -> {js_score}), keeping HTTP",
+                        }
+                        Ok(js_data) => {
+                            let js_md_len = js_data
+                                .markdown
+                                .as_deref()
+                                .map(|s| s.trim().len())
+                                .unwrap_or(0);
+                            let js_md_quality = js_data
+                                .markdown
+                                .as_deref()
+                                .map(crw_extract::quality::analyze_md_only);
+                            let js_score = js_md_quality.as_ref().map(|q| q.score).unwrap_or(0.0);
+                            let before_score = md_quality.as_ref().map(|q| q.score).unwrap_or(0.0);
+                            let http_was_thin = md_is_byte_thin;
+                            let accept = accept_js_escalation(
+                                md_bytes,
+                                http_was_thin,
+                                before_score,
+                                js_md_len,
+                                js_score,
+                                retry_threshold,
                             );
+                            if accept {
+                                data = js_data;
+                                // `classify_block` below reads `fetch_result.html`, and
+                                // leaving the DISCARDED tier's shell there means a
+                                // challenge we just solved still carries `_cf_chl_opt`
+                                // into CF_STRONG_MARKERS — which runs ahead of the
+                                // markdown guard and would clear the page this
+                                // escalation just recovered. `content_type` is
+                                // deliberately NOT swapped: browser tiers leave it
+                                // `None`, and it is read later for `data.content_type`.
+                                fetch_result.html = std::mem::take(&mut js_fetch.html);
+                                // The verdict describes the body, so it moves with it.
+                                fetch_result.wall = js_fetch.wall.take();
+                                // So is whether it is a partial-DOM snapshot.
+                                fetch_result.truncated = js_fetch.truncated;
+                                // Replace the original "Target returned 4xx" with the JS
+                                // fetch's warning (which is None for a clean 2xx render),
+                                // so a successful escalation doesn't leak the original
+                                // soft-block status into the response top-level warning.
+                                effective_warning = js_warning;
+                                tracing::info!(
+                                    url = %req.url,
+                                    from_status = fetch_result.status_code,
+                                    to_status = js_status,
+                                    md_len = js_md_len,
+                                    quality_score_before = before_score,
+                                    quality_score_after = js_score,
+                                    "JS escalation recovered content"
+                                );
+                            } else {
+                                tracing::info!(
+                                    url = %req.url,
+                                    md_bytes,
+                                    js_md_len,
+                                    before = before_score,
+                                    after = js_score,
+                                    "JS escalation added no content, keeping the prior tier's result",
+                                );
+                            }
                         }
                     }
                 }
                 Err(e) => {
                     tracing::warn!(url = %req.url, "JS escalation after empty markdown failed: {e}");
+                    // The caller gets the thin prior page; say why it is not the
+                    // rendered one.
+                    let failed = format!("{} {e}", crw_renderer::JS_ESCALATION_FAILED);
+                    effective_warning = Some(match effective_warning {
+                        Some(w) => format!("{w}; {failed}"),
+                        None => failed,
+                    });
                 }
             }
         }
@@ -430,7 +578,20 @@ async fn scrape_url_inner(
         &fetch_result.html,
         data.markdown.as_deref(),
         extraction_cfg.http_retry_threshold_bytes,
+        &fetch_result.url,
+        fetch_result.final_url.as_deref(),
     );
+    if data.block.is_none() && data.http_error().is_some() {
+        data.block = classify_error_page_wall(fetch_result.status_code, &fetch_result.html);
+    }
+    // The wall the renderer ladder recognized on this body. Covers what
+    // `classify_block` cannot re-derive: a vendor block served with HTTP 200 and
+    // enough prose to pass its markdown guard. Trusted only for an error-page
+    // sized body, because the ladder's vendor markers include the Cloudflare
+    // loader that cleared pages carry too, and a cleared page is bigger.
+    if data.block.is_none() && data.is_error_page_sized() {
+        data.block = fetch_result.wall.clone();
+    }
     if data.block.is_none()
         && let Some(reason) = detect_login_wall(
             fetch_result
@@ -462,6 +623,44 @@ async fn scrape_url_inner(
         (None, None) => None,
     };
 
+    // A CDN answering 520-527 could not reach the origin. No renderer can fix a
+    // dead origin, so this is a failure rather than a page. `TargetUnreachable`
+    // maps to 422.
+    if is_cdn_origin_error(fetch_result.status_code) {
+        tracing::warn!(
+            url = %req.url,
+            status = fetch_result.status_code,
+            elapsed_ms = fetch_result.elapsed_ms,
+            "CDN could not reach the origin; failing instead of returning its error page"
+        );
+        return Err(crw_core::error::CrwError::TargetUnreachable(format!(
+            "the site's own server did not respond (HTTP {} from its CDN)",
+            fetch_result.status_code
+        )));
+    }
+
+    // A truncated render that extracted to NOTHING is not incomplete content, it
+    // is no content. The navigation budget expired mid-load and the partial DOM
+    // held nothing extractable, so a 200 here reads as "this page is empty" when
+    // the truth is "we ran out of time" — and only the latter is fixable by the
+    // caller (by raising `timeout`).
+    //
+    // Scoped deliberately: only when markdown was ASKED FOR (a `rawHtml`/`links`
+    // caller can still use a partial DOM) and only when it is entirely empty.
+    if is_empty_truncated_render(
+        fetch_result.truncated,
+        &req.formats,
+        data.markdown.as_deref(),
+    ) {
+        tracing::warn!(
+            url = %req.url,
+            elapsed_ms = fetch_result.elapsed_ms,
+            "render budget expired with no extractable content; failing instead of returning an empty page"
+        );
+        // The caller's budget, not the elapsed time: see `Deadline::requested_ms`.
+        return Err(crw_core::error::CrwError::Timeout(deadline.requested_ms()));
+    }
+
     // Phase 4: LLM structured extraction
     // Merge Firecrawl-compatible extract.schema into json_schema if not already set.
     let effective_schema = req
@@ -473,7 +672,11 @@ async fn scrape_url_inner(
     let byok_config = build_byok_llm_config(req, llm_config);
     let effective_llm = byok_config.as_ref().or(llm_config);
 
-    if formats_include_json(&req.formats) {
+    // Never send a wall or an origin error page to the model. The verdict is
+    // already stamped above and every surface turns it into a failure, so any LLM
+    // work below would be paid for with nothing to show.
+    let unusable = data.block.is_some() || data.http_error().is_some();
+    if formats_include_json(&req.formats) && !unusable {
         if let (Some(schema), Some(llm)) = (effective_schema, effective_llm) {
             let md = data.markdown.as_deref().unwrap_or("");
             match crw_extract::structured::extract_structured_with_usage(md, schema, llm, None)
@@ -507,7 +710,8 @@ async fn scrape_url_inner(
         }
     }
 
-    if formats_include_summary(&req.formats) {
+    // Same reason as the json branch above: neither is summarizable content.
+    if formats_include_summary(&req.formats) && !unusable {
         let Some(llm) = effective_llm else {
             return Err(crw_core::error::CrwError::ExtractionError(
                 "Summary format requires an LLM config. Either set [extraction.llm] in server config, or pass 'llmApiKey' in the request body.".into()
@@ -563,6 +767,12 @@ async fn scrape_url_inner(
     // Surface the fetched content type so change-tracking (here and on the
     // crawl path) can hash binary/non-text content rather than diff it.
     data.content_type = fetch_result.content_type.clone();
+
+    // A partial-DOM snapshot (navigation budget elapsed) extracts to usable but
+    // incomplete content. Carry the flag out so callers that bound the scrape
+    // budget — `/v1/search` enrichment above all — can observe truncation
+    // instead of mistaking it for a thin page.
+    data.truncated = fetch_result.truncated;
 
     // ── Change tracking (monitor) ──────────────────────────────────────────
     // Activated by the `"changeTracking"` format string; options ride on the
@@ -727,6 +937,48 @@ fn change_tracking_mode_label(
 /// non-root resource (e.g. `/history.htm`) but the final URL collapsed to the
 /// site root (`/` or empty). Pure same-origin path tweaks (trailing slash,
 /// query string changes) are ignored.
+/// Names the wall on an error page that `ScrapeData::http_error` already fails.
+///
+/// `classify_block` stops at its markdown guard, so a vendor wall with enough
+/// prose (PerimeterX "Press & Hold") surfaced as `http_error` while a thinner
+/// wall from another vendor surfaced as `anti_bot`. Running the classifier here
+/// is safe where it is not ahead of the guard: the page already fails, and only
+/// its label changes. A structural verdict is not a wall, so it stays an HTTP
+/// error.
+pub(crate) fn classify_error_page_wall(status: u16, html: &str) -> Option<BlockOutcome> {
+    let r = crw_extract::antibot::classify(Some(status), html);
+    if !r.signal.is_blocked() || r.signal == crw_extract::antibot::AntibotSignal::StructuralFailure
+    {
+        return None;
+    }
+    Some(BlockOutcome {
+        vendor: r.signal.class_name().to_string(),
+        reason: r.reason,
+    })
+}
+
+/// Whether a JS escalation's markdown replaces the lower tier's.
+///
+/// A thin prior is replaced by any result with more markdown: the escalation
+/// already ran the strongest tier available, so there is no better page to wait
+/// for, and requiring `retry_threshold` there shipped a husk over a short but
+/// real page. A non-thin prior (escalated on quality) is replaced only by a
+/// result that clears the threshold and scores measurably better.
+fn accept_js_escalation(
+    prior_md_len: usize,
+    prior_was_thin: bool,
+    prior_score: f32,
+    js_md_len: usize,
+    js_score: f32,
+    retry_threshold: usize,
+) -> bool {
+    if prior_was_thin {
+        js_md_len > prior_md_len
+    } else {
+        js_md_len >= retry_threshold && js_score > prior_score + 0.05
+    }
+}
+
 fn redirect_is_material(requested: &str, final_url: &str) -> bool {
     let Ok(req) = url::Url::parse(requested) else {
         return false;
@@ -742,13 +994,55 @@ fn redirect_is_material(requested: &str, final_url: &str) -> bool {
     !req_path.is_empty() && fin_path.is_empty()
 }
 
+/// The target sits behind a CDN that could not get a usable response out of the
+/// origin, so the body is the CDN's own error page and not the page that was
+/// asked for.
+///
+/// Cloudflare's 520-527 are not IANA-registered; Cloudflare generates them and
+/// an origin does not emit them, which is what makes the status alone a safe
+/// signal (response headers are not available this far up — `PageMetadata`
+/// carries only `status_code`).
+///
+/// This is a status check and NOT a body check on purpose. The scrape routes
+/// already refuse a `>= 400` whose body is under 200 bytes, and that guard is
+/// structurally unable to catch this: Cloudflare's error page is a branded HTML
+/// document that renders to ~1250 bytes of markdown, six times the threshold. So
+/// `sacg.me` behind a dead origin was returned as `success: true` with "The
+/// initial connection between Cloudflare's network and the origin web server
+/// timed out" as its markdown, billed, and counted as a completed crawl page —
+/// for one customer, on the same source, since June.
+pub(crate) fn is_cdn_origin_error(status_code: u16) -> bool {
+    (520..=527).contains(&status_code)
+}
+
+/// A truncated render that extracted to nothing: the render budget expired
+/// mid-load and the partial DOM held no markdown. See the call site for why
+/// that is a failure rather than an empty page.
+fn is_empty_truncated_render(
+    truncated: bool,
+    formats: &[OutputFormat],
+    markdown: Option<&str>,
+) -> bool {
+    truncated
+        && formats.contains(&OutputFormat::Markdown)
+        && markdown.map(|m| m.trim().is_empty()).unwrap_or(true)
+}
+
 pub(crate) fn derive_target_warning(fetch_result: &FetchResult) -> Option<String> {
     // Anti-bot detection wins over any other warning. The renderer chain
     // annotates thin results with "X returned a loading placeholder", but the
     // underlying HTML may be a CAPTCHA shell — surfacing the placeholder
     // misattributes the failure to our renderer instead of the site block.
     if let Some(block) = detect_block_interstitial(&fetch_result.html) {
-        return Some(block);
+        // Exception: a `js_escalation_failed:` prefix explains WHY the caller is
+        // looking at an HTTP shell at all, and a block page is the single most
+        // likely body to be holding one. Keep both, block first.
+        return Some(match fetch_result.warning.as_deref() {
+            Some(w) if w.starts_with(crw_renderer::JS_ESCALATION_FAILED) => {
+                format!("{block}; {w}")
+            }
+            _ => block,
+        });
     }
 
     if fetch_result.warning.is_some() {
@@ -829,6 +1123,117 @@ fn detect_block_interstitial(html: &str) -> Option<String> {
     }
 }
 
+/// The one signal this arm trusts: **the page names its own host and declares itself a
+/// placeholder**. Capture group 1 is the domain token, and the caller must match it
+/// against the host actually scraped.
+///
+/// That comparison is the entire guarantee, and it is why every earlier shape was
+/// removed. Unanchored template literals ("the nginx web server is successfully
+/// installed", "apache2 ubuntu default page", "this domain has been registered") fire on
+/// the most-scraped technical content there is: every nginx install tutorial quotes the
+/// default vhost verbatim to confirm the install worked, every "Apache2 Ubuntu Default
+/// Page still showing" StackOverflow thread repeats it in the title, and UDRP decisions
+/// say "this domain has been registered and is being used in bad faith". A token match
+/// alone is just as bad: "Insurance.com is for sale" is a real domain-industry headline,
+/// and `[a-z]{2,12}` happily accepts `checkout.html`, `main.py` or `config.yaml`, so a
+/// task board reading "- checkout.html ready for development" would fail too.
+///
+/// Requiring the token to BE the scraped host kills all of it at once: an article talks
+/// about someone else's domain, a parking page talks about the one you asked for.
+///
+/// Measured over 20,012 real prod scrape successes (2026-08-09..12): 294 matches, and in
+/// every single one the token equalled the scraped host — the host check costs nothing
+/// and removes the whole false-positive surface. It also correctly rejected two pages
+/// that named a DIFFERENT domain. Dropping the four unanchored literals costs 15
+/// records (0.075%), which against rejecting a real tutorial is not a close trade.
+static DOMAIN_PLACEHOLDER: LazyLock<Regex> = LazyLock::new(|| {
+    // The left guard is a CONSUMED character class, not `\b` and not a lookbehind:
+    // the `regex` crate has no lookaround, and `\b` matches straight after a dot, so
+    // `\b(...)` on "shop.example.com is for sale" captured only "example.com" — which
+    // would then equal the scraped host and fail a real page. It also truncated
+    // "example.co.uk" to "co.uk" (missing genuine parked pages) and could not match a
+    // single-letter label like "x.com" at all. Capturing whole dotted labels fixes all
+    // three at once and changed nothing on the 20,012-doc corpus (294 before, 294 after).
+    Regex::new(
+        r"(?:^|[^a-z0-9.\-])([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,24})\s{0,24}(?:[-–—]\s{0,24}|::\s{0,24}this domain\s{0,24})?(?:is for sale|ready for development|is parked free)\b",
+    )
+    .expect("static parked-domain pattern")
+});
+
+/// Upper bound on a placeholder page's own body. See `looks_like_parked_domain`.
+const PARKED_MAX_BODY_BYTES: usize = 16 * 1024;
+
+/// Host of `url`, lowercased with a leading `www.` stripped, for comparing against a
+/// domain token rendered in the page body.
+fn normalized_host(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    Some(host.strip_prefix("www.").unwrap_or(&host).to_string())
+}
+
+/// Registrar parking, domain-marketplace and holding pages: the page is served at the
+/// domain and its whole content is "this domain is available", so nothing the caller
+/// asked for was delivered.
+///
+/// Matches MARKDOWN, not HTML, for two load-bearing reasons: `classify_block` already
+/// receives the markdown so no extraction is needed, and `detector.rs`'s HTML text
+/// extractor emits no separator at tag boundaries, so `<h1>host</h1><h2>is for
+/// sale</h2>` would collapse to `hostis for sale` and silently break the pattern.
+///
+/// Both the requested and the post-redirect host count, so a domain that 302s to its
+/// registrar still matches on the name the caller asked for.
+///
+/// ponytail: "under construction" and "coming soon" are deliberately NOT here. Those are
+/// pages the origin published on purpose — `eliteteam.ch` renders its own WordPress
+/// under-construction plugin — so they are truthful scrapes and stay billable. That is
+/// 68% of the flagged population, so this does not take the class to zero by design.
+fn looks_like_parked_domain(markdown: &str, requested_url: &str, final_url: Option<&str>) -> bool {
+    /// Byte-bounded prefix that never splits a UTF-8 char (`&s[..n]` panics off a
+    /// char boundary, and scraped markdown is routinely non-ASCII).
+    fn head(s: &str, max: usize) -> &str {
+        if s.len() <= max {
+            return s;
+        }
+        let mut end = max;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        &s[..end]
+    }
+
+    // A placeholder page IS the whole document. Bounding the body stops a LIVE site
+    // that merely carries a "<our domain> is for sale" banner from having every page of
+    // a crawl failed and its body destroyed (`crawl.rs` clears the body on a block).
+    // The largest real placeholder measured over the 20,012-doc corpus is 9,459 bytes,
+    // so 16 KB costs nothing against all 294 matches and closes the banner class.
+    if markdown.len() > PARKED_MAX_BODY_BYTES {
+        return false;
+    }
+
+    let hosts: Vec<String> = [Some(requested_url), final_url]
+        .into_iter()
+        .flatten()
+        .filter_map(normalized_host)
+        .collect();
+    if hosts.is_empty() {
+        return false;
+    }
+
+    // ponytail: bound the scan rather than the verdict. A parking notice is always at
+    // the top (largest observed placeholder body is ~13 KB); this only stops a
+    // multi-hundred-KB article from being lowercased on the scrape hot path.
+    let low = head(markdown, 40_960).to_lowercase();
+
+    // `captures_iter`, not `captures`: a page may name another domain before its own.
+    DOMAIN_PLACEHOLDER.captures_iter(&low).any(|c| {
+        c.get(1).is_some_and(|m| {
+            let token = m.as_str();
+            let token = token.strip_prefix("www.").unwrap_or(token);
+            hosts.iter().any(|h| h == token)
+        })
+    })
+}
+
 /// Classify whether a fetched page is an anti-bot block/challenge shell. Runs
 /// ONCE at the scrape choke so every consumer (v1/v2/crawl/batch) inherits one
 /// verdict. Returns `None` for real content; `Some(BlockOutcome)` for a block.
@@ -839,14 +1244,23 @@ fn detect_block_interstitial(html: &str) -> Option<String> {
 ///    (anti-over-trigger): an accepted JS escalation guarantees markdown >=
 ///    `threshold`, so a stale block-shell `html` cannot mislabel it.
 /// 3. Reuse the trusted `crw_extract::antibot::classify` detector.
-fn classify_block(
+pub(crate) fn classify_block(
     status: u16,
     content_type: Option<&str>,
     html: &str,
     markdown: Option<&str>,
     threshold: usize,
+    requested_url: &str,
+    final_url: Option<&str>,
 ) -> Option<BlockOutcome> {
     if content_type.map(|c| c.contains("pdf")).unwrap_or(false) {
+        return None;
+    }
+    // Our own egress failing proxy auth is not the target blocking us. Narrow to
+    // exactly that: a 407 with no body. Everything else with an empty body stays
+    // classifiable, because a near-empty 403/503 is the canonical CloudFront and
+    // Akamai deny signature and a near-empty 429 is the canonical rate limit.
+    if status == 407 && html.is_empty() {
         return None;
     }
     // Modern Cloudflare Turnstile / managed challenge is frequently served with
@@ -860,10 +1274,16 @@ fn classify_block(
     // substring search avoids allocating a lowercased copy on every scrape.
     // Runs before the markdown-substantial guard: a challenge is a block even if
     // it yields boilerplate text.
-    // ponytail: strong-markers-only keeps false positives ~nil; a real page that
-    // cleared the challenge no longer carries _cf_chl_opt / challenge-platform.
-    const CF_STRONG_MARKERS: [&str; 5] = [
-        "/cdn-cgi/challenge-platform/",
+    //
+    // `/cdn-cgi/challenge-platform/` is deliberately NOT in this list: Cloudflare
+    // re-injects that telemetry loader into the CLEARED page too (measured at byte
+    // ~782k of a real post-solve 783k Glassdoor page that carries NO _cf_chl_opt),
+    // so a full-html scan for it false-positives every managed site the cloak arm
+    // successfully solves — emptying real content back to a challenge block. The
+    // remaining markers are interstitial-only: window._cf_chl_opt (the challenge
+    // config object) and the older cf-*/managed-token strings are absent once the
+    // page clears.
+    const CF_STRONG_MARKERS: [&str; 4] = [
         "_cf_chl_opt",
         "cf-challenge-running",
         "cf-browser-verification",
@@ -892,11 +1312,79 @@ fn classify_block(
             reason: "wikimedia datacenter-ip block".to_string(),
         });
     }
+    // Reddit's own block page ("You've been blocked by network security...") is
+    // itself ~115 bytes of prose — over the markdown-substantial guard below —
+    // so antibot::classify (which already recognizes this exact phrase via its
+    // NetworkSecurity pattern) never runs. Same trap as the Wikimedia/CF cases
+    // above. Require both halves of the sentence (not just the first clause) so
+    // an article merely quoting "blocked by network security" in isolation
+    // cannot trip this ahead of the guard.
+    if html.contains("blocked by network security")
+        && html.contains("log in to your Reddit account")
+    {
+        return Some(BlockOutcome {
+            vendor: "network_security".to_string(),
+            reason: "blocked by network security".to_string(),
+        });
+    }
+    // Cloudflare's hard block page (an outright deny, distinct from the
+    // Turnstile/managed-challenge interstitial matched by CF_STRONG_MARKERS
+    // above) also beats the guard. `<span class="cf-error-code">` is the exact
+    // structural marker antibot::classify already trusts for this vendor
+    // (`crw-extract/src/antibot.rs`); require it together with the page's own
+    // block heading so a page that merely mentions the token in prose, a code
+    // sample, or documentation cannot trip this ahead of the guard.
+    if html.contains(r#"<span class="cf-error-code">"#) && html.contains("you have been blocked") {
+        return Some(BlockOutcome {
+            vendor: "cloudflare".to_string(),
+            reason: "cloudflare block page (cf-error-code)".to_string(),
+        });
+    }
+    // Vercel's bot-check interstitial beats the guard too — the real page (with
+    // its "Website owner? Click here to fix" link) extracts to ~135 bytes, over
+    // threshold, so antibot::classify's Vercel pattern (which requires this same
+    // heading + verifying/failed phrase) never runs. Caught only by testing
+    // against REAL production captures: the synthetic fixture used to validate
+    // the antibot.rs pattern was artificially short and never hit this guard,
+    // so this gap shipped once already — mirror the Reddit/CF strong-marker
+    // pattern here too.
+    if html.contains("Vercel Security Checkpoint")
+        && (html.contains("verifying your browser")
+            || html.contains("Failed to verify your browser"))
+    {
+        return Some(BlockOutcome {
+            vendor: "vercel".to_string(),
+            reason: "Vercel security checkpoint".to_string(),
+        });
+    }
+    // A registrar parking / marketplace / default-server page is HTTP 200, so
+    // `ScrapeData::http_error()` clears it, and it renders 300 to 9,000 chars of
+    // clean prose, so the `>= threshold` guard below clears it too and
+    // `antibot::classify` is never even called.
+    if let Some(md) = markdown
+        && looks_like_parked_domain(md, requested_url, final_url)
+    {
+        return Some(BlockOutcome {
+            vendor: crw_core::types::PARKED_DOMAIN_VENDOR.to_string(),
+            reason: "parked domain / placeholder page".to_string(),
+        });
+    }
     if markdown.map(|m| m.trim().len()).unwrap_or(0) >= threshold {
         return None;
     }
     let r = crw_extract::antibot::classify(Some(status), html);
     if !r.signal.is_blocked() {
+        return None;
+    }
+    // A non-HTML body is CONTENT, so the HTML SHAPE heuristics do not apply to it:
+    // the HTTP tier decodes every non-PDF response as HTML, so a 68-byte
+    // requirements.txt has no `<body>` and came back `structural_failure`. Only the
+    // structural verdict is suppressed; the vendor arms stay live, because a wall
+    // IS sometimes served under a data content type (DataDome answers XHR-shaped
+    // requests with an `application/json` captcha stub).
+    if r.signal == crw_extract::antibot::AntibotSignal::StructuralFailure
+        && !crw_core::is_html_like_content_type(content_type)
+    {
         return None;
     }
     Some(BlockOutcome {
@@ -929,6 +1417,51 @@ fn detect_login_wall(url: &str, html: &str, markdown: Option<&str>) -> Option<St
         (on_site && markers.iter().all(|marker| html.contains(marker)))
             .then(|| format!("{domain} served a sign-in page instead of the requested content"))
     })
+}
+
+/// Should a substantive-but-low-scoring body buy a browser render?
+///
+/// The content-type term matters because the HTTP tier decodes every non-PDF
+/// body as HTML regardless of its declared type, so a healthy JSON API response
+/// scores as low-quality (no sentences, few word-like tokens) and used to buy a
+/// full render that was then discarded: prod measured 114 of 135 quality
+/// escalations ending in "keeping HTTP", ~2.5-3s each. Unlike the byte-thin
+/// trigger this one fires on a body we already hold in full, so for a
+/// non-html-ish type there is nothing left for a browser (or a different
+/// egress) to reveal. The byte-thin path stays content-type-agnostic on
+/// purpose: a near-empty response may be a deny stub that a retry from another
+/// fingerprint recovers.
+///
+/// Two things still earn a render under a data content type, so both get the
+/// last word before we suppress. Both are short-circuited away on the html
+/// path, which keeps its current cost exactly.
+fn escalate_for_quality(
+    md_is_byte_thin: bool,
+    md_is_low_quality: bool,
+    status: u16,
+    html: &str,
+    content_type: Option<&str>,
+) -> bool {
+    if md_is_byte_thin || !md_is_low_quality || html.len() <= 5000 {
+        return false;
+    }
+    // Only JSON is gated, and only because it is the one type we measured: 114
+    // of 135 quality escalations in 24h of production ended in "keeping HTTP",
+    // all of them JSON API bodies. Every other content type keeps escalating
+    // exactly as before, so no content sniffing has to be correct for recall to
+    // hold. Widening this needs its own measurement.
+    let is_json = content_type
+        .and_then(|ct| ct.split(';').next())
+        .map(|ct| ct.trim().eq_ignore_ascii_case("application/json"))
+        .unwrap_or(false);
+    if !is_json {
+        return true;
+    }
+    // A vendor wall can be served under a data content type, and that one a
+    // retry from another fingerprint can clear.
+    crw_extract::antibot::classify(Some(status), html)
+        .signal
+        .is_blocked()
 }
 
 fn formats_include_json(formats: &[OutputFormat]) -> bool {
@@ -993,6 +1526,594 @@ mod tests {
 
     const THRESH: usize = 100;
 
+    /// discord.com/app, live: lightpanda rendered a 45-byte husk, camofox the real
+    /// 624-byte login page. The 2000-byte lightpanda threshold threw camofox's page
+    /// away and shipped the husk, though camofox is the top tier on this ladder.
+    #[test]
+    fn js_escalation_keeps_more_content_from_a_thin_prior_below_threshold() {
+        assert!(accept_js_escalation(45, true, 0.005, 624, 0.4, 2000));
+    }
+
+    /// zillow.com, live: a 403 PerimeterX "Press & Hold" page extracts to more than
+    /// the markdown guard, so `classify_block` never names the vendor and the
+    /// response said `http_error`, while g2's thinner DataDome wall said `anti_bot`.
+    #[test]
+    fn error_page_wall_names_the_vendor_when_markdown_passes_the_guard() {
+        let html = r#"<html><head><script>window._pxAppId = 'PXHYx10rg3';</script></head>
+            <body><h1>Access to this page has been denied</h1>
+            <p>Press &amp; Hold to confirm you are a human (and not a bot).</p>
+            <p>Reference ID 1a2b3c4d-0000-11ef-8f00-000000000000</p></body></html>"#;
+        let md = "# Access to this page has been denied\n\nPress & Hold to confirm you are \
+                  a human (and not a bot).\n\nReference ID 1a2b3c4d-0000-11ef-8f00-000000000000";
+        assert!(
+            classify_block(
+                403,
+                Some("text/html"),
+                html,
+                Some(md),
+                THRESH,
+                "https://www.zillow.com/",
+                None
+            )
+            .is_none(),
+            "precondition: the markdown guard hides this wall from classify_block"
+        );
+        let b = classify_error_page_wall(403, html).expect("vendor wall must be named");
+        assert_eq!(b.vendor, "perimeterx");
+    }
+
+    #[test]
+    fn error_page_wall_leaves_plain_error_pages_alone() {
+        let html = "<html><body><h1>404 Not Found</h1><p>The page you requested does not \
+                    exist on this server. Check the address and try again.</p></body></html>";
+        assert!(classify_error_page_wall(404, html).is_none());
+    }
+
+    /// Bodies the renderer returns after its JS ladder fails. The ladder's own
+    /// verdict is not carried on `FetchResult`, so these must be refused here.
+    #[test]
+    fn fallback_wall_shapes_are_classified_downstream() {
+        // AWS WAF answers HTTP 202 with an empty body; the only signal is a header.
+        for ct in [Some("text/html"), None] {
+            let b = classify_block(202, ct, "", Some(""), THRESH, "https://a.example/", None)
+                .unwrap_or_else(|| panic!("empty 202 (content-type {ct:?}) must not ship"));
+            assert_eq!(b.vendor, crw_core::types::STRUCTURAL_FAILURE_VENDOR);
+        }
+        let cf = "<html><head><title>Just a moment...</title></head><body>\
+                  <script>window._cf_chl_opt={cvId:'3'};</script>\
+                  Enable JavaScript and cookies to continue</body></html>";
+        let b = classify_block(
+            403,
+            Some("text/html"),
+            cf,
+            Some("Enable JavaScript and cookies to continue"),
+            THRESH,
+            "https://a.example/",
+            None,
+        )
+        .expect("a Cloudflare challenge must not ship");
+        assert_eq!(b.vendor, "cloudflare");
+    }
+
+    #[test]
+    fn js_escalation_rejects_a_thin_result_that_adds_nothing() {
+        // nowsecure.nl: both tiers return the same 45-byte page.
+        assert!(!accept_js_escalation(45, true, 0.005, 45, 0.005, 2000));
+        assert!(!accept_js_escalation(45, true, 0.005, 10, 0.0, 2000));
+    }
+
+    #[test]
+    fn js_escalation_on_quality_needs_threshold_and_better_score() {
+        assert!(accept_js_escalation(3000, false, 0.2, 2500, 0.3, 2000));
+        assert!(!accept_js_escalation(3000, false, 0.2, 2500, 0.22, 2000));
+        assert!(!accept_js_escalation(3000, false, 0.2, 1500, 0.9, 2000));
+    }
+
+    /// Every body below is a VERBATIM prefix of a real prod scrape from
+    /// 2026-08-09..12 that was billed as content. They render fine and carry
+    /// substantial markdown, so they sail past both the HTTP-status gate and the
+    /// `>= threshold` guard — which is why they needed their own arm.
+    #[test]
+    fn classify_block_parked_domain_templates() {
+        // (requested url, markdown) — the host must be the one the page names.
+        let cases: [(&str, &str); 4] = [
+            (
+                "https://ft-access.com/",
+                "ft-access.com\n\nis parked free, courtesy of GoDaddy.com.\n\n\
+                 [Get This Domain](https://www.godaddy.com/domainsearch/find?key=parkweb)",
+            ),
+            (
+                "https://arym.com/",
+                "# Arym.com is for sale\n\nWe value your privacy\n\nWe use cookies to \
+                 enhance your browsing experience and serve personalised ads.",
+            ),
+            (
+                // eWeb holding page: no "for sale" wording at all.
+                "https://sterki.com/",
+                "# Sterki.com -\n        Ready for Development\n\n[Contact Us for Details]\
+                 (https://ewebdevelopment.com/quotes/inquire/sterki.com)\n\n# Sterki.com\n\n\
+                 ## Ready For Development\n\nIf you're interested in this domain, contact us.",
+            ),
+            (
+                // `www.` on the request must still match the bare name in the body.
+                "https://www.conditorei.com/",
+                "conditorei.com :: this domain is for sale\n\nInquire now for pricing \
+                 and availability through our brokerage partner.",
+            ),
+        ];
+        for (url, md) in cases {
+            let b = classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(md),
+                THRESH,
+                url,
+                None,
+            )
+            .unwrap_or_else(|| panic!("{url} must be flagged"));
+            assert_eq!(b.vendor, crw_core::types::PARKED_DOMAIN_VENDOR, "{url}");
+            // Wording matters as much as the verdict: telling the caller a domain that
+            // is for sale was "blocked by anti-bot" is what sends them to buy proxies.
+            assert!(
+                b.message().starts_with("No usable content"),
+                "{url} must not be worded as an anti-bot block, got {:?}",
+                b.message()
+            );
+        }
+    }
+
+    /// THE guarantee. The identical body is a parking page when served AT that domain
+    /// and ordinary editorial content when served anywhere else, and the host
+    /// comparison is the only thing that tells them apart.
+    ///
+    /// `Insurance.com is for sale` is a real domain-industry headline; without this
+    /// check every article covering a domain sale, and every broker's inventory page,
+    /// becomes a failed scrape.
+    #[test]
+    fn classify_block_parked_arm_requires_the_page_to_name_its_own_host() {
+        let body = "# Insurance.com is for sale\n\nThe record-setting domain returns to \
+                    the market more than a decade after it changed hands.";
+        let call = |url: &str| {
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(body),
+                THRESH,
+                url,
+                None,
+            )
+        };
+        assert!(
+            call("https://insurance.com/").is_some(),
+            "served at the domain it names, this is a parking page"
+        );
+        assert!(
+            call("https://domainnamewire.com/2026/08/12/insurance-com/").is_none(),
+            "the same text on a news site is editorial content, not a parking page"
+        );
+    }
+
+    /// A post-redirect host counts too. Discriminating on purpose: the REQUESTED host
+    /// deliberately does not appear in the body, so this passes only if `final_url` is
+    /// really consulted, and the body clears `THRESH` so a `Some` cannot come from the
+    /// structural arm instead.
+    #[test]
+    fn classify_block_parked_arm_accepts_either_requested_or_final_host() {
+        let md = "# Parked-Target.com is for sale\n\nThis premium name is available \
+                  immediately. Submit an offer through our brokerage and we will respond \
+                  within one business day with pricing and transfer details.";
+        assert!(md.len() > THRESH, "fixture must clear the threshold guard");
+        let call = |requested: &str, final_url: Option<&str>| {
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html><body><p>a real enough shell</p></body></html>",
+                Some(md),
+                THRESH,
+                requested,
+                final_url,
+            )
+        };
+        assert!(
+            call(
+                "https://links.example.org/out?to=parked-target",
+                Some("https://parked-target.com/"),
+            )
+            .is_some(),
+            "the post-redirect host names the page and must count"
+        );
+        // Same body, same requested URL, no redirect recorded: nothing names the page.
+        assert!(
+            call("https://links.example.org/out?to=parked-target", None).is_none(),
+            "without the final host there is no anchor, so the arm must decline"
+        );
+    }
+
+    /// The token must be a host, not any dotted word. `[a-z]{2,12}` after a dot also
+    /// accepts file extensions, so a task board line like
+    /// `- checkout.html ready for development` matched before the host check existed.
+    #[test]
+    fn classify_block_parked_arm_ignores_dotted_non_hosts() {
+        let md = "# Sprint 12 board\n\n- checkout.html ready for development\n\
+                  - main.py ready for development\n- config.yaml is for sale (internal joke)";
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(md),
+                THRESH,
+                "https://tasks.internal.example/board",
+                None,
+            )
+            .is_none(),
+            "dotted filenames are not the scraped host"
+        );
+    }
+
+    /// The capture must be the WHOLE dotted name. `\b` matches straight after a dot, so
+    /// the first version of this pattern read `shop.example.com is for sale` as
+    /// `example.com` — which then equalled a scrape of example.com and failed a real
+    /// page. It also truncated `example.co.uk` to `co.uk`, missing genuine parked
+    /// pages, and could not match a single-letter label at all.
+    #[test]
+    fn classify_block_parked_arm_captures_whole_domain_tokens() {
+        let call = |md: &str, url: &str| {
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(md),
+                THRESH,
+                url,
+                None,
+            )
+        };
+        // A subdomain named in the body is NOT the host that was scraped. The body is
+        // kept comfortably above `THRESH` so a `None` here proves the parked arm
+        // declined, rather than the structural arm firing on a thin page.
+        let announcement = "# Our shop is moving\n\nshop.example.com is for sale, and the \
+             main site stays exactly where it is. Existing orders, accounts and support \
+             tickets are unaffected by the change; only the storefront hostname retires.";
+        assert!(
+            call(announcement, "https://example.com/").is_none(),
+            "a subdomain mentioned in prose must not satisfy the host anchor"
+        );
+        // ...but scraping that subdomain directly does match it.
+        assert!(
+            call("shop.example.com is for sale", "https://shop.example.com/").is_some(),
+            "the page names exactly the host it was served at"
+        );
+        // Multi-label TLDs must survive whole.
+        assert!(
+            call("example.co.uk is for sale", "https://example.co.uk/").is_some(),
+            "a .co.uk parked page must be caught, not truncated to co.uk"
+        );
+        // Single-character label.
+        assert!(
+            call("x.com is for sale", "https://x.com/").is_some(),
+            "a one-letter label is still a host"
+        );
+        // A leading www. in the body still matches the bare scraped host.
+        assert!(
+            call("www.arym.com is for sale", "https://arym.com/").is_some(),
+            "www. is stripped on both sides before comparing"
+        );
+    }
+
+    /// The deliberate scope limit, pinned so nobody "improves" it later. An
+    /// under-construction page is a state the origin published on purpose — this body
+    /// is `cset-ag.com`, a real WordPress site in maintenance serving its own logo —
+    /// so it is a truthful scrape and stays billable. 68% of the flagged population
+    /// looks like this, which is why the fix does not take the class to zero.
+    #[test]
+    fn classify_block_leaves_a_real_under_construction_page_alone() {
+        let md = "![logo](https://www.cset-ag.com/wp-content/uploads/2025/09/cset-wit.png)\n\n\
+                  ## Under construction for new update\n\n### Clear Sustainable Energy Trading\n\n\
+                  © CSET Group 2025";
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(md),
+                THRESH,
+                "https://www.cset-ag.com/",
+                None,
+            )
+            .is_none(),
+            "an origin's own under-construction page is real content"
+        );
+    }
+
+    /// The four unanchored template literals that used to live here are gone, and this
+    /// pins why: every nginx install tutorial quotes the default vhost verbatim to
+    /// confirm the install worked, and it is exactly the kind of page a RAG pipeline
+    /// scrapes. Same shape for the Apache default page and for UDRP decisions saying
+    /// "this domain has been registered and is being used in bad faith".
+    #[test]
+    fn classify_block_leaves_technical_docs_quoting_default_pages_alone() {
+        let tutorial = "# How to install nginx on Ubuntu\n\nAfter `apt install nginx`, \
+             open the server in a browser. You should see the default landing page: \
+             \"Welcome to nginx! If you see this page, the nginx web server is \
+             successfully installed and working. Further configuration is required.\" \
+             If instead you get the Apache2 Ubuntu Default Page, another service is \
+             bound to port 80.\n\nNote that this domain has been registered for the \
+             lab and resolves locally.\n"
+            .repeat(3);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(&tutorial),
+                THRESH,
+                "https://www.digitalocean.com/community/tutorials/install-nginx",
+                None,
+            )
+            .is_none(),
+            "a tutorial quoting default landing pages is real content"
+        );
+    }
+
+    /// Non-ASCII markdown is routine and `&s[..n]` panics off a char boundary. The
+    /// 3-byte repeat unit puts byte 40_960 mid-character (40_960 % 3 == 1), so the
+    /// boundary walk in `head()` actually executes — a 29-byte unit lands ON a
+    /// boundary and the loop never runs, which made the previous version vacuous.
+    #[test]
+    fn classify_block_parked_arm_survives_multibyte_markdown() {
+        let md = "€".repeat(20_000); // 60 KB, well past the 40_960 scan window
+        assert_eq!(md.len(), 60_000);
+        assert!(
+            !md.is_char_boundary(40_960),
+            "fixture must straddle the window"
+        );
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                "<html></html>",
+                Some(&md),
+                THRESH,
+                "https://example.com/",
+                None,
+            )
+            .is_none(),
+            "multibyte content must neither panic nor be called parked"
+        );
+    }
+
+    #[test]
+    fn classify_block_reddit_network_security_over_markdown_guard() {
+        // Regression: Reddit's own block page extracts to ~115 bytes of prose
+        // (> THRESH), so without the strong-marker check the guard would
+        // suppress the verdict before antibot::classify ever ran.
+        let html = "<html><body><p>You've been blocked by network security.</p>\
+            <p>To continue, log in to your Reddit account or use your developer token</p></body></html>";
+        let md = "You've been blocked by network security.\n\nTo continue, \
+            log in to your Reddit account or use your developer token";
+        assert!(
+            md.len() >= THRESH,
+            "fixture must exceed the guard to be meaningful"
+        );
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            html,
+            Some(md),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("reddit network security block must be flagged even with substantial markdown");
+        assert_eq!(b.vendor, "network_security");
+    }
+
+    #[test]
+    fn classify_block_reddit_phrase_alone_is_not_enough() {
+        // Negative: an article that quotes the first half of Reddit's block
+        // sentence in isolation (no "log in to your Reddit account" nearby)
+        // must NOT be flagged — only the full page's block page trips this.
+        let html = "<html><body><article><p>Many scrapers report seeing \
+            \"blocked by network security\" style errors when hitting Reddit at \
+            scale, which is a common anti-bot pattern across social platforms.</p>\
+            </article></body></html>";
+        let md = "Many scrapers report seeing \"blocked by network security\" style \
+            errors when hitting Reddit at scale, which is a common anti-bot pattern.";
+        assert!(md.len() >= THRESH);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                html,
+                Some(md),
+                THRESH,
+                "https://example.com/",
+                None,
+            )
+            .is_none(),
+            "an article merely discussing the phrase must not be misflagged as a block"
+        );
+    }
+
+    #[test]
+    fn classify_block_cloudflare_hard_block_over_markdown_guard() {
+        // Regression: Cloudflare's hard-deny page (no interstitial, so
+        // CF_STRONG_MARKERS above doesn't match) extracts to well over THRESH
+        // bytes of prose, so it needs its own strong-marker check.
+        let html = r#"<html><body><h1>Attention Required! | Cloudflare</h1>
+            <p>Please enable cookies.</p>
+            <span class="cf-error-code">1020</span>
+            <h1>Sorry, you have been blocked</h1>
+            <h2>You are unable to access example.com</h2></body></html>"#;
+        let md = "# Attention Required! | Cloudflare\n\nPlease enable cookies.\n\n\
+            # Sorry, you have been blocked\n\n## You are unable to access example.com";
+        assert!(
+            md.len() >= THRESH,
+            "fixture must exceed the guard to be meaningful"
+        );
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            html,
+            Some(md),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("cloudflare hard block must be flagged even with substantial markdown");
+        assert_eq!(b.vendor, "cloudflare");
+    }
+
+    #[test]
+    fn classify_block_cf_error_code_marker_alone_is_not_enough() {
+        // Negative: a page that legitimately renders a `cf-error-code` span
+        // (e.g. a status/monitoring dashboard embedding one as a live example,
+        // not a real hard-block response) but has no "you have been blocked"
+        // heading must not be misflagged — the marker alone isn't sufficient,
+        // only its co-occurrence with the block heading is.
+        let html = r#"<html><body><article><h1>Error code reference</h1>
+            <p>Example live element: <span class="cf-error-code">1020</span></p>
+            <p>This is a normal reference page with plenty of unrelated
+            documentation content describing how status codes are displayed.</p>
+            </article></body></html>"#;
+        let md = "# Error code reference\n\nExample live element: 1020\n\n\
+            This is a normal reference page with plenty of unrelated documentation \
+            content describing how status codes are displayed.";
+        assert!(md.len() >= THRESH);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                html,
+                Some(md),
+                THRESH,
+                "https://example.com/",
+                None,
+            )
+            .is_none(),
+            "a page merely rendering the cf-error-code marker without the block heading must not be misflagged"
+        );
+    }
+
+    // Regression using the ACTUAL text captured in prod (9-day trace-log
+    // investigation, 2026-07-15..23) rather than a synthetic fixture — this is
+    // exactly what caught the Vercel gap below (the synthetic fixture used to
+    // ship that fix was artificially short and never exercised this guard).
+    // Raw HTML wasn't captured (format=markdown only); the real markdown
+    // stands in for html here since this check is a text match, not
+    // DOM-structural.
+    #[test]
+    fn classify_block_reddit_real_prod_capture() {
+        let real_markdown = "You've been blocked by network security.\n\nTo continue, log in to your Reddit account or use your developer token  \n  \nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)";
+        assert!(real_markdown.len() >= THRESH);
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            real_markdown,
+            Some(real_markdown),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("the exact text that silently returned success:true 198x in prod must be flagged");
+        assert_eq!(b.vendor, "network_security");
+    }
+
+    #[test]
+    fn classify_block_vercel_checkpoint_over_markdown_guard_real_capture() {
+        // Regression using the EXACT text captured in prod (2026-07-24 trace-log
+        // investigation): the real Vercel checkpoint page's "Website owner?
+        // Click here to fix" link pushes it to ~135 bytes, over THRESH, so
+        // antibot::classify's Vercel pattern never ran — this shipped once
+        // already because the synthetic fixture used to validate that pattern
+        // was artificially short (~58 bytes) and never hit this guard.
+        let html = "<html><body><h1>Vercel Security Checkpoint</h1>\
+            <p>We're verifying your browser</p>\
+            <p><a href=\"https://vercel.link/security-checkpoint\">Website owner? Click here to fix</a></p>\
+            </body></html>";
+        let md = "# Vercel Security Checkpoint\n\nWe're verifying your browser\n\n\
+            [Website owner? Click here to fix](https://vercel.link/security-checkpoint)";
+        assert!(
+            md.len() >= THRESH,
+            "this is the real-world case: the fixture must exceed the guard"
+        );
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            html,
+            Some(md),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("vercel checkpoint must be flagged even with substantial markdown");
+        assert_eq!(b.vendor, "vercel");
+    }
+
+    #[test]
+    fn classify_block_vercel_mention_alone_is_not_enough() {
+        // Negative: a page that merely mentions Vercel (a common hosting
+        // platform) with no checkpoint heading must not be misflagged.
+        let html = "<html><body><article><h1>Deploying on Vercel</h1>\
+            <p>This site is deployed on Vercel, a popular platform for hosting \
+            frontend applications and static sites with automatic previews on \
+            every pull request submitted to the repository.</p></article></body></html>";
+        let md = "# Deploying on Vercel\n\nThis site is deployed on Vercel, a popular \
+            platform for hosting frontend applications and static sites with \
+            automatic previews on every pull request submitted to the repository.";
+        assert!(md.len() >= THRESH);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                html,
+                Some(md),
+                THRESH,
+                "https://example.com/",
+                None,
+            )
+            .is_none(),
+            "an article merely mentioning Vercel without the checkpoint heading must not be misflagged"
+        );
+    }
+
+    #[test]
+    fn quality_escalation_skips_json_only() {
+        // Prod: 114 of 135 quality escalations ended in "keeping HTTP" because
+        // a healthy JSON body scores low-quality (no sentences, few word-like
+        // tokens) and bought a browser render that was then discarded.
+        let json = r#"{"id":1,"body":"comment text"},"#.repeat(200); // > 5000 bytes
+        let q = |ct, html: &str| escalate_for_quality(false, true, 200, html, ct);
+        assert!(!q(Some("application/json"), &json));
+        // Production sends the charset suffix, so the media type is what counts.
+        assert!(!q(Some("application/json; charset=utf-8"), &json));
+        assert!(!q(Some("APPLICATION/JSON"), &json));
+        // Everything else is left exactly as it behaves on main. Only JSON was
+        // measured, and gating a type we never measured would trade recall for
+        // a saving we cannot show. `text/plain` and `application/octet-stream`
+        // in particular can carry a mislabeled SPA shell that a browser sniffs
+        // and hydrates, so they must keep escalating.
+        assert!(q(Some("text/html"), &json));
+        assert!(q(None, &json));
+        assert!(q(Some("text/plain"), &json));
+        assert!(q(Some("application/octet-stream"), &json));
+        // A vendor wall served as JSON is the one JSON case still worth a retry:
+        // another fingerprint can clear it.
+        let walled = format!("{json}\"url\":\"https://captcha-delivery.com/x\"");
+        assert!(q(Some("application/json"), &walled));
+        // A byte-thin body never reaches this trigger, whatever the type.
+        assert!(!escalate_for_quality(
+            true,
+            true,
+            200,
+            &json,
+            Some("text/html")
+        ));
+    }
+
     #[test]
     fn post_extract_escalation_uses_next_configured_renderer() {
         assert_eq!(
@@ -1039,8 +2160,16 @@ mod tests {
         // moment" does NOT run on 200, so a real TIER1 token (__cf_chl_f_tk=) is
         // required to reach vendor=cloudflare.
         let html = r#"<html><body><form id="challenge-form" action="/cdn-cgi/?__cf_chl_f_tk=abc"></form></body></html>"#;
-        let b = classify_block(200, Some("text/html"), html, None, THRESH)
-            .expect("CF challenge must be flagged");
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            html,
+            None,
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("CF challenge must be flagged");
         assert_eq!(b.vendor, "cloudflare");
     }
 
@@ -1062,16 +2191,71 @@ mod tests {
             "marker must sit past the old 80KB prefix to guard the regression"
         );
         let md = "recovered looking text ".repeat(50); // > THRESH, must NOT suppress
-        let b = classify_block(200, Some("text/html"), &html, Some(&md), THRESH)
-            .expect("Turnstile 200 interstitial must be flagged");
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            &html,
+            Some(&md),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("Turnstile 200 interstitial must be flagged");
         assert_eq!(b.vendor, "cloudflare");
+    }
+
+    #[test]
+    fn classify_block_no_block_on_cleared_managed_page_with_trailing_platform_script() {
+        // Real prod regression (cloak arm): a managed-Turnstile site the cloak
+        // tier successfully SOLVED returns the real page (~783KB Glassdoor), but
+        // Cloudflare re-injects the `/cdn-cgi/challenge-platform/` telemetry loader
+        // near the END of the cleared body (measured at byte ~782k) with NO
+        // `_cf_chl_opt`. A full-html scan for challenge-platform false-positived it
+        // as an interstitial and emptied the recovered content. The cleared page
+        // must NOT be flagged: it carries content markers and no interstitial-only
+        // token.
+        let mut html = String::from(
+            r#"<!DOCTYPE html><html><head><title>Working at Google | Glassdoor</title></head><body>"#,
+        );
+        html.push_str(&"<p>Real reviews and salaries content.</p>".repeat(10_000)); // >512KB
+        html.push_str(
+            r#"<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=abc"></script></body></html>"#,
+        );
+        assert!(
+            html.contains("/cdn-cgi/challenge-platform/") && !html.contains("_cf_chl_opt"),
+            "fixture must reproduce the cleared-page shape"
+        );
+        // Substantial recovered markdown too — the real content extracts fine.
+        let md = "Real reviews and salaries content. ".repeat(50);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                &html,
+                Some(&md),
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_none(),
+            "a cleared managed page with a trailing challenge-platform telemetry \
+             script (but no _cf_chl_opt) must not be misflagged as a challenge"
+        );
     }
 
     #[test]
     fn classify_block_hard_block_on_datadome_403() {
         let html = r#"<html><body><script src="https://captcha-delivery.com/c.js"></script></body></html>"#;
-        let b = classify_block(403, Some("text/html"), html, None, THRESH)
-            .expect("DataDome block must be flagged");
+        let b = classify_block(
+            403,
+            Some("text/html"),
+            html,
+            None,
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("DataDome block must be flagged");
         assert_eq!(b.vendor, "datadome");
     }
 
@@ -1091,8 +2275,16 @@ mod tests {
             md.len() >= THRESH,
             "fixture must exceed the guard to be meaningful"
         );
-        let b = classify_block(200, Some("text/html"), html, Some(md), THRESH)
-            .expect("wikimedia datacenter block must be flagged even with substantial markdown");
+        let b = classify_block(
+            200,
+            Some("text/html"),
+            html,
+            Some(md),
+            THRESH,
+            "https://example.com/",
+            None,
+        )
+        .expect("wikimedia datacenter block must be flagged even with substantial markdown");
         assert_eq!(b.vendor, "generic_block");
     }
 
@@ -1102,7 +2294,18 @@ mod tests {
         // soft-block status with CF markers in the (stale) html.
         let html = r#"<html><body><form id="challenge-form" action="/cdn-cgi/?__cf_chl_f_tk=abc"></form></body></html>"#;
         let md = "x".repeat(500);
-        assert!(classify_block(403, Some("text/html"), html, Some(&md), THRESH).is_none());
+        assert!(
+            classify_block(
+                403,
+                Some("text/html"),
+                html,
+                Some(&md),
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1116,7 +2319,9 @@ mod tests {
                 Some("text/html"),
                 html,
                 Some("# Hello\n\nreal body"),
-                THRESH
+                THRESH,
+                "https://example.com/",
+                None,
             )
             .is_none()
         );
@@ -1125,7 +2330,142 @@ mod tests {
     #[test]
     fn classify_block_pdf_skipped() {
         // PDF branch has empty html — must not false-flag as StructuralFailure.
-        assert!(classify_block(200, Some("application/pdf"), "", None, THRESH).is_none());
+        assert!(
+            classify_block(
+                200,
+                Some("application/pdf"),
+                "",
+                None,
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn classify_block_skips_non_html_payloads() {
+        // A 68-byte requirements.txt from raw.githubusercontent.com came back
+        // `success:false` / `anti_bot` in prod: "Near-empty content (68 bytes)
+        // with HTTP 200". It is a complete, valid file.
+        let txt = "fastapi>=0.110.0\nuvicorn>=0.29.0\npydantic>=2.6\npython-multipart\n";
+        assert!(
+            classify_block(
+                200,
+                Some("text/plain"),
+                txt,
+                Some(txt),
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_none()
+        );
+        for ct in [
+            "text/csv",
+            "application/json",
+            "text/markdown",
+            "application/javascript",
+            "text/css",
+        ] {
+            assert!(
+                classify_block(
+                    200,
+                    Some(ct),
+                    "x",
+                    None,
+                    THRESH,
+                    "https://example.com/",
+                    None
+                )
+                .is_none(),
+                "{ct} was classified as a block"
+            );
+        }
+    }
+
+    #[test]
+    fn classify_block_still_sees_a_vendor_wall_under_a_data_content_type() {
+        // Only the HTML SHAPE heuristics are suppressed for non-HTML bodies.
+        // DataDome answers XHR-shaped requests with an application/json captcha
+        // stub, and that is still a block.
+        let json = r#"{"url":"https://geo.captcha-delivery.com/captcha/?initialCid=x"}"#;
+        assert!(
+            classify_block(
+                200,
+                Some("application/json"),
+                json,
+                None,
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn classify_block_still_sees_walls_without_a_content_type() {
+        // The guard must not blind the classifier: a wall is html or type-less.
+        let html = "<html><body>You've been blocked by network security. \
+                    Please log in to your Reddit account.</body></html>";
+        assert!(
+            classify_block(200, None, html, None, THRESH, "https://example.com/", None).is_some()
+        );
+    }
+
+    #[test]
+    fn classify_block_407_is_our_proxy_not_a_target_block() {
+        // 215 records in 14 days of prod were our own DataImpulse egress failing
+        // auth, stamped `structural_failure` and poisoning the routing registry.
+        assert!(
+            classify_block(
+                407,
+                Some("text/html"),
+                "",
+                None,
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_none()
+        );
+        // Everything else with an empty body stays classifiable: a near-empty
+        // 403/503 is the canonical CloudFront/Akamai deny signature.
+        assert!(
+            classify_block(
+                403,
+                Some("text/html"),
+                "",
+                None,
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn classify_block_modern_cf_marker_beats_the_markdown_guard() {
+        // Why the accepted JS escalation must replace `fetch_result.html`: with
+        // the discarded tier's shell still in place, a challenge we SOLVED is
+        // stamped `cloudflare` here and `clear_body()` throws the recovery away.
+        let html = r#"<html><body><script>window._cf_chl_opt={}</script></body></html>"#;
+        let md = "x".repeat(500);
+        assert!(
+            classify_block(
+                200,
+                Some("text/html"),
+                html,
+                Some(&md),
+                THRESH,
+                "https://example.com/",
+                None
+            )
+            .is_some()
+        );
     }
 
     fn sample_fetch(status_code: u16, html: &str) -> FetchResult {
@@ -1142,6 +2482,7 @@ mod tests {
             render_decision: None,
             credit_cost: 0,
             warnings: Vec::new(),
+            wall: None,
             truncated: false,
             deadline_exceeded: false,
             captured_responses: Vec::new(),
@@ -1187,6 +2528,42 @@ mod tests {
     }
 
     #[test]
+    fn cdn_origin_errors_are_failures_not_pages() {
+        // Cloudflare's private 52x range: generated by the CDN, never by an
+        // origin, so the body is always the CDN's own error page.
+        for status in 520..=527 {
+            assert!(
+                is_cdn_origin_error(status),
+                "{status} not treated as a CDN origin error"
+            );
+        }
+        // Everything around it must be untouched. 502/503/504 are ordinary
+        // gateway statuses that a real origin (or its reverse proxy) does emit,
+        // and a 503 maintenance page can be content the caller wants.
+        for status in [
+            200, 301, 403, 404, 429, 500, 502, 503, 504, 508, 519, 528, 530,
+        ] {
+            assert!(
+                !is_cdn_origin_error(status),
+                "{status} wrongly treated as a CDN origin error"
+            );
+        }
+    }
+
+    #[test]
+    fn cdn_origin_error_page_defeats_the_body_length_guard() {
+        // The reason this needs its own rule rather than a bigger threshold: the
+        // scrape routes fail a `>= 400` only when the body is under 200 bytes,
+        // and a real Cloudflare 522 page renders to ~1250 bytes of markdown.
+        let body = "You\n\n### Browser\n\nWorking\n\n### Cloudflare\n\nWorking\n\nwww.example.com\n\n### Host\n\nError\n\n## What happened?\n\nThe initial connection between Cloudflare's network and the origin web server timed out.".repeat(4);
+        assert!(
+            body.len() > 200,
+            "fixture must exceed the routes' 200-byte guard"
+        );
+        assert!(is_cdn_origin_error(522));
+    }
+
+    #[test]
     fn warning_detects_block_markers() {
         let warning = derive_target_warning(&sample_fetch(
             200,
@@ -1195,6 +2572,45 @@ mod tests {
         assert_eq!(warning.as_deref(), Some("Blocked by anti-bot protection"));
     }
 
+    #[test]
+    fn empty_truncated_render_is_a_failure_not_an_empty_page() {
+        let md = [OutputFormat::Markdown];
+        // The billed-blank-page case: budget expired, nothing extracted.
+        assert!(is_empty_truncated_render(true, &md, None));
+        assert!(is_empty_truncated_render(true, &md, Some("   \n ")));
+        // A thin-but-present body is a quality judgment, not a missing answer —
+        // failing it would cost recall.
+        assert!(!is_empty_truncated_render(true, &md, Some("# Title")));
+        // An empty page that rendered fully is genuinely empty; say so.
+        assert!(!is_empty_truncated_render(false, &md, None));
+        // A caller who wanted raw HTML can still use a partial DOM.
+        assert!(!is_empty_truncated_render(
+            true,
+            &[OutputFormat::RawHtml],
+            None
+        ));
+    }
+
+    #[test]
+    fn warning_keeps_js_escalation_failure_alongside_a_block() {
+        // A block page is the likeliest body to be holding a failed-ladder
+        // explanation, and the docs tell callers to look for that prefix. The
+        // block marker used to short-circuit and drop it.
+        let mut fetch = sample_fetch(
+            200,
+            "<html><title>Just a moment</title><body>cf-browser-verification</body></html>",
+        );
+        fetch.warning = Some(format!(
+            "{} Timeout after 5000ms",
+            crw_renderer::JS_ESCALATION_FAILED
+        ));
+        let warning = derive_target_warning(&fetch).expect("both signals expected");
+        assert!(
+            warning.contains("Blocked by anti-bot protection"),
+            "{warning}"
+        );
+        assert!(warning.contains("js_escalation_failed"), "{warning}");
+    }
     #[test]
     fn warning_skips_legit_pages_mentioning_captcha() {
         // Regression: HN front page used to false-positive because the headline

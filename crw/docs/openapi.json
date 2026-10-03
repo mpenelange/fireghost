@@ -288,7 +288,7 @@
           "sources":    { "type": "array", "items": { "type": "string", "enum": ["web", "news", "images"] } },
           "categories": { "type": "array", "items": { "type": "string" } },
           "engines":    { "type": "array", "maxItems": 4, "items": { "type": "string", "enum": ["google", "bing", "duckduckgo", "wikipedia", "youtube", "reddit", "amazon", "github"] }, "description": "Engine(s) to query (omit for Google). Multiple are merged/deduped by URL. Max 4." },
-          "scrapeOptions": { "$ref": "#/components/schemas/ScrapeOptions" }
+          "scrapeOptions": { "$ref": "#/components/schemas/SearchScrapeOptions" }
         }
       },
       "SearchResult": {
@@ -311,6 +311,14 @@
         "properties": {
           "success": { "type": "boolean" },
           "data":    { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } }
+        }
+      },
+      "SearchScrapeOptions": {
+        "type": "object",
+        "properties": {
+          "formats":         { "type": "array", "items": { "type": "string", "enum": ["markdown", "html", "rawHtml", "links"] }, "default": ["markdown"] },
+          "onlyMainContent": { "type": "boolean", "default": true },
+          "timeout":         { "type": "integer", "minimum": 1, "maximum": 60000, "default": 15000, "description": "Per-result scrape budget in ms. Search awaits every result, so this bounds the whole response; raise it for heavy JS pages." }
         }
       },
       "ScrapeOptions": {
@@ -384,7 +392,8 @@
             "properties": {
               "links": { "type": "array", "items": { "type": "string", "format": "uri" } },
               "droppedActionCount":    { "type": "integer" },
-              "strippedTrackingCount": { "type": "integer" }
+              "strippedTrackingCount": { "type": "integer" },
+              "sitemaps": { "type": "array", "items": { "type": "string", "format": "uri" }, "description": "Sitemap documents discovered and parsed while mapping the site (e.g. /sitemap.xml). Not included in links, because a sitemap file is not a page." }
             }
           }
         }
@@ -396,6 +405,7 @@
           "url":      { "type": "string", "format": "uri" },
           "maxPages": { "type": "integer", "minimum": 1, "default": 100 },
           "maxDepth": { "type": "integer", "minimum": 0, "default": 2 },
+          "headers":  { "type": "object", "additionalProperties": { "type": "string" }, "description": "Custom HTTP request headers applied to every page the crawl fetches, on the HTTP and LightPanda render paths (camofox renders do not apply them). A User-Agent here overrides the default." },
           "scrapeOptions": { "$ref": "#/components/schemas/ScrapeOptions" }
         }
       },

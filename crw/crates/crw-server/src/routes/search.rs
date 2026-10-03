@@ -44,6 +44,58 @@ const SCOUT_FETCH_LIMIT: u32 = 6;
 /// `multi_round` adds.
 const MULTI_ROUND_MIN_BUDGET_MS: u64 = 20_000;
 
+/// Per-result scrape budget for search enrichment when the caller passes no
+/// `scrapeOptions.timeout`.
+///
+/// NOT `effective_deadline_ms(None, None)`: an implicit deadline auto-extends to
+/// the full renderer ladder (`http + lightpanda + chrome + 28s per CDP tier` —
+/// 92.5s on the docker config), which is the right budget for ONE `/v1/scrape`
+/// but not here: search waits for every result, so a single straggler walking
+/// the whole ladder stalls the entire response. 15s is the deadline this
+/// codebase already validated against the zero-byte-miss class
+/// (`config.docker.toml` `[request]`), and it leaves chrome its full
+/// `chrome_nav_budget_ms` whenever the HTTP prefetch is quick.
+const SEARCH_ENRICH_DEADLINE_MS: u64 = 15_000;
+
+/// Upper bound for a caller-supplied `scrapeOptions.timeout`. Matches the range
+/// documented on `ScrapeRequest.deadline_ms`; enforced here because search
+/// multiplies the budget across every result.
+const SEARCH_ENRICH_DEADLINE_MAX_MS: u64 = 60_000;
+
+/// Fold the C1-overlap prefetch outcomes into the final (reranked-over-union)
+/// pool. A successful prefetch hands over its content; a FAILED one hands over
+/// its error, which is what stops `enrich_with_scrape` from scraping that URL a
+/// second time and spending the per-result budget twice in one request.
+fn fold_prescraped(pool: &mut [SearchResult], prescraped: &[SearchResult]) {
+    let by_url: std::collections::HashMap<&str, &SearchResult> =
+        prescraped.iter().map(|r| (r.url.as_str(), r)).collect();
+    for r in pool.iter_mut() {
+        if r.metadata.is_some() {
+            continue;
+        }
+        let Some(src) = by_url.get(r.url.as_str()) else {
+            continue;
+        };
+        if src.metadata.is_some() {
+            r.markdown = src.markdown.clone();
+            r.html = src.html.clone();
+            r.raw_html = src.raw_html.clone();
+            r.links = src.links.clone();
+            r.metadata = src.metadata.clone();
+            r.truncated = src.truncated;
+        } else if src.error.is_some() {
+            r.error = src.error.clone();
+        }
+    }
+}
+
+/// Per-result scrape budget for one enrichment fan-out. Validated in
+/// [`validate_request`], so the caller value is already within
+/// `(0, SEARCH_ENRICH_DEADLINE_MAX_MS]` by the time it reaches here.
+fn enrich_deadline_ms(opts: &SearchScrapeOptions) -> u64 {
+    opts.timeout.unwrap_or(SEARCH_ENRICH_DEADLINE_MS)
+}
+
 /// Heuristic: did the synthesized answer ABSTAIN (sources lacked the fact)?
 /// Aligned with `answer.rs`'s calibrated clause ("ONLY if the sources genuinely
 /// do not contain the information, say so plainly"). Triggers the adaptive
@@ -95,6 +147,20 @@ fn evidence_excerpt(data: &SearchData, max_sources: usize, per_chars: usize) -> 
     out
 }
 
+/// Drop rows whose URL is already in the flat pool. Used to skip re-scraping a
+/// scout result the answer pool already holds. Recall-safe: `merge_scraped` would
+/// discard these same rows anyway (it dedups by URL), and nothing on this path
+/// re-scrapes for fresher content — this just avoids paying for the scrape first.
+fn drop_known_urls(data: &SearchData, rows: Vec<SearchResult>) -> Vec<SearchResult> {
+    let SearchData::Flat(pool) = data else {
+        return rows;
+    };
+    let seen: std::collections::HashSet<&str> = pool.iter().map(|r| r.url.as_str()).collect();
+    rows.into_iter()
+        .filter(|r| !seen.contains(r.url.as_str()))
+        .collect()
+}
+
 /// Merge freshly-scraped scout rows into the flat answer pool (dedup by URL,
 /// only rows that actually carry markdown). Returns true if any were added.
 /// Grouped data (the explicit-`sources` path) is left untouched — multi-round
@@ -129,6 +195,32 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 const MAX_QUERY_CHARS: usize = 2000;
+const MAX_LANG_CHARS: usize = 35;
+
+/// A language tag (`en`, `pt-BR`, `zh-Hans-CN`, `es-419`, `en-u-ca`) or one of
+/// the `auto`/`all` sentinels the search backends already understand.
+///
+/// Not a full RFC 5646 grammar: it requires a 2-3 letter primary subtag, so
+/// private-use (`x-…`) and grandfathered (`i-klingon`) tags are rejected. Those
+/// are not search locales.
+///
+/// `lang` is forwarded verbatim as SearXNG's `language`, and a deployment may
+/// point that at a backend which interpolates it into a request line rather than
+/// a URL-encoded parameter, where a `\r\n` would split the request. Anything
+/// outside this shape is a caller mistake, so it is rejected here.
+fn is_valid_lang(lang: &str) -> bool {
+    if lang == "auto" || lang == "all" {
+        return true;
+    }
+    let mut subtags = lang.split('-');
+    let Some(primary) = subtags.next() else {
+        return false;
+    };
+    if !(2..=3).contains(&primary.len()) || !primary.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return false;
+    }
+    subtags.all(|s| (1..=8).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric()))
+}
 
 /// Max engines per `/v1/search` request. Camofox runs them sequentially on one
 /// warm tab, so the cap bounds worst-case latency (N engines ≈ N× a search).
@@ -183,6 +275,11 @@ pub async fn search_inner(
     // legs further down. `llm_path` = this request enters LLM mode.
     let server_llm = state.config.extraction.llm.clone();
     let byok_llm = build_byok_search_llm_config(&req, server_llm.as_ref());
+    if let (Some(base_url), Some(_)) = (&req.base_url, &byok_llm) {
+        crw_core::url_safety::validate_llm_base_url(base_url)
+            .await
+            .map_err(|e| CrwError::InvalidRequest(format!("baseUrl: {e}")))?;
+    }
     let effective_llm = byok_llm.as_ref().or(server_llm.as_ref());
     let llm_path = req.answer.unwrap_or(false) || req.summarize_results.unwrap_or(false);
 
@@ -351,23 +448,17 @@ pub async fn search_inner(
 
     // Phase C1: fold the original-results scrapes done during the overlap back
     // into the final (reranked-over-union) source set. Entries that match by URL
-    // get their scraped fields reused; enrich_with_scrape then skips them
-    // (metadata.is_some()) and only scrapes the URLs the expansion newly added.
-    if !prescraped.is_empty()
-        && let SearchData::Flat(v) = &mut data
-    {
-        let by_url: std::collections::HashMap<&str, &SearchResult> =
-            prescraped.iter().map(|r| (r.url.as_str(), r)).collect();
-        for r in v.iter_mut() {
-            if r.metadata.is_none()
-                && let Some(src) = by_url.get(r.url.as_str())
-                && src.metadata.is_some()
-            {
-                r.markdown = src.markdown.clone();
-                r.html = src.html.clone();
-                r.raw_html = src.raw_html.clone();
-                r.links = src.links.clone();
-                r.metadata = src.metadata.clone();
+    // get their scraped outcome reused; enrich_with_scrape then skips them and
+    // only scrapes the URLs the expansion newly added. Grouped responses fold
+    // too — the prefetch pool is flat either way, and skipping the fold there
+    // would scrape those URLs a second time on the same request.
+    if !prescraped.is_empty() {
+        match &mut data {
+            SearchData::Flat(v) => fold_prescraped(v, &prescraped),
+            SearchData::Grouped(g) => {
+                if let Some(web) = g.web.as_mut() {
+                    fold_prescraped(web, &prescraped);
+                }
             }
         }
     }
@@ -574,7 +665,18 @@ pub async fn search_inner(
                                             SCOUT_FETCH_LIMIT,
                                             state.config.search.rerank_relevance,
                                         );
-                                        let mut sd = SearchData::Flat(extra);
+                                        // Drop scout results already in the pool
+                                        // BEFORE scraping. merge_scraped only dedups
+                                        // AFTER the scrape, so a URL from round 1 (or
+                                        // returned by both scout queries — the pool
+                                        // has grown by iteration 2) would otherwise be
+                                        // scraped again and its result discarded,
+                                        // paying the per-result budget for nothing.
+                                        let fresh = drop_known_urls(&data, extra);
+                                        if fresh.is_empty() {
+                                            continue;
+                                        }
+                                        let mut sd = SearchData::Flat(fresh);
                                         let _ = enrich_with_scrape(&mut sd, opts, state).await;
                                         if let SearchData::Flat(rows) = sd {
                                             grew |= merge_scraped(&mut data, rows);
@@ -1014,6 +1116,14 @@ fn validate_request(req: &SearchRequest, max_limit: u32) -> Result<(), CrwError>
             "limit must be between 1 and {max_limit} (got {l})"
         )));
     }
+    if let Some(l) = req.lang.as_deref().map(str::trim)
+        && !l.is_empty()
+        && (l.chars().count() > MAX_LANG_CHARS || !is_valid_lang(l))
+    {
+        return Err(CrwError::InvalidRequest(format!(
+            "lang must be a language tag such as 'en' or 'pt-BR' (got {l:?})"
+        )));
+    }
     if let Some(cats) = &req.categories
         && cats.len() > 5
     {
@@ -1043,29 +1153,47 @@ fn validate_request(req: &SearchRequest, max_limit: u32) -> Result<(), CrwError>
                 )));
             }
         }
+        if let Some(t) = opts.timeout
+            && (t == 0 || t > SEARCH_ENRICH_DEADLINE_MAX_MS)
+        {
+            return Err(CrwError::InvalidRequest(format!(
+                "scrapeOptions.timeout must be between 1 and \
+                 {SEARCH_ENRICH_DEADLINE_MAX_MS} ms (got {t})"
+            )));
+        }
     }
     Ok(())
 }
 
 /// Map a transport/timeout/upstream `SearchError` onto the HTTP `CrwError`.
-/// `base_url` is the configured SearXNG URL; the transport (`target_unreachable`)
-/// arm names its **origin** (issue #90) so the operator sees *which* host failed
-/// — sanitized, so a credentialed URL never reaches the response. Timeouts keep
-/// `error_code: "timeout"`; the host is correlated via the startup log instead.
-fn map_search_error(err: SearchError, timeout_ms: u64, base_url: &str) -> CrwError {
+/// `base_url` is the configured search backend URL. The operator still learns
+/// which host failed (issue #90), but through the log: the response names no
+/// host, and an upstream error page is reduced to its status, because both are
+/// internal infrastructure a caller may not see. Timeouts keep
+/// `error_code: "timeout"`.
+pub(crate) fn map_search_error(err: SearchError, timeout_ms: u64, base_url: &str) -> CrwError {
     match err {
         SearchError::Timeout => CrwError::Timeout(timeout_ms),
-        SearchError::Upstream { status, body } => CrwError::HttpError(format!(
-            "SearXNG returned HTTP {status}: {}",
-            body.chars().take(200).collect::<String>()
-        )),
-        SearchError::InvalidResponse(msg) => {
-            CrwError::HttpError(format!("SearXNG returned invalid JSON: {msg}"))
+        SearchError::Upstream { status, body } => {
+            tracing::warn!(
+                search_backend = %crate::diagnostics::sanitize_url_origin(base_url),
+                status,
+                body = %body.chars().take(200).collect::<String>(),
+                "search backend returned an error"
+            );
+            CrwError::HttpError(format!("search backend returned HTTP {status}"))
         }
-        SearchError::Transport(msg) => CrwError::TargetUnreachable(format!(
-            "SearXNG ({}): {msg}",
-            crate::diagnostics::sanitize_url_origin(base_url)
-        )),
+        SearchError::InvalidResponse(msg) => {
+            CrwError::HttpError(format!("search backend returned invalid JSON: {msg}"))
+        }
+        SearchError::Transport(msg) => {
+            tracing::warn!(
+                search_backend = %crate::diagnostics::sanitize_url_origin(base_url),
+                "search backend unreachable: {msg}"
+            );
+            // Our own backend, not the caller's target: 502, not 422.
+            CrwError::HttpError(format!("search backend unreachable: {msg}"))
+        }
     }
 }
 
@@ -1166,25 +1294,40 @@ async fn enrich_with_scrape(
     }
 
     // Validate each URL and remember which slot it came from.
-    let mut jobs: Vec<(usize, String)> = Vec::new();
-    for (idx, r) in targets.iter().enumerate() {
-        // C1 overlap: a slot already enriched by the original-results prefetch
-        // (metadata set by apply_scrape_to_result) is reused, not re-scraped.
-        if r.metadata.is_some() {
-            continue;
-        }
-        let parsed = match url::Url::parse(&r.url) {
-            Ok(u) => u,
-            Err(_) => continue,
-        };
-        if crw_core::url_safety::validate_safe_url_resolved(&parsed)
-            .await
-            .is_err()
-        {
-            continue;
-        }
-        jobs.push((idx, r.url.clone()));
-    }
+    // Each `validate_safe_url_resolved` does a DNS lookup; running them serially
+    // added up to ~max_limit cold lookups (~9s at limit 20) on the critical path
+    // before any scrape could start. SERP results are diverse domains, so this is
+    // the common case, not the worst case. Validate concurrently instead — N is
+    // bounded by `max_limit` (≤20), so `join_all` needs no width cap, and it
+    // preserves order (irrelevant here since each job carries its own `idx`).
+    let candidates: Vec<(usize, url::Url, String)> = targets
+        .iter()
+        .enumerate()
+        // C1 overlap: a slot already handled by the original-results prefetch is
+        // reused, not re-scraped — whether it succeeded (metadata set by
+        // apply_scrape_to_result) or failed (error set). Re-scraping a failure
+        // here would spend the per-result budget twice in one request.
+        .filter(|(_, r)| r.metadata.is_none() && r.error.is_none())
+        .filter_map(|(idx, r)| {
+            url::Url::parse(&r.url)
+                .ok()
+                .map(|parsed| (idx, parsed, r.url.clone()))
+        })
+        .collect();
+    let jobs: Vec<(usize, String)> = futures::future::join_all(candidates.into_iter().map(
+        |(idx, parsed, original)| async move {
+            crw_core::url_safety::validate_safe_url_resolved(&parsed)
+                .await
+                .ok()
+                // Scrape the caller's original URL string, not the reparsed
+                // (possibly re-normalized) one — same as the serial version.
+                .map(|()| (idx, original))
+        },
+    ))
+    .await
+    .into_iter()
+    .flatten()
+    .collect();
     if jobs.is_empty() {
         return Ok(());
     }
@@ -1207,7 +1350,7 @@ async fn enrich_with_scrape(
         let default_stealth =
             state.config.crawler.stealth.enabled && state.config.crawler.stealth.inject_headers;
         let render_js_default = state.config.renderer.render_js_default;
-        let deadline_ms = state.config.effective_deadline_ms(None, None);
+        let deadline_ms = enrich_deadline_ms(opts);
         let permit_src = semaphore.clone();
 
         set.spawn(async move {
@@ -1304,6 +1447,9 @@ fn apply_scrape_to_result(slot: &mut SearchResult, data: ScrapeData, formats: &[
     if formats.contains(&OutputFormat::Links) {
         slot.links = data.links;
     }
+    if data.truncated {
+        slot.truncated = Some(true);
+    }
     slot.metadata = Some(data.metadata);
 }
 
@@ -1311,6 +1457,143 @@ fn apply_scrape_to_result(slot: &mut SearchResult, data: ScrapeData, formats: &[
 mod tests {
     use super::*;
     use crw_core::types::SearchSource;
+
+    fn scrape_opts(timeout: Option<u64>) -> SearchScrapeOptions {
+        SearchScrapeOptions {
+            formats: vec![OutputFormat::Markdown],
+            only_main_content: true,
+            country: None,
+            timeout,
+        }
+    }
+
+    #[test]
+    fn enrichment_deadline_is_bounded_not_the_renderer_ladder() {
+        // Regression pin: enrichment must NOT inherit the implicit full-ladder
+        // deadline (`effective_deadline_ms(None, None)` — 92.5s on the docker
+        // renderer config). Search waits for every result, so one straggler
+        // walking the ladder stalls the whole response.
+        // Prod raises the implicit budget to 60s and the ladder extension takes
+        // it to ~92.5s; the enrichment budget must be independent of both.
+        let cfg: crw_core::config::AppConfig =
+            toml::from_str("[request]\ndeadline_ms_default = 60000\n").expect("config parses");
+        assert_eq!(cfg.effective_deadline_ms(None, None), 60_000);
+        assert_eq!(enrich_deadline_ms(&scrape_opts(None)), 15_000);
+    }
+
+    #[test]
+    fn truncated_render_is_marked_on_the_result() {
+        // A budget-shortened render still returns content, so without this flag
+        // it is indistinguishable from a page that genuinely has little text —
+        // which is what would make a tightened budget a silent recall loss.
+        let mut slot = bare_result("https://example.com/a");
+        let mut data: ScrapeData = serde_json::from_value(serde_json::json!({
+            "markdown": "# partial",
+            "metadata": {"sourceURL": "https://example.com/a", "statusCode": 200, "elapsedMs": 1}
+        }))
+        .expect("valid scrape data");
+        data.truncated = true;
+        apply_scrape_to_result(&mut slot, data, &[OutputFormat::Markdown]);
+        assert_eq!(slot.truncated, Some(true));
+
+        let mut slot = bare_result("https://example.com/b");
+        let data: ScrapeData = serde_json::from_value(serde_json::json!({
+            "markdown": "# whole",
+            "metadata": {"sourceURL": "https://example.com/b", "statusCode": 200, "elapsedMs": 1}
+        }))
+        .expect("valid scrape data");
+        apply_scrape_to_result(&mut slot, data, &[OutputFormat::Markdown]);
+        assert_eq!(slot.truncated, None);
+    }
+
+    /// C14: a scout row whose URL the answer pool already holds is dropped
+    /// before it is scraped; new URLs, and grouped data, pass through.
+    #[test]
+    fn drop_known_urls_skips_rows_already_in_the_pool() {
+        let pool = SearchData::Flat(vec![bare_result("https://example.com/a")]);
+        let rows = vec![
+            bare_result("https://example.com/a"),
+            bare_result("https://example.com/b"),
+        ];
+        let kept: Vec<_> = drop_known_urls(&pool, rows)
+            .into_iter()
+            .map(|r| r.url)
+            .collect();
+        assert_eq!(kept, vec!["https://example.com/b".to_string()]);
+
+        let grouped = SearchData::Grouped(Default::default());
+        let rows = vec![bare_result("https://example.com/a")];
+        assert_eq!(drop_known_urls(&grouped, rows).len(), 1);
+    }
+
+    fn bare_result(url: &str) -> SearchResult {
+        serde_json::from_value(serde_json::json!({
+            "url": url, "title": "t", "description": "d", "position": 1
+        }))
+        .expect("valid result")
+    }
+
+    #[test]
+    fn scout_dedup_drops_urls_already_in_the_pool() {
+        // The scout must not re-scrape a URL the answer pool already holds:
+        // enrich_with_scrape spends the per-result budget, then merge_scraped
+        // discards the duplicate. drop_known_urls removes them before the scrape.
+        let mut known = bare_result("https://example.com/known");
+        known.markdown = Some("# known".into());
+        let data = SearchData::Flat(vec![known]);
+        let scout_rows = vec![
+            bare_result("https://example.com/known"), // already in the pool
+            bare_result("https://example.com/fresh"), // new -> keep
+        ];
+        let fresh = drop_known_urls(&data, scout_rows);
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].url, "https://example.com/fresh");
+    }
+
+    #[test]
+    fn prefetch_outcomes_fold_back_into_the_final_pool() {
+        let mut ok = bare_result("https://example.com/ok");
+        ok.markdown = Some("# ok".into());
+        ok.truncated = Some(true);
+        ok.metadata = Some(
+            serde_json::from_value(serde_json::json!({
+                "sourceURL": "https://example.com/ok", "statusCode": 200, "elapsedMs": 1
+            }))
+            .expect("valid metadata"),
+        );
+        let mut failed = bare_result("https://example.com/failed");
+        failed.error = Some("Timeout after 15000ms".into());
+
+        let mut pool = vec![
+            bare_result("https://example.com/ok"),
+            bare_result("https://example.com/failed"),
+            bare_result("https://example.com/fresh"),
+        ];
+        fold_prescraped(&mut pool, &[ok, failed]);
+
+        assert_eq!(pool[0].markdown.as_deref(), Some("# ok"));
+        // A truncated prefetch must not lose its marker on the way through.
+        assert_eq!(pool[0].truncated, Some(true));
+        // A failed prefetch carries its error, which is what makes
+        // `enrich_with_scrape` skip it instead of paying the budget twice.
+        assert!(pool[1].error.is_some() && pool[1].metadata.is_none());
+        // A URL the expansion newly added is untouched and still gets scraped.
+        assert!(pool[2].error.is_none() && pool[2].metadata.is_none());
+    }
+
+    #[test]
+    fn scrape_options_timeout_range_is_validated() {
+        let req = |timeout: Option<u64>| {
+            let json = serde_json::json!({"query": "q", "scrapeOptions": {}});
+            let mut r: SearchRequest = serde_json::from_value(json).expect("valid request");
+            r.scrape_options = Some(scrape_opts(timeout));
+            r
+        };
+        assert!(validate_request(&req(Some(15_000)), 20).is_ok());
+        assert!(validate_request(&req(None), 20).is_ok());
+        assert!(validate_request(&req(Some(0)), 20).is_err());
+        assert!(validate_request(&req(Some(60_001)), 20).is_err());
+    }
 
     fn req(q: &str) -> SearchRequest {
         SearchRequest {
@@ -1426,6 +1709,59 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_malformed_lang() {
+        // `lang` is forwarded as SearXNG's `language`; a backend that builds a
+        // request line from it rather than a URL-encoded parameter would see the
+        // CRLF here as the end of the request line.
+        for bad in [
+            "a\r\nA:1",
+            "en\r\nA:1",
+            "e n",
+            "en;q=1",
+            "../x",
+            "e",
+            "toolongprimary",
+            "en-",
+            "en-toolongsubtag",
+        ] {
+            let mut r = req("rust");
+            r.lang = Some(bad.to_string());
+            assert!(
+                matches!(validate_request(&r, 20), Err(CrwError::InvalidRequest(_))),
+                "accepted malformed lang {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_real_language_tags_and_sentinels() {
+        // Looser than what the Google tier ultimately sends — the public contract
+        // is a language tag, and `auto`/`all` are documented values, so rejecting
+        // any of these would be a 400 for a legitimate caller.
+        for good in [
+            "en",
+            "pt-BR",
+            "zh-Hans-CN",
+            "nb-NO",
+            "auto",
+            "all",
+            "en-US",
+            // Real tags whose tail is not language-region: a Latin-American
+            // Spanish region code and a BCP-47 extension singleton.
+            "es-419",
+            "en-u-ca",
+            "",
+        ] {
+            let mut r = req("rust");
+            r.lang = Some(good.to_string());
+            assert!(
+                validate_request(&r, 20).is_ok(),
+                "rejected valid lang {good:?}"
+            );
+        }
+    }
+
+    #[test]
     fn map_search_error_timeout_to_timeout() {
         assert!(matches!(
             map_search_error(SearchError::Timeout, 7500, "http://searxng:8080"),
@@ -1446,19 +1782,27 @@ mod tests {
     }
 
     #[test]
-    fn map_search_error_transport_names_sanitized_host() {
-        // issue #90: the unreachable error must name the configured host so the
-        // operator knows *what* failed — but origin-only, never the raw URL.
+    fn map_search_error_transport_names_no_host() {
+        // The unreachable error keeps the transport reason for the caller and
+        // nothing about the backend: no host, no userinfo, no path token. The
+        // operator gets the sanitized origin from the log line instead.
         let err = SearchError::Transport("dns error: failed to lookup address".into());
         let mapped = map_search_error(err, 5000, "https://user:pass@searxng:8080/tok?k=v");
+        // Our search backend being down is not the caller's fault: a 5xx, never
+        // `TargetUnreachable` (422, "you handed us a dead target").
         match mapped {
-            CrwError::TargetUnreachable(msg) => {
-                assert!(msg.contains("https://searxng:8080"), "{msg}");
+            CrwError::HttpError(msg) => {
+                assert!(msg.contains("dns error"), "{msg}");
+                assert!(
+                    !msg.contains("://"),
+                    "must not name the backend origin: {msg}"
+                );
+                assert!(!msg.contains("8080"), "must not leak the port: {msg}");
                 assert!(!msg.contains("user"), "must not leak userinfo: {msg}");
                 assert!(!msg.contains("pass"), "must not leak credentials: {msg}");
                 assert!(!msg.contains("tok"), "must not leak path token: {msg}");
             }
-            other => panic!("expected TargetUnreachable, got {other:?}"),
+            other => panic!("expected HttpError, got {other:?}"),
         }
     }
 

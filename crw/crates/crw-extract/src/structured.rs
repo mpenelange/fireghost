@@ -45,6 +45,8 @@ fn shared_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(LLM_REQUEST_TIMEOUT)
+            // A BYOK base URL is validated before use; a redirect must not undo it.
+            .redirect(crw_core::url_safety::safe_redirect_policy())
             .build()
             .unwrap_or_default()
     })
@@ -238,19 +240,28 @@ pub(crate) async fn call_anthropic(
     };
 
     let client = shared_client();
-    let resp = client
-        .post(&url)
-        .header("x-api-key", &llm.api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| CrwError::ExtractionError(format!("Anthropic API request failed: {e}")))?;
+    let resp = crate::llm::send_provider_post(
+        client
+            .post(&url)
+            .header("x-api-key", &llm.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body),
+    )
+    .await
+    .map_err(|e| {
+        CrwError::ExtractionError(format!(
+            "Anthropic API request failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
 
     let status = resp.status();
     let text = resp.text().await.map_err(|e| {
-        CrwError::ExtractionError(format!("Failed to read Anthropic response: {e}"))
+        CrwError::ExtractionError(format!(
+            "Failed to read Anthropic response: {}",
+            crw_core::error::reqwest_message(e)
+        ))
     })?;
 
     if !status.is_success() {
@@ -480,20 +491,28 @@ pub(crate) async fn call_openai(
     };
 
     let client = shared_client();
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", llm.api_key))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| CrwError::ExtractionError(format!("OpenAI API request failed: {e}")))?;
+    let resp = crate::llm::send_provider_post(
+        client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", llm.api_key))
+            .header("content-type", "application/json")
+            .json(&body),
+    )
+    .await
+    .map_err(|e| {
+        CrwError::ExtractionError(format!(
+            "OpenAI API request failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
 
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| CrwError::ExtractionError(format!("Failed to read OpenAI response: {e}")))?;
+    let text = resp.text().await.map_err(|e| {
+        CrwError::ExtractionError(format!(
+            "Failed to read OpenAI response: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
 
     if !status.is_success() {
         return Err(CrwError::ExtractionError(format!(
@@ -640,6 +659,43 @@ mod tests {
         let err = validate_against_schema(&value, &schema).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("schema validation"), "got: {msg}");
+    }
+
+    /// jsonschema 0.48.1 fixed an upstream bug where `required` errors went
+    /// missing from `evaluate()` on a schema pairing `properties` with a
+    /// TWO-entry `required` array. Before that fix an LLM could omit a required
+    /// field and still validate clean, so the caller got a silently incomplete
+    /// extraction. This pins the exact shape, since the single-entry case above
+    /// never reproduced it.
+    #[test]
+    fn test_validate_against_schema_missing_one_of_two_required() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "email": { "type": "string" }
+            },
+            "required": ["name", "email"]
+        });
+
+        // Second of the two missing.
+        let err = validate_against_schema(&json!({ "name": "Alice" }), &schema).unwrap_err();
+        assert!(
+            err.to_string().contains("schema validation"),
+            "missing `email` must fail, got: {err}"
+        );
+
+        // First of the two missing.
+        let err = validate_against_schema(&json!({ "email": "a@b.c" }), &schema).unwrap_err();
+        assert!(
+            err.to_string().contains("schema validation"),
+            "missing `name` must fail, got: {err}"
+        );
+
+        // Both present still passes, so the guard is not over-rejecting.
+        assert!(
+            validate_against_schema(&json!({ "name": "Alice", "email": "a@b.c" }), &schema).is_ok()
+        );
     }
 
     #[test]

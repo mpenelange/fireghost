@@ -94,6 +94,11 @@ pub mod summary;
 /// Options for the high-level extraction pipeline.
 pub struct ExtractOptions<'a> {
     pub raw_html: &'a str,
+    /// Declared response content type, e.g. `Some("text/plain")`. `None` when
+    /// unknown. Used to decide whether `raw_html` is safe to run through an
+    /// HTML parser / HTML-to-markdown converter at all — see
+    /// `crw_core::is_html_like_content_type`.
+    pub content_type: Option<&'a str>,
     pub source_url: &'a str,
     pub status_code: u16,
     pub rendered_with: Option<String>,
@@ -150,6 +155,7 @@ pub struct ExtractOptions<'a> {
 /// existing borrow-caller keeps compiling; this is purely additive.
 pub struct OwnedExtractInput {
     pub raw_html: String,
+    pub content_type: Option<String>,
     pub source_url: String,
     pub status_code: u16,
     pub rendered_with: Option<String>,
@@ -185,6 +191,7 @@ impl OwnedExtractInput {
     pub fn as_opts(&self) -> ExtractOptions<'_> {
         ExtractOptions {
             raw_html: &self.raw_html,
+            content_type: self.content_type.as_deref(),
             source_url: &self.source_url,
             status_code: self.status_code,
             rendered_with: self.rendered_with.clone(),
@@ -295,78 +302,6 @@ fn lookup_domain_selector(source_url: &str, map: &HashMap<String, String>) -> Op
     map.get(&host).cloned()
 }
 
-#[cfg(test)]
-mod private_tests {
-    use super::*;
-    use crw_core::types::CapturedNetworkResponse;
-
-    #[test]
-    fn domain_selector_matches_exact_host() {
-        let mut map = HashMap::new();
-        map.insert("news.example.com".to_string(), ".article".to_string());
-        let got = lookup_domain_selector("https://news.example.com/p/42", &map);
-        assert_eq!(got.as_deref(), Some(".article"));
-    }
-
-    #[test]
-    fn domain_selector_misses_on_other_host() {
-        let mut map = HashMap::new();
-        map.insert("news.example.com".to_string(), ".article".to_string());
-        let got = lookup_domain_selector("https://other.example.com/p/42", &map);
-        assert!(got.is_none());
-    }
-
-    #[test]
-    fn domain_selector_empty_map_returns_none() {
-        let map = HashMap::new();
-        assert!(lookup_domain_selector("https://x.example.com/", &map).is_none());
-    }
-
-    #[test]
-    fn xhr_extract_returns_none_for_empty_input() {
-        assert!(extract_xhr_text(&[]).is_none());
-    }
-
-    #[test]
-    fn xhr_extract_collects_long_string_fields() {
-        let body = serde_json::json!({
-            "title": "short",
-            "body": "a".repeat(300),
-            "meta": { "summary": "b".repeat(200) },
-            "tags": ["c".repeat(150), "short"],
-            "url": "https://example.com/should/skip",
-        })
-        .to_string();
-        let resp = vec![CapturedNetworkResponse {
-            url: "https://api.example.com/article/1".to_string(),
-            request_id: "1".to_string(),
-            status: 200,
-            mime_type: Some("application/json".to_string()),
-            body: Some(body),
-            body_size_bytes: 800,
-        }];
-        let got = extract_xhr_text(&resp).expect("expected long-text fields");
-        assert!(got.contains(&"a".repeat(300)));
-        assert!(got.contains(&"b".repeat(200)));
-        assert!(got.contains(&"c".repeat(150)));
-        assert!(!got.contains("short"));
-        assert!(!got.contains("example.com/should/skip"));
-    }
-
-    #[test]
-    fn xhr_extract_skips_invalid_json() {
-        let resp = vec![CapturedNetworkResponse {
-            url: "x".into(),
-            request_id: "1".into(),
-            status: 200,
-            mime_type: Some("application/json".into()),
-            body: Some("not json".into()),
-            body_size_bytes: 8,
-        }];
-        assert!(extract_xhr_text(&resp).is_none());
-    }
-}
-
 /// Decode the small set of HTML entities that commonly appear in `<meta>`
 /// `content` attributes. We don't pull in a full entity decoder because the
 /// metadata path only sees author-curated short text, and the long tail of
@@ -455,6 +390,7 @@ static TRAILING_LIST_ITEM: once_cell::sync::Lazy<regex::Regex> = once_cell::sync
 pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
     let ExtractOptions {
         raw_html,
+        content_type,
         source_url,
         status_code,
         rendered_with,
@@ -493,35 +429,53 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
         };
     let css_selector = css_selector.or(domain_selector_owned.as_deref());
 
+    // A declared non-HTML content type (text/plain, application/json, ...)
+    // means `raw_html` is NOT markup — it is the literal response body. The
+    // HTTP tier decodes every non-PDF response through this same pipeline
+    // regardless of its declared type, so running html5ever + the HTML-to-
+    // markdown converter over it corrupts the body: htmd escapes any
+    // markdown-metacharacter byte (backticks, `#`, `*`, ...) it finds in a
+    // "text node" and HTML's whitespace-collapse rules merge newlines into
+    // spaces, destroying fenced code blocks and paragraph structure. Skip the
+    // HTML pipeline entirely and treat the body as already-final text.
+    let treat_as_plain = !crw_core::is_html_like_content_type(content_type);
+
     // Step 1: Extract metadata from raw HTML.
     let meta = readability::extract_metadata(raw_html);
 
-    // Step 2: Clean HTML (remove boilerplate, nav, ads, etc.).
-    let cleaned = clean::clean_html(raw_html, only_main_content, include_tags, exclude_tags)
-        .unwrap_or_else(|_| raw_html.to_string());
-
-    // Step 3: Apply CSS/XPath selector if provided (narrows to a specific element).
-    let selected_html = apply_selector(&cleaned, css_selector, xpath)?;
-    let after_selection = selected_html.as_deref().unwrap_or(&cleaned);
-
-    // Step 4: If only_main_content, try to narrow further with readability scoring.
-    let (content_html, cleaned_ref) = if only_main_content && selected_html.is_none() {
-        match readability::extract_main_content_with_provenance(after_selection) {
-            readability::ReadabilityOutcome::Selected { html: main, .. } => {
-                // Re-clean: readability may have selected a broad container
-                // (e.g. <article>) that still contains noise elements
-                // (infobox, navbox, catlinks, etc.).
-                let re_cleaned = clean::clean_html(&main, true, &[], &[]).unwrap_or(main);
-                (re_cleaned, Some(cleaned))
-            }
-            readability::ReadabilityOutcome::Rejected { .. } => {
-                // Listing root or empty body — skip readability and let the
-                // alternates ladder pick from cleaned / basic-clean.
-                (cleaned.clone(), Some(cleaned))
-            }
-        }
+    // Steps 2-4 (clean / selector / readability narrowing) only make sense on
+    // real markup. For a non-HTML body, `raw_html` already IS the content.
+    let (content_html, cleaned_ref, selected_html) = if treat_as_plain {
+        (raw_html.to_string(), None, None)
     } else {
-        (after_selection.to_string(), None)
+        // Step 2: Clean HTML (remove boilerplate, nav, ads, etc.).
+        let cleaned = clean::clean_html(raw_html, only_main_content, include_tags, exclude_tags)
+            .unwrap_or_else(|_| raw_html.to_string());
+
+        // Step 3: Apply CSS/XPath selector if provided (narrows to a specific element).
+        let selected_html = apply_selector(&cleaned, css_selector, xpath)?;
+        let after_selection = selected_html.as_deref().unwrap_or(&cleaned);
+
+        // Step 4: If only_main_content, try to narrow further with readability scoring.
+        let (content_html, cleaned_ref) = if only_main_content && selected_html.is_none() {
+            match readability::extract_main_content_with_provenance(after_selection) {
+                readability::ReadabilityOutcome::Selected { html: main, .. } => {
+                    // Re-clean: readability may have selected a broad container
+                    // (e.g. <article>) that still contains noise elements
+                    // (infobox, navbox, catlinks, etc.).
+                    let re_cleaned = clean::clean_html(&main, true, &[], &[]).unwrap_or(main);
+                    (re_cleaned, Some(cleaned))
+                }
+                readability::ReadabilityOutcome::Rejected { .. } => {
+                    // Listing root or empty body — skip readability and let the
+                    // alternates ladder pick from cleaned / basic-clean.
+                    (cleaned.clone(), Some(cleaned))
+                }
+            }
+        } else {
+            (after_selection.to_string(), None)
+        };
+        (content_html, cleaned_ref, selected_html)
     };
 
     // Step 5: Produce requested formats. `Summary` also needs markdown
@@ -531,99 +485,129 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
         || formats.contains(&OutputFormat::Json)
         || formats.contains(&OutputFormat::Summary)
     {
-        let primary_md = markdown::html_to_markdown(&content_html);
-        let primary_quality = quality::analyze_md_only(&primary_md);
-
-        // Skip alternates when a selector was explicitly used (short output is
-        // intentional) or when the primary extraction is healthy.
-        // Threshold 0.4 (not 0.6) — readability output that scores 0.4+ is
-        // good enough; running alternates on it tends to swap in basic_clean
-        // (whole-body) which boosts word count but reintroduces nav noise.
-        if selected_html.is_some() || primary_quality.score > 0.4 {
-            Some(primary_md)
+        if treat_as_plain {
+            // Not HTML — `content_html` (== raw_html) is already the final body.
+            Some(content_html.clone())
         } else {
-            let mut candidates: Vec<(&'static str, String, quality::Quality)> = Vec::new();
+            let primary_md = markdown::html_to_markdown(&content_html);
+            let primary_quality = quality::analyze_md_only(&primary_md);
 
-            // Alt 1: cleaned HTML (only_main_content path bypasses readability).
-            if only_main_content && let Some(c) = cleaned_ref.as_ref() {
-                let m = markdown::html_to_markdown(c);
-                let q = quality::analyze_md_only(&m);
-                candidates.push(("cleaned", m, q));
-            }
+            // Skip alternates when a selector was explicitly used (short output is
+            // intentional) or when the primary extraction is healthy.
+            // Threshold 0.4 (not 0.6) — readability output that scores 0.4+ is
+            // good enough; running alternates on it tends to swap in basic_clean
+            // (whole-body) which boosts word count but reintroduces nav noise.
+            if selected_html.is_some() || primary_quality.score > 0.4 {
+                Some(primary_md)
+            } else {
+                let mut candidates: Vec<(&'static str, String, quality::Quality)> = Vec::new();
 
-            // Alt 2: basic clean without only_main_content (no readability narrowing).
-            let basic_cleaned = clean::clean_html(raw_html, false, include_tags, exclude_tags)
-                .unwrap_or_else(|_| raw_html.to_string());
-            let basic_md = markdown::html_to_markdown(&basic_cleaned);
-            let basic_q = quality::analyze_md_only(&basic_md);
-            candidates.push(("basic_clean", basic_md, basic_q));
-
-            // Alt 3: structural table/list extraction from raw HTML.
-            if let Some(structural) = extract_tables_and_lists(raw_html) {
-                let q = quality::analyze_md_only(&structural);
-                candidates.push(("structural", structural, q));
-            }
-
-            // Alt 4: XHR/fetch JSON capture — recursively walk every captured
-            // JSON body and gather long text fields. Useful when the article
-            // body lives in an API response loaded after `loadEventFired`
-            // (newsroom feeds, infinite-scroll, paywall-shielded prose).
-            if let Some(xhr_md) = extract_xhr_text(captured_responses) {
-                let q = quality::analyze_md_only(&xhr_md);
-                candidates.push(("xhr_json", xhr_md, q));
-            }
-
-            // Alt 5: plaintext fallback.
-            let plain_md = {
-                let text = plaintext::html_to_plaintext(&content_html);
-                if text.trim().is_empty() {
-                    plaintext::html_to_plaintext(&basic_cleaned)
-                } else {
-                    text
+                // Alt 1: cleaned HTML (only_main_content path bypasses readability).
+                if only_main_content && let Some(c) = cleaned_ref.as_ref() {
+                    let m = markdown::html_to_markdown(c);
+                    let q = quality::analyze_md_only(&m);
+                    candidates.push(("cleaned", m, q));
                 }
-            };
-            let plain_q = quality::analyze_md_only(&plain_md);
-            candidates.push(("plaintext", plain_md, plain_q));
 
-            // Include the primary at the head of the candidate list.
-            candidates.insert(0, ("primary", primary_md, primary_quality));
+                // Alt 2: basic clean without only_main_content (no readability narrowing).
+                let basic_cleaned = clean::clean_html(raw_html, false, include_tags, exclude_tags)
+                    .unwrap_or_else(|_| raw_html.to_string());
+                let basic_md = markdown::html_to_markdown(&basic_cleaned);
+                let basic_q = quality::analyze_md_only(&basic_md);
+                candidates.push(("basic_clean", basic_md, basic_q));
 
-            // Primary-biased pick: keep primary unless an alternate beats it by
-            // a clear margin (0.15). Without this margin, basic_clean tends to
-            // win simply by including more nav/footer words, which boosts its
-            // word count but reintroduces noise the readability primary had
-            // correctly excluded.
-            const PRIMARY_MARGIN: f32 = 0.15;
-            let primary_score = candidates[0].2.score;
-            let chosen_idx = candidates
-                .iter()
-                .enumerate()
-                .skip(1)
-                .filter(|(_, c)| c.2.score >= primary_score + PRIMARY_MARGIN)
-                .max_by(|(_, a), (_, b)| {
-                    a.2.score
-                        .partial_cmp(&b.2.score)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then(a.2.bytes.cmp(&b.2.bytes))
-                })
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                // Alt 4: XHR/fetch JSON capture — recursively walk every captured
+                // JSON body and gather long text fields. Useful when the article
+                // body lives in an API response loaded after `loadEventFired`
+                // (newsroom feeds, infinite-scroll, paywall-shielded prose).
+                if let Some(xhr_md) = extract_xhr_text(captured_responses) {
+                    let q = quality::analyze_md_only(&xhr_md);
+                    candidates.push(("xhr_json", xhr_md, q));
+                }
 
-            let names: Vec<&'static str> = candidates.iter().map(|c| c.0).collect();
-            let scores: Vec<f32> = candidates.iter().map(|c| c.2.score).collect();
-            let chosen_name = candidates[chosen_idx].0;
-            tracing::debug!(
-                strategies = ?names,
-                scores = ?scores,
-                chosen = %chosen_name,
-                "quality-selected markdown extraction"
-            );
+                // Alt 5: plaintext fallback.
+                let plain_md = {
+                    let text = plaintext::html_to_plaintext(&content_html);
+                    if text.trim().is_empty() {
+                        plaintext::html_to_plaintext(&basic_cleaned)
+                    } else {
+                        text
+                    }
+                };
+                let plain_q = quality::analyze_md_only(&plain_md);
+                candidates.push(("plaintext", plain_md, plain_q));
 
-            Some(candidates.swap_remove(chosen_idx).1)
+                // Include the primary at the head of the candidate list.
+                candidates.insert(0, ("primary", primary_md, primary_quality));
+
+                // Primary-biased pick: keep primary unless an alternate beats it by
+                // a clear margin (0.15). Without this margin, basic_clean tends to
+                // win simply by including more nav/footer words, which boosts its
+                // word count but reintroduces noise the readability primary had
+                // correctly excluded.
+                const PRIMARY_MARGIN: f32 = 0.15;
+                let primary_score = candidates[0].2.score;
+                let chosen_idx = candidates
+                    .iter()
+                    .enumerate()
+                    .skip(1)
+                    .filter(|(_, c)| c.2.score >= primary_score + PRIMARY_MARGIN)
+                    .max_by(|(_, a), (_, b)| {
+                        a.2.score
+                            .partial_cmp(&b.2.score)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(a.2.bytes.cmp(&b.2.bytes))
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+
+                let names: Vec<&'static str> = candidates.iter().map(|c| c.0).collect();
+                let scores: Vec<f32> = candidates.iter().map(|c| c.2.score).collect();
+                let chosen_name = candidates[chosen_idx].0;
+                tracing::debug!(
+                    strategies = ?names,
+                    scores = ?scores,
+                    chosen = %chosen_name,
+                    "quality-selected markdown extraction"
+                );
+
+                Some(candidates.swap_remove(chosen_idx).1)
+            }
         }
     } else {
         None
     };
+
+    // Collapse the repeated navigation a responsive template ships — a mobile
+    // copy, a desktop copy, one per dropdown. Applied after the candidate is
+    // chosen, so scoring (and therefore which candidate wins) is unaffected.
+    // Skipped without `onlyMainContent`: there the caller asked for the
+    // document as it is. Skipped for a non-HTML body too: it is already final
+    // text, and a README's table of contents is not site navigation.
+    let md = md.map(|m| {
+        if only_main_content && !treat_as_plain {
+            let m = markdown::drop_repeated_nav_lines(&m);
+            // `drop_repeated_nav_lines` only catches a menu that a responsive
+            // template rendered more than once. A menu rendered once survives
+            // it, and the class-name rules in `clean` miss it whenever the site
+            // does not name the container (`nav`, `sidebar`, …). What is left
+            // is a run of short lines that are nothing but a link, which is the
+            // same shape in every language. Drop those too, unless too little
+            // text would survive — then the links are the page.
+            //
+            // Never when the caller narrowed the page themselves: asking for
+            // `includeTags: ["nav"]` and getting the nav removed would be
+            // absurd, and a `css_selector` means they already said what they
+            // want.
+            if user_selected || !include_tags.is_empty() {
+                m
+            } else {
+                quality::strip_nav_lines(&m).unwrap_or(m)
+            }
+        } else {
+            m
+        }
+    });
 
     // News/blog templates frequently render the article H1 inside a `<header>`
     // sibling of the scored container, so readability drops it. Prepend the
@@ -631,7 +615,10 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
     // present in the markdown — otherwise downstream recall scoring loses the
     // most important phrase on the page (the title itself).
     let md = md.map(|m| {
-        if user_selected {
+        // Not HTML: there is no real `<title>`/`og:title` to prepend — any match
+        // `extract_metadata` found is a false positive off a stray HTML-looking
+        // snippet inside the plain-text body itself.
+        if user_selected || treat_as_plain {
             return m;
         }
         let title = meta
@@ -689,7 +676,8 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
     // is already substantial, the description is short or already present,
     // or it duplicates the page title.
     let md = md.map(|m| {
-        if user_selected {
+        // Not HTML: same false-positive-metadata reasoning as the title prepend.
+        if user_selected || treat_as_plain {
             return m;
         }
         if m.len() >= 1500 {
@@ -764,10 +752,20 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
     // Two passes: 1) NBSP → space (lossless: markdown has no NBSP semantics),
     // 2) collapse a blank line that sits between `, : )` punctuation and the
     // next inline link or comma-continuation paragraph.
-    let md = md.map(reflow_inline_lists);
+    let md = md.map(|m| {
+        if treat_as_plain {
+            m
+        } else {
+            reflow_inline_lists(m)
+        }
+    });
 
     let plain = if formats.contains(&OutputFormat::PlainText) {
-        Some(plaintext::html_to_plaintext(&content_html))
+        Some(if treat_as_plain {
+            content_html.clone()
+        } else {
+            plaintext::html_to_plaintext(&content_html)
+        })
     } else {
         None
     };
@@ -893,6 +891,8 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
         change_tracking: None,
         // Anti-bot verdict is stamped post-extract at the scrape choke.
         block: None,
+        // Copied post-extract from FetchResult.truncated, same as content_type.
+        truncated: false,
     })
 }
 
@@ -925,15 +925,6 @@ fn apply_selector(html: &str, css: Option<&str>, xpath: Option<&str>) -> CrwResu
     Ok(None)
 }
 
-/// Walk the raw HTML for substantial `<table>` (≥2 data rows) and
-/// `<ul>/<ol>` (≥5 items) elements, render each to markdown, and return
-/// the concatenation. Returns `None` if no qualifying structure is found.
-///
-/// This exists as a last-ditch fallback: readability and the htmd-on-cleaned
-/// path treat tabular and list-only pages (county finance reports, job
-/// listings, niche product catalogs) as navigation noise. By pulling those
-/// structures out of the raw DOM we surface real content that would
-/// otherwise be reported as thin.
 /// Walk the captured XHR/fetch JSON responses and harvest long text fields.
 /// Each response is parsed as JSON; every string value with at least
 /// `MIN_FIELD_LEN` characters is appended (deduplicated). Returned as a
@@ -1003,95 +994,74 @@ fn walk_json_strings(value: &serde_json::Value, on_string: &mut dyn FnMut(&str))
     }
 }
 
-fn extract_tables_and_lists(html: &str) -> Option<String> {
-    use scraper::{Html, Selector};
-
-    let doc = Html::parse_document(html);
-    let table_sel = Selector::parse("table").ok()?;
-    let list_sel = Selector::parse("ul, ol").ok()?;
-    let row_sel = Selector::parse("tr").ok()?;
-    let item_sel = Selector::parse("li").ok()?;
-
-    let mut chunks: Vec<String> = Vec::new();
-
-    for table in doc.select(&table_sel) {
-        if table.select(&row_sel).count() < 2 {
-            continue;
-        }
-        let html_chunk = table.html();
-        let md = markdown::html_to_markdown(&html_chunk);
-        if md.trim().len() >= 40 {
-            chunks.push(md);
-        }
-    }
-
-    for list in doc.select(&list_sel) {
-        if list.select(&item_sel).count() < 5 {
-            continue;
-        }
-        // Skip nav/footer lists — those are usually identifiable by ancestor
-        // tag and would otherwise drown out real content.
-        let in_nav = list
-            .ancestors()
-            .filter_map(scraper::ElementRef::wrap)
-            .any(|el| {
-                let n = el.value().name();
-                n == "nav" || n == "footer" || n == "header"
-            });
-        if in_nav {
-            continue;
-        }
-        let html_chunk = list.html();
-        let md = markdown::html_to_markdown(&html_chunk);
-        if md.trim().len() >= 40 {
-            chunks.push(md);
-        }
-    }
-
-    if chunks.is_empty() {
-        return None;
-    }
-    Some(chunks.join("\n\n"))
-}
-
 #[cfg(test)]
-mod table_list_fallback_tests {
+mod private_tests {
     use super::*;
+    use crw_core::types::CapturedNetworkResponse;
 
     #[test]
-    fn extracts_two_row_table() {
-        let html = "<html><body><nav>x</nav><table>\
-            <tr><th>Name</th><th>Value</th></tr>\
-            <tr><td>Alpha</td><td>1</td></tr>\
-            <tr><td>Bravo</td><td>2</td></tr>\
-            </table></body></html>";
-        let md = extract_tables_and_lists(html).expect("table should extract");
-        assert!(md.contains("Alpha"));
-        assert!(md.contains("Bravo"));
+    fn domain_selector_matches_exact_host() {
+        let mut map = HashMap::new();
+        map.insert("news.example.com".to_string(), ".article".to_string());
+        let got = lookup_domain_selector("https://news.example.com/p/42", &map);
+        assert_eq!(got.as_deref(), Some(".article"));
     }
 
     #[test]
-    fn skips_short_table() {
-        let html = "<table><tr><td>only</td></tr></table>";
-        assert!(extract_tables_and_lists(html).is_none());
+    fn domain_selector_misses_on_other_host() {
+        let mut map = HashMap::new();
+        map.insert("news.example.com".to_string(), ".article".to_string());
+        let got = lookup_domain_selector("https://other.example.com/p/42", &map);
+        assert!(got.is_none());
     }
 
     #[test]
-    fn skips_nav_list() {
-        let html = "<nav><ul>\
-            <li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>f</li>\
-            </ul></nav>";
-        assert!(extract_tables_and_lists(html).is_none());
+    fn domain_selector_empty_map_returns_none() {
+        let map = HashMap::new();
+        assert!(lookup_domain_selector("https://x.example.com/", &map).is_none());
     }
 
     #[test]
-    fn extracts_long_list() {
-        let html = "<main><ul>\
-            <li>Job A</li><li>Job B</li><li>Job C</li>\
-            <li>Job D</li><li>Job E</li><li>Job F</li>\
-            </ul></main>";
-        let md = extract_tables_and_lists(html).expect("list should extract");
-        assert!(md.contains("Job A"));
-        assert!(md.contains("Job F"));
+    fn xhr_extract_returns_none_for_empty_input() {
+        assert!(extract_xhr_text(&[]).is_none());
+    }
+
+    #[test]
+    fn xhr_extract_collects_long_string_fields() {
+        let body = serde_json::json!({
+            "title": "short",
+            "body": "a".repeat(300),
+            "meta": { "summary": "b".repeat(200) },
+            "tags": ["c".repeat(150), "short"],
+            "url": "https://example.com/should/skip",
+        })
+        .to_string();
+        let resp = vec![CapturedNetworkResponse {
+            url: "https://api.example.com/article/1".to_string(),
+            request_id: "1".to_string(),
+            status: 200,
+            mime_type: Some("application/json".to_string()),
+            body: Some(body),
+            body_size_bytes: 800,
+        }];
+        let got = extract_xhr_text(&resp).expect("expected long-text fields");
+        assert!(got.contains(&"a".repeat(300)));
+        assert!(got.contains(&"b".repeat(200)));
+        assert!(got.contains(&"c".repeat(150)));
+        assert!(!got.contains("short"));
+        assert!(!got.contains("example.com/should/skip"));
+    }
+
+    #[test]
+    fn xhr_extract_skips_invalid_json() {
+        let resp = vec![CapturedNetworkResponse {
+            url: "x".into(),
+            request_id: "1".into(),
+            status: 200,
+            mime_type: Some("application/json".into()),
+            body: Some("not json".into()),
+            body_size_bytes: 8,
+        }];
+        assert!(extract_xhr_text(&resp).is_none());
     }
 }

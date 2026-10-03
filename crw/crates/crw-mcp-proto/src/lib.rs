@@ -114,8 +114,8 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
                     },
                     "renderer": {
                         "type": "string",
-                        "enum": ["auto", "lightpanda", "camofox"],
-                        "description": "Pin renderer; non-auto hard-pins and implies renderJs:true (default auto)"
+                        "enum": ["auto", "lightpanda", "camofox", "impersonated-http"],
+                        "description": "Pin renderer; browser tiers hard-pin and imply renderJs:true (default auto). 'impersonated-http' is JS-less Chrome-TLS impersonation, never renderJs."
                     }
                 },
                 "required": ["url"]
@@ -163,8 +163,8 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
                     },
                     "renderer": {
                         "type": "string",
-                        "enum": ["auto", "lightpanda", "camofox"],
-                        "description": "Pin renderer; non-auto hard-pins and implies renderJs:true (default auto)"
+                        "enum": ["auto", "lightpanda", "camofox", "impersonated-http"],
+                        "description": "Pin renderer; browser tiers hard-pin and imply renderJs:true (default auto). 'impersonated-http' is JS-less Chrome-TLS impersonation, never renderJs."
                     }
                 },
                 "required": ["url"]
@@ -301,6 +301,10 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
                         "onlyMainContent": {
                             "type": "boolean",
                             "description": "Strip nav/footer/ads (default true)"
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "ms, max 60000"
                         }
                     }
                 },
@@ -617,21 +621,35 @@ fn bound_map_links(value: &mut Value, limit: usize) {
     }) else {
         return;
     };
-    let Some(total) = container
+    let total = container
         .get("links")
         .and_then(Value::as_array)
-        .map(Vec::len)
-    else {
-        return;
-    };
-    if total <= limit {
+        .map(Vec::len);
+    // `sitemaps` shares this bound: a site with a deep sitemap index can list
+    // thousands of them, and letting that through unbounded would defeat the
+    // whole point of capping `links` for the model's context.
+    let total_sitemaps = container
+        .get("sitemaps")
+        .and_then(Value::as_array)
+        .map(Vec::len);
+    let links_over = total.is_some_and(|t| t > limit);
+    let sitemaps_over = total_sitemaps.is_some_and(|t| t > limit);
+    if !links_over && !sitemaps_over {
         return;
     }
     if let Some(obj) = container.as_object_mut() {
-        if let Some(Value::Array(links)) = obj.get_mut("links") {
-            links.truncate(limit);
+        if links_over {
+            if let Some(Value::Array(links)) = obj.get_mut("links") {
+                links.truncate(limit);
+            }
+            obj.insert("totalDiscovered".to_string(), json!(total));
         }
-        obj.insert("totalDiscovered".to_string(), json!(total));
+        if sitemaps_over {
+            if let Some(Value::Array(sitemaps)) = obj.get_mut("sitemaps") {
+                sitemaps.truncate(limit);
+            }
+            obj.insert("totalSitemaps".to_string(), json!(total_sitemaps));
+        }
         obj.insert("truncated".to_string(), Value::Bool(true));
     }
 }
@@ -782,11 +800,11 @@ mod tests {
     /// rejected to keep this leaf crate dependency-free; the conservative estimate
     /// is sufficient for a regression gate. Real cl100k count is ~25–30% lower.
     ///
-    /// Baseline before the Phase 1 trim was 8233 bytes (~2744 est-tok). After the
-    /// Phase 1 trim + Phase 3 annotations/titles the full 6-tool list is ~6189 bytes
-    /// (~2063 est-tok ≈ ~1450 real cl100k tok). The ceiling is floor + ~11% so the
-    /// gate catches real bloat without churning on minor edits.
-    const TOOLS_LIST_TOKEN_CEILING: usize = 2300;
+    /// Current floor (after impersonated-http renderer and its pin description
+    /// were added to crw_scrape and crw_crawl): ~6893 bytes (~2363 est-tok). The
+    /// ceiling at 2400 is intentionally tight (1.6% above floor) because the tool
+    /// list is weight-optimised; any further growth should be a conscious choice.
+    const TOOLS_LIST_TOKEN_CEILING: usize = 2400;
 
     #[test]
     fn tools_list_token_budget() {
@@ -862,7 +880,12 @@ mod tests {
             .expect("renderer.enum must be an array");
         assert_eq!(
             enum_vals,
-            &vec![json!("auto"), json!("lightpanda"), json!("camofox")]
+            &vec![
+                json!("auto"),
+                json!("lightpanda"),
+                json!("camofox"),
+                json!("impersonated-http")
+            ]
         );
     }
 
@@ -885,10 +908,11 @@ mod tests {
         let enum_vals = props["renderer"]["enum"]
             .as_array()
             .expect("renderer.enum must be an array");
-        assert_eq!(enum_vals.len(), 3);
+        assert_eq!(enum_vals.len(), 4);
         assert!(enum_vals.iter().any(|v| v == "auto"));
         assert!(enum_vals.iter().any(|v| v == "lightpanda"));
         assert!(enum_vals.iter().any(|v| v == "camofox"));
+        assert!(enum_vals.iter().any(|v| v == "impersonated-http"));
     }
 
     #[test]
@@ -1178,6 +1202,27 @@ mod tests {
         assert_eq!(out["links"].as_array().unwrap().len(), DEFAULT_MAP_LIMIT);
         assert_eq!(out["totalDiscovered"], json!(250));
         assert_eq!(out["truncated"], json!(true));
+    }
+
+    /// B5b — the sitemaps list shares the map bound, and a short links list
+    /// does not exempt a long sitemaps list from it.
+    #[test]
+    fn b5b_map_bounds_sitemaps_independently_of_links() {
+        let sitemaps: Vec<Value> = (0..250)
+            .map(|i| json!(format!("https://e.com/sitemap-{i}.xml")))
+            .collect();
+        let value = json!({
+            "success": true,
+            "links": ["https://e.com/"],
+            "sitemaps": sitemaps,
+        });
+        let out = apply_bounds("crw_map", &json!({}), value);
+        assert_eq!(out["sitemaps"].as_array().unwrap().len(), DEFAULT_MAP_LIMIT);
+        assert_eq!(out["totalSitemaps"], json!(250));
+        assert_eq!(out["truncated"], json!(true));
+        // links was under the limit, so it is untouched and unmarked.
+        assert_eq!(out["links"].as_array().unwrap().len(), 1);
+        assert!(out.get("totalDiscovered").is_none());
     }
 
     /// B6 — crw_map `limit: 0` returns all links, no markers.

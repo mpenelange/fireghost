@@ -63,6 +63,12 @@ pub struct V2ScrapeRequest {
     /// Optional explicit renderer pin (crw extension, tolerated alongside v2).
     #[serde(default)]
     pub renderer: Option<RequestedRenderer>,
+    /// JS-rendering preference (crw extension, tolerated alongside v2 — upstream
+    /// Firecrawl has no equivalent). Same semantics as `/v1/scrape`: null =
+    /// auto/server default, true = force JS, false = never reach a browser tier.
+    /// Accepts the snake_case alias for parity with the v1 wire.
+    #[serde(default, alias = "render_js")]
+    pub render_js: Option<bool>,
     /// Firecrawl `parsers` — document parsing directives. Accepts `["pdf"]` or
     /// `[{"type":"pdf","maxPages":N}]`. Omitted = auto-parse PDFs; `[]` = leave
     /// raw. See [`crw_core::types::ParserSpec`].
@@ -105,6 +111,19 @@ pub struct V2ScrapeResponse {
     pub error: Option<String>,
 }
 
+/// Build an `Accept-Language` header value from Firecrawl's `location.languages`
+/// list. Blank entries are dropped; an all-blank or empty list yields `None` so
+/// no header is added. Values are joined as-is (`["en-US","de"]` → `en-US, de`).
+pub(crate) fn accept_language_from(languages: &[String]) -> Option<String> {
+    let joined = languages
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    (!joined.is_empty()).then_some(joined)
+}
+
 /// Resolved proxy tier reported in `metadata.proxyUsed`.
 pub(crate) fn proxy_tier(proxy: &str) -> &'static str {
     if proxy.eq_ignore_ascii_case("stealth") {
@@ -134,6 +153,23 @@ pub(crate) fn to_internal(
         .and_then(|l| l.country.as_ref())
         .map(|c| c.to_lowercase());
 
+    // Firecrawl's `location.languages` becomes an `Accept-Language` header — the
+    // engine has no separate locale knob, and this is what the docs promise. A
+    // caller's own explicit `Accept-Language` always wins, so this only fills a
+    // gap. Takes effect on the HTTP and LightPanda tiers; camofox ignores headers.
+    let mut headers = v2.headers;
+    if let Some(accept_language) = v2
+        .location
+        .as_ref()
+        .and_then(|l| l.languages.as_deref())
+        .and_then(accept_language_from)
+        && !headers
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("accept-language"))
+    {
+        headers.insert("Accept-Language".to_string(), accept_language);
+    }
+
     let req = ScrapeRequest {
         url: v2.url,
         formats: decomposed.formats.clone(),
@@ -141,7 +177,7 @@ pub(crate) fn to_internal(
         include_tags: v2.include_tags,
         exclude_tags: v2.exclude_tags,
         wait_for: v2.wait_for,
-        headers: v2.headers,
+        headers,
         json_schema: decomposed.json_schema.clone(),
         change_tracking: decomposed.change_tracking.clone(),
         country,
@@ -152,6 +188,7 @@ pub(crate) fn to_internal(
         base_url: v2.base_url,
         summary_prompt: v2.summary_prompt,
         renderer,
+        render_js: v2.render_js,
         parsers: v2.parsers,
         ..Default::default()
     };
@@ -211,26 +248,7 @@ pub async fn scrape(
     // is a plain HTTP error, not an anti-bot block. It must short-circuit before
     // the block check so classify()'s StructuralFailure can't mislabel it, and
     // so both API surfaces label the identical page the same way.
-    let status_code = data.metadata.status_code;
-    let http_error = if status_code >= 400 {
-        let body_len = [
-            data.markdown.as_deref(),
-            data.plain_text.as_deref(),
-            data.html.as_deref(),
-            data.raw_html.as_deref(),
-        ]
-        .iter()
-        .filter_map(|opt| opt.map(|t| t.len()))
-        .max()
-        .unwrap_or(0);
-        is_target_http_error(status_code, body_len).then(|| {
-            data.warning
-                .clone()
-                .unwrap_or_else(|| format!("Target returned HTTP {status_code}"))
-        })
-    } else {
-        None
-    };
+    let http_error = data.http_error();
     // Anti-bot verdict from the choke: a blocked page is `success:false` with an
     // error string, matching v1's behaviour. Read before `to_v2_document`
     // consumes `data`.
@@ -238,9 +256,25 @@ pub async fn scrape(
     // gate did not fire. Drop the challenge shell there so the caller gets a
     // clean block instead of the interstitial text as content.
     let is_anti_bot_block = http_error.is_none() && data.block.is_some();
+    // Nothing the caller asked for came back. Same gate as v1, and it has to be
+    // here too: the invariant this whole path is built on is that a URL is not
+    // billed on one surface and refunded on the other, and the SaaS decides that
+    // from `success` alone. Runs last, so a wall or an origin error keeps its own
+    // more specific classification.
+    let no_content =
+        http_error.is_none() && data.block.is_none() && data.has_no_content(&req.formats);
     let (success, error) = match (http_error, data.block.as_ref()) {
         (Some(msg), _) => (false, Some(msg)),
         (None, Some(b)) => (false, Some(b.message())),
+        (None, None) if no_content => (
+            false,
+            Some(
+                data.warning
+                    .clone()
+                    .or_else(|| data.warnings.first().cloned())
+                    .unwrap_or_else(|| "No content could be extracted from the page".to_string()),
+            ),
+        ),
         (None, None) => (true, None),
     };
     let mut data = data;
@@ -272,6 +306,97 @@ pub async fn get_scrape_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn internal(body: serde_json::Value) -> ScrapeRequest {
+        let v2: V2ScrapeRequest = serde_json::from_value(body).unwrap();
+        to_internal(v2).unwrap().0
+    }
+
+    #[test]
+    fn accept_language_from_joins_and_trims() {
+        assert_eq!(
+            accept_language_from(&["en-US".into(), " de ".into()]),
+            Some("en-US, de".to_string())
+        );
+        assert_eq!(accept_language_from(&[]), None);
+        assert_eq!(accept_language_from(&["  ".into()]), None);
+    }
+
+    #[test]
+    fn location_languages_becomes_accept_language() {
+        let req = internal(serde_json::json!({
+            "url": "http://example.com",
+            "location": { "languages": ["de-DE", "en"] },
+        }));
+        assert_eq!(
+            req.headers.get("Accept-Language").map(String::as_str),
+            Some("de-DE, en")
+        );
+    }
+
+    #[test]
+    fn explicit_accept_language_header_wins() {
+        // A caller's own Accept-Language must not be overwritten by languages.
+        let req = internal(serde_json::json!({
+            "url": "http://example.com",
+            "location": { "languages": ["de-DE"] },
+            "headers": { "Accept-Language": "fr-FR" },
+        }));
+        assert_eq!(
+            req.headers.get("Accept-Language").map(String::as_str),
+            Some("fr-FR")
+        );
+    }
+
+    #[test]
+    fn no_languages_adds_no_header() {
+        let req = internal(serde_json::json!({
+            "url": "http://example.com",
+            "location": { "country": "de" },
+        }));
+        assert!(
+            !req.headers
+                .keys()
+                .any(|k| k.eq_ignore_ascii_case("accept-language"))
+        );
+    }
+
+    /// Regression for #346: `renderJs` used to have no field on the v2 wire, so
+    /// the lenient-unknown-fields policy swallowed it and `to_internal` left
+    /// `render_js: None` (auto). With a browser tier configured, auto escalates,
+    /// which made `renderJs:false` indistinguishable from `renderJs:true`.
+    /// Asserted through `to_internal` — deserialization alone would still pass
+    /// if the forwarding line were dropped.
+    #[test]
+    fn v2_scrape_threads_render_js_to_internal() {
+        for (wire, expected) in [
+            (serde_json::json!(false), Some(false)),
+            (serde_json::json!(true), Some(true)),
+        ] {
+            let body = serde_json::json!({ "url": "http://example.com", "renderJs": wire });
+            let v2: V2ScrapeRequest = serde_json::from_value(body).unwrap();
+            let (req, _, _) = to_internal(v2).unwrap();
+            assert_eq!(req.render_js, expected, "renderJs {wire} must survive");
+        }
+    }
+
+    #[test]
+    fn v2_scrape_render_js_snake_case_alias() {
+        let body = serde_json::json!({ "url": "http://example.com", "render_js": false });
+        let v2: V2ScrapeRequest = serde_json::from_value(body).unwrap();
+        let (req, _, _) = to_internal(v2).unwrap();
+        assert_eq!(req.render_js, Some(false));
+    }
+
+    #[test]
+    fn v2_scrape_omitted_render_js_stays_none() {
+        // Absent must remain None so the server's render_js_default still
+        // applies — omitting the field is not the same as sending false.
+        let body = serde_json::json!({ "url": "http://example.com" });
+        let v2: V2ScrapeRequest = serde_json::from_value(body).unwrap();
+        let (req, _, _) = to_internal(v2).unwrap();
+        assert_eq!(req.render_js, None);
+    }
 
     fn minimal_doc() -> V2Document {
         use crw_core::types::{PageMetadata, ScrapeData};
@@ -309,6 +434,7 @@ mod tests {
             content_type: Some("text/html".into()),
             change_tracking: None,
             block: None,
+            truncated: false,
         };
         to_v2_document(data, "basic", "id".into())
     }

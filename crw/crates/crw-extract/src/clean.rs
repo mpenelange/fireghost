@@ -1,4 +1,9 @@
+use lol_html::html_content::UserData;
 use lol_html::{RewriteStrSettings, element, rewrite_str};
+
+/// Marker for `<header>`/`<aside>` nested inside `<main>`/`<article>`, which
+/// are article furniture rather than site chrome and must survive cleaning.
+const KEEP_NESTED: u8 = 1;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 
@@ -12,6 +17,12 @@ pub fn clean_html(
 ) -> Result<String, String> {
     // Phase 1: lol_html streaming removal of always-unwanted tags.
     let mut handlers = vec![
+        // <head> carries <title>/<meta>, which htmd would otherwise render as
+        // a bare text line at the top of the markdown, duplicating the H1.
+        element!("head", |el| {
+            el.remove();
+            Ok(())
+        }),
         element!("script", |el| {
             el.remove();
             Ok(())
@@ -52,16 +63,42 @@ pub fn clean_html(
             el.remove();
             Ok(())
         }));
-        handlers.push(element!("footer", |el| {
-            el.remove();
+
+        // `<header>` and `<aside>` mean two different things depending on where
+        // they sit. Directly under <body> they are site chrome. Inside <main>
+        // or <article> they are part of the article itself: the title block
+        // that carries the H1 and the standfirst, or a pull-quote. Removing
+        // them wholesale deleted 9.6% of what these two tags match across a
+        // 400-page sample, including the lead paragraph of every Pantheon docs
+        // page. The same split applies to `<footer>`: inside an article it is the
+        // byline / date / tags block, not the site footer.
+        //
+        // lol_html streams, so a handler cannot look at its ancestors. Mark the
+        // nested ones first (handlers run in registration order, and both fire
+        // for the same element), then skip anything marked.
+        handlers.push(element!(
+            "main header, main aside, main footer, article header, article aside, article footer",
+            |el| {
+                el.set_user_data(KEEP_NESTED);
+                Ok(())
+            }
+        ));
+        handlers.push(element!("header", |el| {
+            if el.user_data().downcast_ref::<u8>() != Some(&KEEP_NESTED) {
+                el.remove();
+            }
             Ok(())
         }));
-        handlers.push(element!("header", |el| {
-            el.remove();
+        handlers.push(element!("footer", |el| {
+            if el.user_data().downcast_ref::<u8>() != Some(&KEEP_NESTED) {
+                el.remove();
+            }
             Ok(())
         }));
         handlers.push(element!("aside", |el| {
-            el.remove();
+            if el.user_data().downcast_ref::<u8>() != Some(&KEEP_NESTED) {
+                el.remove();
+            }
             Ok(())
         }));
         handlers.push(element!("menu", |el| {
@@ -97,18 +134,70 @@ pub fn clean_html(
             // a combined string that also contains the other classes).
             let combined = format!("{class} {id}");
 
-            const NOISE_PATTERNS: &[&str] = &[
+            // Layout names, matched per class token — NEVER as a substring.
+            // These describe where a region sits on the page, so themes reuse
+            // them to name the wrapper that HOLDS the article:
+            // `pds-sidebar-layout__content` (Pantheon docs), `has-sidebar`,
+            // `content-sidebar`, `navigation-list-container`. Substring
+            // matching on these emptied 14% of a 161-page labelled corpus
+            // (django docs 74670 -> 248 chars).
+            //
+            // Only names observed wrapping real content live here. Names like
+            // "cookie" / "consent" / "infobox" stay in NOISE_PATTERNS below:
+            // they appear almost exclusively as `cookie-notice` /
+            // `cookielawinfo-*` style tokens, so requiring an exact token
+            // would stop removing them entirely.
+            // Matched as a PREFIX of a class token (see `is_noise` below).
+            const NOISE_LAYOUT_TOKENS: &[&str] = &[
                 "sidebar",
+                "navigation",
+                "breadcrumb",
+                "dropdown",
+                "site-header",
+                "site-footer",
+                "page-header",
+                "page-footer",
+                "global-header",
+                "global-footer",
+                "global-nav",
+                "main-nav",
+                "primary-nav",
+                "secondary-nav",
+                // zhihu names the article body `copyrightrichtext-richtext`;
+                // as a substring this deleted 98% of the page.
+                "copyright",
+            ];
+
+            // Names here are matched as a SUBSTRING of "{class} {id}", so a name
+            // that appears inside a content class deletes real content. Two were
+            // replaced with narrower ones after measuring on the frozen scrape
+            // corpus:
+            //
+            // - "widget" removed. Every WordPress page builder wraps page CONTENT
+            //   in classes containing it: Elementor `elementor-widget` +
+            //   `elementor-widget-{slug}`, SiteOrigin `so-widget-*` /
+            //   `panel-widget-style` / `textwidget` / `widget_sow-editor`. It
+            //   emptied those pages. `widget-area` / `widget_area` below still
+            //   remove the registered sidebar container, which is where widgets
+            //   that ARE boilerplate live; a bare `widget_*` block outside any
+            //   container leaks, which is the precision side of the trade. Note a
+            //   `widget_` PREFIX rule cannot work either: SiteOrigin's content
+            //   widget is `widget_sow-editor`.
+            // - "banner" removed. Hero banners carry the headline and the product
+            //   copy. `role="banner"` below is the reliable chrome signal, and
+            //   cookie / consent / promo cover the bars that matter. (Shopify and
+            //   Squarespace announcement bars are named `announcement-bar` and
+            //   were never caught by "banner" either way.)
+            const NOISE_PATTERNS: &[&str] = &[
                 "table-of-contents",
                 "tableofcontents",
                 "infobox",
                 "navbox",
                 "nav-box",
-                "navigation",
-                "breadcrumb",
                 "cookie",
                 "consent",
-                "banner",
+                "widget-area",
+                "widget_area",
                 "disqus",
                 "advert",
                 "popup",
@@ -134,8 +223,6 @@ pub fn clean_html(
                 "shortdescription",
                 "sphinxsidebar",
                 "sphinxfooter",
-                "copyright",
-                "dropdown",
                 "city-selector",
                 "location-selector",
                 "lang-selector",
@@ -145,18 +232,6 @@ pub fn clean_html(
                 "skiplinks",
                 "promo",
                 "promotional",
-                "widget",
-                "widgets",
-                "site-footer",
-                "site-header",
-                "page-footer",
-                "page-header",
-                "global-nav",
-                "global-footer",
-                "global-header",
-                "main-nav",
-                "primary-nav",
-                "secondary-nav",
                 "social-share",
                 "social-links",
                 "social-icons",
@@ -183,10 +258,20 @@ pub fn clean_html(
                 "ads-",
             ];
 
+            // Layout names match a class token that STARTS with the name, never
+            // one that merely contains it. Position carries the meaning:
+            //
+            //   sidebar-right, sidebar-card, dropdown-menu, breadcrumbs
+            //       -> the element IS that piece of furniture. Remove.
+            //   has-sidebar, no-sidebar, content-sidebar,
+            //   pds-sidebar-layout__content (Pantheon docs)
+            //       -> the element is the article, named after the furniture
+            //          beside it. Keep.
             let is_noise = NOISE_PATTERNS.iter().any(|p| combined.contains(p)) || {
                 let tokens_iter = class.split_whitespace().chain(std::iter::once(id.as_str()));
                 tokens_iter.into_iter().any(|tok| {
-                    NOISE_EXACT_TOKENS.contains(&tok)
+                    NOISE_LAYOUT_TOKENS.iter().any(|p| tok.starts_with(p))
+                        || NOISE_EXACT_TOKENS.contains(&tok)
                         || NOISE_PREFIXES.iter().any(|pre| tok.starts_with(pre))
                 })
             };
@@ -377,6 +462,99 @@ mod tests {
         assert!(!result.contains("Menu"));
         assert!(!result.contains("Foot"));
         assert!(result.contains("Content"));
+    }
+
+    #[test]
+    fn page_builder_content_survives_only_main_content() {
+        // Every page builder wraps page CONTENT in classes containing "widget":
+        // Elementor tags each widget with both `elementor-widget` and
+        // `elementor-widget-{slug}`, SiteOrigin uses `so-widget-*`,
+        // `panel-widget-style` and `textwidget`. Matching "widget" by name
+        // emptied all of those pages (issue #365).
+        let html = r#"<body>
+            <div class="elementor-element elementor-widget elementor-widget-woocommerce-product-title">
+              <h1>30 RK PANORA M 102 STP</h1>
+            </div>
+            <div class="so-panel widget widget_sow-editor panel-first-child">
+              <div class="so-widget-sow-editor so-widget-sow-editor-base">
+                <div class="siteorigin-widget-tinymce textwidget">
+                  <p>Our label and carton teams are ready to help.</p>
+                </div>
+              </div>
+            </div>
+        </body>"#;
+        let result = clean_html(html, true, &[], &[]).unwrap();
+        assert!(result.contains("30 RK PANORA M 102 STP"), "got: {result}");
+        assert!(
+            result.contains("Our label and carton teams are ready to help."),
+            "got: {result}"
+        );
+    }
+
+    #[test]
+    fn widget_areas_in_page_chrome_are_still_removed() {
+        // Widget areas are boilerplate, but they are recognised by WHERE they
+        // sit — inside semantic chrome or a sidebar container — not by having
+        // "widget" in the class name.
+        let html = r#"<body>
+            <aside class="widget_text"><p>Sidebar promo copy</p></aside>
+            <footer class="footer-widgets"><p>GeneratePress footer</p></footer>
+            <header class="ast-header-widget-area"><p>Astra header</p></header>
+            <div class="sidebar"><div class="widget_recent_posts">Recent posts</div></div>
+            <article><p>The actual article body.</p></article>
+        </body>"#;
+        let result = clean_html(html, true, &[], &[]).unwrap();
+        assert!(result.contains("The actual article body."), "got: {result}");
+        assert!(!result.contains("Sidebar promo copy"), "got: {result}");
+        assert!(!result.contains("GeneratePress footer"), "got: {result}");
+        assert!(!result.contains("Astra header"), "got: {result}");
+        assert!(!result.contains("Recent posts"), "got: {result}");
+    }
+
+    #[test]
+    fn registered_widget_area_is_removed_but_builder_widgets_are_not() {
+        // The narrow replacement for the deleted `widget` substring: the sidebar
+        // container a theme registers its widgets in, without relying on a
+        // semantic tag, and without touching page-builder content classes.
+        let html = r#"<body>
+            <div class="widget-area"><div class="widget_text">Sidebar promo copy</div></div>
+            <div class="footer-widget_area"><p>Footer widget copy</p></div>
+            <div class="elementor-widget elementor-widget-text-editor">
+              <p>Real page content from a builder widget.</p>
+            </div>
+        </body>"#;
+        let result = clean_html(html, true, &[], &[]).unwrap();
+        assert!(
+            result.contains("Real page content from a builder widget."),
+            "got: {result}"
+        );
+        assert!(!result.contains("Sidebar promo copy"), "got: {result}");
+        assert!(!result.contains("Footer widget copy"), "got: {result}");
+        assert!(
+            !result.contains("Free shipping this week only"),
+            "got: {result}"
+        );
+    }
+
+    #[test]
+    fn hero_banner_copy_survives_but_role_banner_does_not() {
+        // "banner" as a class name is where hero headlines live; `role="banner"`
+        // is the reliable signal for site chrome.
+        let html = r#"<body>
+            <div class="banner banner--product"><h1>KONI 2822 Race Damper</h1>
+              <p>The 2822 MKII Series is the latest offering from KONI.</p></div>
+            <div role="banner"><p>Site wide announcement bar</p></div>
+        </body>"#;
+        let result = clean_html(html, true, &[], &[]).unwrap();
+        assert!(result.contains("KONI 2822 Race Damper"), "got: {result}");
+        assert!(
+            result.contains("The 2822 MKII Series is the latest offering from KONI."),
+            "got: {result}"
+        );
+        assert!(
+            !result.contains("Site wide announcement bar"),
+            "got: {result}"
+        );
     }
 
     #[test]

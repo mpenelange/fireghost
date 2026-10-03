@@ -22,9 +22,12 @@ const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 /// to the caller anyway, so a 64 KiB ceiling is plenty for diagnostics while
 /// closing the door on hostile upstreams that retaliate to invalid params
 /// with multi-megabyte error pages.
-const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 
-async fn read_capped(response: reqwest::Response, cap: usize) -> Result<Vec<u8>, SearchError> {
+pub(crate) async fn read_capped(
+    response: reqwest::Response,
+    cap: usize,
+) -> Result<Vec<u8>, SearchError> {
     if let Some(declared) = response.content_length()
         && declared as usize > cap
     {
@@ -35,7 +38,11 @@ async fn read_capped(response: reqwest::Response, cap: usize) -> Result<Vec<u8>,
     let mut buf: Vec<u8> = Vec::with_capacity(64 * 1024);
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e: reqwest::Error| SearchError::Transport(e.to_string()))?;
+        let chunk = chunk.map_err(|e: reqwest::Error| {
+            // Same reason as the `send()` arm below (issue #90): the embedded
+            // request URL can carry the backend host and its credentials.
+            SearchError::Transport(crw_core::error::reqwest_message(e))
+        })?;
         if buf.len() + chunk.len() > cap {
             return Err(SearchError::InvalidResponse(format!(
                 "response too large: exceeded {cap}-byte cap"
@@ -48,13 +55,13 @@ async fn read_capped(response: reqwest::Response, cap: usize) -> Result<Vec<u8>,
 
 #[derive(Debug, Error)]
 pub enum SearchError {
-    #[error("SearXNG request timed out")]
+    #[error("search backend request timed out")]
     Timeout,
-    #[error("SearXNG upstream error (status {status}): {body}")]
+    #[error("search backend upstream error (status {status}): {body}")]
     Upstream { status: u16, body: String },
-    #[error("SearXNG returned an invalid JSON response: {0}")]
+    #[error("search backend returned an invalid JSON response: {0}")]
     InvalidResponse(String),
-    #[error("SearXNG transport error: {0}")]
+    #[error("search backend transport error: {0}")]
     Transport(String),
 }
 

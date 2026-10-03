@@ -5,6 +5,227 @@ camofox-first, anti-detection variant of crw; entries below cover the fork's own
 `v1.x` line. The format follows [Keep a Changelog](https://keepachangelog.com/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [1.5.0] - 2026-09-16
+
+A fingerprint release: a Chrome-impersonated HTTP tier sits between the plain
+fetch and the browser ladder, so pages that only check the TLS and HTTP/2
+handshake no longer cost a browser render. The Docker image ships the tier on
+by default.
+
+### Added
+
+- **Renderer:** a Chrome-impersonated HTTP tier (`[renderer.impersonated]`,
+  on by default in the Docker image). It presents a real Chrome TLS/JA3/HTTP2
+  fingerprint with no browser and no JavaScript, runs between the plain HTTP
+  fetch and the browser ladder on wall-shaped results or fingerprint-shaped
+  transport errors, and never on pages that need JavaScript or on vendor
+  walls that do. Pin it with `renderer: "impersonated-http"`; `renderJs:
+  true` alongside the pin is rejected. Per-request `proxy` and `stealth`
+  overrides bypass the hop. The tier is on by default in the Docker image and
+  adds its 15 s budget to the auto-extended request deadline; set `enabled =
+  false` to opt out.
+
+### Changed
+
+- **Docker:** the image builder moved from Rust 1.93 to Rust 1.98, which the
+  impersonated tier's `wreq` dependency requires. Building the image now also
+  needs cmake and clang for BoringSSL; the arm64 leg cross-compiles it.
+
+## [1.4.0] - 2026-09-15
+
+A hardening release: the Camofox tier now waits out Cloudflare challenges and
+reuses the clearance it earns, a Byparr solver tier handles Turnstile
+checkboxes, and scrapes stop shipping error pages, walls and parking pages as
+content. Crawl and batch keep failed pages as marked documents, and the
+metrics and admin routes sit behind the API-key boundary.
+
+### Added
+
+- **Renderer:** the Camofox tier now waits, on the open tab, for a Cloudflare
+  "Just a moment" challenge to clear (`renderer.camofox.challenge_wait_ms`,
+  default 20 s, always inside the request deadline) instead of snapshotting
+  the interstitial and reporting the page as blocked.
+- **Renderer:** after a Camofox render that earned a `cf_clearance` cookie,
+  the tab's cookies and user agent are cached per host and sent with the
+  HTTP-tier fetch on later scrapes of that host, so they skip the browser.
+  A repeat challenge drops the entry. Off with
+  `renderer.camofox.clearance_reuse = false`; never used through a proxy.
+  The cache is used only when its `cf_clearance` cookie applies to the host
+  being fetched.
+- **Crawl:** `CrawlRequest.headers` (and v2 `scrapeOptions.headers`) reach
+  every page fetch. The nested `scrapeOptions` shape from the spec is accepted.
+- **Crawl / batch:** a page that could not be read (transport failure, CDN
+  origin error, wall, PDF or extraction failure) is returned as a document
+  marked through `block` and counted in a new `blocked` field, instead of
+  being dropped. Blocked v2 documents cost zero credits.
+- **Crawl:** a crawl whose every fetch failed ends `failed` with the last
+  fetch failure's reason instead of completing with zero pages.
+- **v2:** `GET /v2/{batch/scrape,crawl}/{id}/errors` lists each failed URL with
+  its reason. `/v2/scrape` honours `renderJs` and turns `location.languages`
+  into an `Accept-Language` header. v2 documents carry `llmUsage` when an LLM
+  ran, as `/v1` does.
+- **Map:** `/v1/map` responses include a `sitemaps` array of the sitemap documents that
+  answered with parseable content (kept out of `links`).
+- **Search:** `scrapeOptions.timeout` (1–60000 ms) sets the per-result scrape
+  budget; the default is 15 s instead of the full renderer ladder. Results
+  carry `truncated`.
+- **Docker:** `CRW_HOST_PORT` and `CRW_BIND_ADDRESS` set the published port
+  and host interface.
+- **Renderer:** a Byparr challenge-solver tier (`[renderer.byparr]`). The
+  ladder calls it last, and only when the HTTP tier or an earlier browser tier
+  returned an anti-bot challenge or wall. It clicks the Cloudflare Turnstile
+  checkbox, and the `cf_clearance` it earns feeds the same per-host cache as
+  Camofox (`renderer.byparr.clearance_reuse`). Pages that end on an internal
+  address are refused. Docker Compose runs Byparr by default.
+
+### Fixed
+
+- **Renderer:** a caller-supplied `User-Agent` no longer travels with the
+  stealth mode's Chrome `Sec-Ch-Ua*` client hints. A blank `User-Agent` is
+  treated as absent.
+- **Renderer:** the escalation after LightPanda targeted a `chrome` tier this
+  fork never builds, so it always failed and Camofox was never reached. It now
+  escalates to Camofox. Custom request headers now reach LightPanda renders
+  too; Camofox renders still ignore them.
+- **Renderer:** Camofox renders report the page's real HTTP status instead of
+  200 for every page, including 404 and 403.
+- **Renderer:** when every browser tier rejects a page as an anti-bot wall, the
+  scrape fails instead of returning the wall, unless the page is larger than
+  an error page (so cleared Cloudflare pages still succeed).
+- **Renderer:** a forced-JS scrape whose browser tiers fail falls back to the
+  HTTP body it already fetched, with a `js_escalation_failed` warning.
+- **Renderer:** timeouts report the requested budget instead of the near-zero
+  overrun. A blackholed origin is reported as unreachable, not a timeout. An
+  unanswered proxy auth challenge is reported as a proxy authentication
+  failure. A request no longer returns to a proxy that already failed it.
+- **Renderer:** a dead Camofox proxy (Firefox `proxyConnectFailure`) now trips
+  the renderer breaker instead of counting as the site's fault. Anti-bot walls
+  no longer advance the breaker when a recovery tier exists.
+- **Renderer:** binary bodies (a NUL byte in the first 1 KB) fail with 422
+  instead of being decoded as HTML; a mislabelled PDF is detected by its
+  header.
+- **Scrape:** Cloudflare 520–527 origin-error pages, origin error pages
+  (>= 400 with little text), registrar parking pages, and Reddit, Cloudflare
+  and Vercel block pages served as 200 fail instead of shipping as content.
+  Cleared Cloudflare pages and thin but real pages are no longer reported as
+  blocks. A scrape whose requested formats all come back empty fails as
+  `no_usable_content`. Crawl and batch apply the same verdicts.
+- **Crawl:** a Camofox escalation that adds content below the LightPanda retry
+  threshold is kept. `truncated` follows the render that was kept.
+- **Crawl:** a complete non-HTML body (a JSON API response, say) that scores
+  low on the quality check no longer buys a browser render that was then
+  discarded.
+- **Extract:** `onlyMainContent` no longer deletes article bodies whose
+  wrappers are named after nearby layout (sidebar, nav, footer), keeps
+  `<header>`/`<aside>`/`<footer>` inside `<main>` or `<article>`, keeps
+  Elementor page content, and removes navigation menus. Non-HTML bodies are
+  left as they are.
+- **Extract:** `maxChars` and the LLM prompt cap count Unicode scalars, not
+  bytes. An LLM request whose connection closed before it reached the provider
+  is retried once. An extract URL whose page is a wall or error page fails
+  with that reason, and a job whose every URL failed charges no credits.
+- **Search:** Google result links resolve to their real URLs instead of Google
+  `/goto` redirects; consent and rate-limit redirects keep the original link.
+  `lang` is validated at the API boundary. Enrichment DNS checks run in
+  parallel.
+- **Research:** arXiv is a paper source again, and OpenAlex queries no longer
+  fail on `?` or `*`.
+- **Security:** the SSRF guard's DNS lookup is bounded at 8 s and no longer
+  blocks whole public /16 ranges. The CDP render tiers check every outbound
+  request (child frames included) against the SSRF rules, and LightPanda starts
+  with `--block-private-networks`. Error strings no longer contain internal
+  URLs or proxy credentials. PDF parsing moves to lopdf 0.42
+  (RUSTSEC-2026-0187).
+- **Security:** a per-request LLM `baseUrl` (BYOK) that points at a private,
+  loopback or link-local address is refused with 400 on scrape, v2 batch start
+  and search. Before, the server POSTed page content and the caller's key to
+  it. LLM calls no longer follow redirects to such addresses. The operator's
+  `[extraction.llm].base_url` is not restricted.
+
+### Changed
+
+- **Breaking:** `/metrics`, `/metrics/renderer-breakers`, and
+  `/admin/breakers/reset` now sit behind the API-key auth boundary. When
+  `[auth].api_keys` is set, Prometheus scrapes must send a Bearer token.
+- The Camofox tier refuses to return a page whose final URL (after redirects
+  and client-side navigation) is a private or internal address. This guards
+  what crw returns only: requests the browser makes on the way (a redirect hop,
+  subresources) still reach the network. camofox-browser's own private-network
+  check covers the URL it is asked to open, not redirects — verified live.
+- A Camofox fetch that lands on Firefox's own error page ("Problem loading
+  page") now fails as a navigation failure instead of returning that page.
+- CORS is no longer permissive. Browser callers need their origin listed in
+  `server.cors_allowed_origins`; the default sends no CORS headers. Entries
+  are matched as origins, so a trailing slash or capitals no longer disable
+  CORS silently; `*` is ignored with a warning.
+- **Breaking:** a malformed proxy URL is refused instead of ignored. A bad
+  `crawler.proxy` (or CLI `--proxy`) fails startup, and a bad per-request
+  `proxy` returns 400. Before, the value was logged and dropped, and traffic
+  went out directly from the server's own address.
+- An unreachable search backend now answers 502 instead of 422.
+
+## [1.3.0] - 2026-09-13
+
+A robustness release for the Camofox tier: search and render recover from the
+browser server's transient failures instead of wedging or stalling, pinned
+renders no longer die on the HTTP probe, and errors from the browser server
+finally say what went wrong.
+
+### Added
+
+- **Scrape:** an `images` output format returns the page's discovered images as
+  structured data (`[{url, alt}]`, flattened to `string[]` on v2) with
+  WHATWG-correct `srcset` parsing, instead of callers re-parsing HTML.
+
+### Fixed
+
+- **Search:** a search that timed out on the reused warm tab left every later
+  search stalled behind the same dead tab until the process restarted. A
+  timeout on a reused tab now recreates the tab and retries once; a timeout
+  on a fresh tab swaps it out for the next search. The abandoned tab is
+  closed only after its replacement exists, so the browser context never
+  drops to zero tabs and hits Camofox's eager teardown.
+- **Search:** a failed `/evaluate` (Camofox answers a dead tab with a JSON
+  error, not an empty result) is treated as an upstream error so the stale-tab
+  recovery runs, instead of being reported as a clean empty result page.
+- **Search:** the response no longer blames SearXNG in error messages; the
+  backend is Camofox.
+- **Renderer:** tabs are created blank under a creation lock and navigated
+  with a separate call. Concurrent creates that navigated inside the create
+  raced for Camofox's initial blank page on a freshly relaunched context and
+  aborted each other, and each failure counted toward Camofox's
+  consecutive-failure breaker, which then closed the context. A create that
+  lands in Camofox's context relaunch window (`window is null`) is retried
+  with a growing pause inside the request deadline instead of failing the
+  render.
+- **Renderer:** when JS rendering is requested (which a pinned renderer
+  implies), an HTTP-tier failure now escalates to the JS tier the way auto
+  mode does. A Camofox-pinned scrape of an origin slower than the HTTP timeout
+  used to return `502` without ever reaching Camofox.
+- **Renderer:** pages whose HTML exceeds Camofox's 1 MiB single-result cap
+  are retrieved in slices. Previously the Camofox tier returned the server's
+  truncation placeholder as the document, so large pages (Wikipedia-sized
+  articles) came back empty and flagged as a loading placeholder.
+- **Renderer:** a navigate that Camofox reports as failed only because its
+  post-navigation ARIA snapshot timed out (large documents) no longer fails
+  the render; the page has loaded by then and the snapshot is unused.
+- **Renderer:** the Camofox tier is registered independently of the `cdp`
+  feature, and `renderer.mode = "camofox"` without a configured endpoint (or
+  in a binary built without the feature) is a startup configuration error
+  rather than a silent fall back to HTTP-only.
+- **Diagnostics:** Camofox's own error message (for example a persistent
+  profile pinned to an older Camoufox build) is carried into search and
+  renderer errors instead of a bare status; non-JSON bodies such as proxy
+  error pages are logged rather than surfaced to API clients. Rejected or
+  failed closes of abandoned tabs, and engine failures that the response
+  strips to a short reason, are now logged in full.
+- **MCP:** inline scrape content in search results is capped across results
+  to protect agent context.
+- **Release:** the internal crate version pins are synchronized with the
+  workspace version, so the CI version guard passes again.
+
 ## [1.2.0] - 2026-07-18
 
 A hardening release: anti-bot detection accuracy, renderer recovery under blocked
@@ -148,6 +369,9 @@ machinery is removed.
 - Structured-extraction (Anthropic) chat URL no longer doubles `/v1`.
 - Engine cap and camofox-mcp configuration corrected against a live Docker stack.
 
+[1.5.0]: https://github.com/adambenhassen/crw-camofox/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/adambenhassen/crw-camofox/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/adambenhassen/crw-camofox/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/adambenhassen/crw-camofox/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/adambenhassen/crw-camofox/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/adambenhassen/crw-camofox/compare/v1.1.0...v1.1.1

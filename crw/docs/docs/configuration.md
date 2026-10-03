@@ -46,6 +46,18 @@ ws_url = "ws://127.0.0.1:9222/"
 # [renderer.chrome_proxy]
 # ws_url = "ws://chrome-proxy:9222"
 
+# Chrome-impersonation HTTP tier (wreq). No endpoint: the tier is in-process.
+# Requires a build with `--features impersonated` (the published Docker image
+# ships it ON). Sits between the plain HTTP tier and the browser ladder in auto
+# mode, fires only when the plain tier hit an anti-bot wall (e.g. the Amazon.it
+# interstitial) or a fingerprint-shaped transport error, and is pinnable per
+# request with renderer = "impersonated-http". When a browser ladder is
+# configured the hop is capped at half the remaining request deadline so it can
+# never starve it. ON by default; disable with enabled = false.
+# [renderer.impersonated]
+# enabled = true               # runtime kill switch (default true)
+# timeout_ms = 15000           # per-request budget for the tier (default 15 s)
+
 # Camofox (camofox-browser REST) — the Firefox/Camoufox anti-detect tier. Not a
 # CDP endpoint: base_url is the camofox-browser HTTP server. In `auto` mode it
 # takes Chrome's ladder slot (after LightPanda). When set, it also backs
@@ -53,6 +65,18 @@ ws_url = "ws://127.0.0.1:9222/"
 # [renderer.camofox]
 # base_url = "http://127.0.0.1:9377"
 # api_key = "..."                 # only if the camofox server runs with auth
+# challenge_wait_ms = 20000       # wait for a Cloudflare "Just a moment" page to clear; 0 = off
+# clearance_reuse = true          # cache cf_clearance + UA per host, reuse on the HTTP tier
+
+# Byparr (FlareSolverr-compatible challenge solver, e.g. ghcr.io/thephaseless/byparr).
+# Tried last, and only when an earlier attempt came back as an anti-bot challenge
+# or wall; each solve launches a browser. Byparr has no auth: keep it off public
+# interfaces.
+# [renderer.byparr]
+# base_url = "http://127.0.0.1:8191"
+# timeout_ms = 30000              # longest one solve may take, inside the request deadline
+# max_concurrent = 2              # concurrent solves
+# clearance_reuse = true          # cache cf_clearance + UA per host, reuse on the HTTP tier
 
 [search]
 enabled = true
@@ -130,6 +154,12 @@ Use the `CRW_` prefix with `__` as a nesting separator:
 | `renderer.proxy_default_country` | `CRW_RENDERER__PROXY_DEFAULT_COUNTRY` |
 | `renderer.camofox.base_url` | `CRW_RENDERER__CAMOFOX__BASE_URL` |
 | `renderer.camofox.api_key` | `CRW_RENDERER__CAMOFOX__API_KEY` |
+| `renderer.camofox.challenge_wait_ms` | `CRW_RENDERER__CAMOFOX__CHALLENGE_WAIT_MS` |
+| `renderer.camofox.clearance_reuse` | `CRW_RENDERER__CAMOFOX__CLEARANCE_REUSE` |
+| `renderer.byparr.base_url` | `CRW_RENDERER__BYPARR__BASE_URL` |
+| `renderer.byparr.timeout_ms` | `CRW_RENDERER__BYPARR__TIMEOUT_MS` |
+| `renderer.byparr.max_concurrent` | `CRW_RENDERER__BYPARR__MAX_CONCURRENT` |
+| `renderer.byparr.clearance_reuse` | `CRW_RENDERER__BYPARR__CLEARANCE_REUSE` |
 | `search.searxng_url` | `CRW_SEARCH__SEARXNG_URL` |
 | `search.github_token` | `CRW_SEARCH__GITHUB_TOKEN` |
 | `extraction.llm.api_key` | `CRW_EXTRACTION__LLM__API_KEY` |
@@ -153,6 +183,12 @@ Use the `CRW_` prefix with `__` as a nesting separator:
 | `none` | HTTP only, no JS rendering |
 
 The server `mode` controls **availability** of renderers in the pool. Per-request `renderer` selects from what's available — see [JS rendering](#js-rendering). A request that pins an unavailable renderer returns HTTP 400 with the configured pool listed.
+
+### Impersonated HTTP tier
+
+`[renderer.impersonated]` enables a Chrome-fingerprint HTTP tier that runs between the plain fetch and the browser ladder. It executes no JavaScript: it clears walls that gate on the TLS fingerprint (the Amazon interstitial class) in HTTP time, and hands everything else to the ladder unchanged. Pin it per request with `renderer: "impersonated-http"`; combining that pin with `renderJs: true` is rejected.
+
+Known gap: a request that sets a per-request `proxy` or a per-request `stealth` override uses a temporary plain HTTP fetcher and never hops. The pin is honoured but ignores the per-request proxy.
 
 ## Docker configuration
 
