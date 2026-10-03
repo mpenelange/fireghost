@@ -381,19 +381,18 @@ async fn scrape_url_inner(
             .as_deref()
             .is_some_and(|w| w.contains(crw_renderer::JS_ESCALATION_FAILED));
         // If the prior tier was lightpanda (returned 200 with thin/no content that
-        // fooled the renderer-level thinness check), escalate to the next tier the
-        // pool holds. A pinned name the pool does not hold is a hard error, so the
-        // old literal "chrome" failed every escalation on this fork's ladder and
-        // camofox was never reached. `None` means there is nothing above
-        // lightpanda: skip rather than dispatch, because "auto" would re-render the
-        // same tier for the same thin result.
+        // fooled the renderer-level thinness check), escalate to the next tier in
+        // the configured order (see `post_extract_escalation_target`). A pinned
+        // name the pool does not hold is a hard error, so the old literal
+        // "chrome" failed every escalation on this fork's ladder and camofox was
+        // never reached. `None` means there is nothing after lightpanda, or the
+        // caller pinned a renderer: skip rather than dispatch, because "auto"
+        // would re-render the same tier for the same thin result, and a pin must
+        // not silently move to another backend.
         // Otherwise (http tier), pass the caller's pin through, or `None` so the
         // chain decides.
-        let escalation_target: Option<&str> = if prior_renderer == Some("lightpanda") {
-            renderer.lightpanda_escalation_target()
-        } else {
-            pinned
-        };
+        let escalation_target =
+            post_extract_escalation_target(prior_renderer, pinned, &renderer.js_renderer_names());
         let has_escalation_target =
             escalation_target.is_some() || prior_renderer != Some("lightpanda");
         // The renderer ladder enforces this same floor per tier; apply it one
@@ -428,6 +427,7 @@ async fn scrape_url_inner(
             && should_escalate_status
             && escalation_eligible
             && !has_escalation_target
+            && pinned.is_none()
         {
             tracing::debug!(
                 url = %req.url,
