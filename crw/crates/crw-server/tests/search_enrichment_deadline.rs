@@ -85,6 +85,15 @@ async fn mock_search_and_page(page_delay: Duration) -> MockServer {
             .mount(&mock)
             .await;
     }
+    // Fireghost's search client confirms the SERP destination through the tab
+    // list before extracting rows, so report t1 on the Google results page.
+    Mock::given(method("GET"))
+        .and(path("/tabs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "tabs": [{ "tabId": "t1", "url": "https://www.google.com/search?q=q" }]
+        })))
+        .mount(&mock)
+        .await;
     mock
 }
 
