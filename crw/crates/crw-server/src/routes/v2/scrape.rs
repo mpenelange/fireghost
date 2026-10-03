@@ -10,7 +10,9 @@ use uuid::Uuid;
 
 use crw_core::Deadline;
 use crw_core::error::CrwError;
-use crw_core::types::{OutputFormat, RequestedRenderer, ScrapeRequest};
+use crw_core::types::{
+    OutputFormat, RequestedRenderer, STRUCTURAL_FAILURE_VENDOR, ScrapeData, ScrapeRequest,
+};
 use crw_crawl::single::scrape_url;
 
 use super::adapters::{V2Document, to_v2_document};
@@ -95,8 +97,24 @@ fn default_v2_formats() -> Vec<FormatSpec> {
     vec![FormatSpec::String("markdown".to_string())]
 }
 
-fn is_target_http_error(status_code: u16, body_len: usize) -> bool {
-    matches!(status_code, 401 | 404 | 410) || (status_code >= 400 && body_len < 200)
+/// The target's HTTP error, if this scrape is one. [`ScrapeData::http_error`]
+/// flags only error-page-sized bodies; Fireghost additionally treats 401, 404
+/// and 410 as terminal at any body size, because a rich not-found page is still
+/// not the requested content and the router must not retry it elsewhere. A
+/// vendor wall keeps its own block classification.
+fn target_http_error(data: &ScrapeData) -> Option<String> {
+    data.http_error().or_else(|| {
+        let status = data.metadata.status_code;
+        let walled = data
+            .block
+            .as_ref()
+            .is_some_and(|b| b.vendor != STRUCTURAL_FAILURE_VENDOR);
+        (matches!(status, 401 | 404 | 410) && !walled).then(|| {
+            data.warning
+                .clone()
+                .unwrap_or_else(|| format!("Target returned HTTP {status}"))
+        })
+    })
 }
 
 /// `{ success, data, warning? }` envelope.
@@ -248,7 +266,7 @@ pub async fn scrape(
     // is a plain HTTP error, not an anti-bot block. It must short-circuit before
     // the block check so classify()'s StructuralFailure can't mislabel it, and
     // so both API surfaces label the identical page the same way.
-    let http_error = data.http_error();
+    let http_error = target_http_error(&data);
     // Anti-bot verdict from the choke: a blocked page is `success:false` with an
     // error string, matching v1's behaviour. Read before `to_v2_document`
     // consumes `data`.
@@ -467,6 +485,25 @@ mod tests {
 
     #[test]
     fn rich_not_found_page_is_still_a_truthful_http_error() {
-        assert!(is_target_http_error(404, 10_000));
+        let mut data = ScrapeData::default();
+        data.metadata.status_code = 404;
+        data.markdown = Some("A rich, branded not-found page. ".repeat(400));
+        assert_eq!(
+            data.http_error(),
+            None,
+            "upstream: too big for an error page"
+        );
+        assert_eq!(
+            target_http_error(&data).as_deref(),
+            Some("Target returned HTTP 404")
+        );
+    }
+
+    #[test]
+    fn rich_soft_block_status_stays_content() {
+        let mut data = ScrapeData::default();
+        data.metadata.status_code = 403;
+        data.markdown = Some("Real article text served with a 403. ".repeat(400));
+        assert_eq!(target_http_error(&data), None);
     }
 }
