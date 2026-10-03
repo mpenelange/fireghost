@@ -620,6 +620,12 @@ func shouldFallbackScrape(status int, requestBody, responseBody []byte) bool {
 	case http.StatusUnauthorized, http.StatusNotFound, http.StatusGone:
 		return false
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		// A document CRW cannot parse (an office file, an archive) is a gap in
+		// CRW, not in the target: Firecrawl Cloud parses those. Only CRW's
+		// explicit error code qualifies; other "unsupported" requests stay final.
+		if scrapeErrorCode(responseBody) == "unsupported_content_type" {
+			return true
+		}
 		if hasDeterministicScrapeIndicator(string(responseBody)) {
 			return false
 		}
@@ -641,6 +647,17 @@ func terminalTargetStatus(data *scrapeData) bool {
 		return true
 	}
 	return false
+}
+
+// scrapeErrorCode returns CRW's machine-readable `error_code`, if any.
+func scrapeErrorCode(body []byte) string {
+	var envelope struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return ""
+	}
+	return envelope.ErrorCode
 }
 
 func hasDeterministicScrapeIndicator(message string) bool {

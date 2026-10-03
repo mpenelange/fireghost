@@ -25,7 +25,7 @@ Build a self-hosted Firecrawl-compatible router for Hermes Agent. It proxies `/v
 - Implement `POST /v2/search`, `POST /v2/scrape`, `GET /health`, and `GET /metrics` initially.
 - Preserve upstream HTTP status, JSON bodies, and unknown fields. Parse only tolerant fields needed to classify local success/failure.
 - Search cloud fallback only for transport errors, timeout, non-2xx, `success:false`, or zero web results, whether or not the response includes a warning.
-- Scrape cloud fallback only for transport errors, timeout, retryable non-2xx responses (400/422 are terminal unless an explicit retryable indicator is present; 401/404/410/robots/invalid URL are terminal), `success:false` with retryable anti-bot/timeout errors, or empty requested markdown.
+- Scrape cloud fallback only for transport errors, timeout, retryable non-2xx responses (400/422 are terminal unless an explicit retryable indicator or CRW's `unsupported_content_type` error code is present; 401/404/410/robots/invalid URL are terminal), `success:false` with retryable anti-bot/timeout/no-usable-content errors, or empty requested markdown (including a non-deterministic `success:false` whose target did not answer 401/404/410).
 - Cloud budget exhaustion must return the truthful local response plus an explicit warning when possible; never hide that fallback was skipped.
 - Expose no service except the router on host loopback. Camofox and LightPanda stay on the Compose network.
 
