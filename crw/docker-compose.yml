@@ -93,7 +93,8 @@ services:
   # container; crw refuses to return a page whose final URL is internal.
   # Pinned (never `:latest`) so upgrades are deliberate.
   byparr:
-    image: ghcr.io/thephaseless/byparr:3.0.4
+    # 3.0.4, pinned to its multi-arch index digest.
+    image: ghcr.io/thephaseless/byparr@sha256:874f719518f617d03a60e03411fc5d090647e1a877041e81f8dc965927c7deb6
     restart: unless-stopped
     # Each solve launches its own Firefox; `max_concurrent` defaults to 2.
     shm_size: "2g"
