@@ -23,6 +23,11 @@
       "source": "https://github.com/lightpanda-io/browser",
       "image": "lightpanda/browser:latest",
       "reviewedDigest": "sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887"
+    },
+    "byparrSolver": {
+      "source": "https://github.com/ThePhaseless/Byparr",
+      "image": "ghcr.io/thephaseless/byparr:3.0.4",
+      "reviewedDigest": "sha256:874f719518f617d03a60e03411fc5d090647e1a877041e81f8dc965927c7deb6"
     }
   }
 }

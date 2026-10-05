@@ -66,11 +66,11 @@ class RootDeploymentContractTest(unittest.TestCase):
         self.assertNotRegex(text, r"(?m)^\s+build:")
         self.assertNotRegex(text, r"(?m)^\s+ports:")
         images = re.findall(r"(?m)^\s+image:\s*(.+)$", text)
-        self.assertEqual(len(images), 4)
+        self.assertEqual(len(images), 5)
         for image in (
             value
             for value in images
-            if "camofox-browser" in value or "lightpanda/browser" in value
+            if "camofox-browser" in value or "lightpanda/browser" in value or "byparr" in value
         ):
             self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
         env = ENV_EXAMPLE.read_text(encoding="utf-8")
