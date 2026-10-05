@@ -60,7 +60,7 @@ def main(argv):
         os.environ["VERSION"],
         os.environ["ROUTER_DIGEST"],
         os.environ["CRW_DIGEST"],
-        os.environ.get("IMAGE_NAMESPACE", "git.firewire.cc/michael"),
+        os.environ.get("IMAGE_NAMESPACE", "ghcr.io/mpenelange"),
     )
     json.dump(payload, sys.stdout)
     sys.stdout.write("\n")

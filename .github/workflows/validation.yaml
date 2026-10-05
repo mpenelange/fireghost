@@ -1,7 +1,7 @@
 name: validation
 
 # Browser-pin regression validation. CRW is built on the shared build runner;
-# both isolated stacks run on the shared `validation` runner.
+# both isolated stacks run on a separate runner.
 # Both sides use the candidate CRW so only the browser image differs. Neither
 # job changes an image pin, dev/stack.lock.json, or the production deployment.
 
@@ -21,11 +21,15 @@ concurrency:
   group: fireghost-validation
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   # Registry host and image namespace. Repository variables override the
-  # Forgejo defaults when the project moves hosts (e.g. ghcr.io/<owner>).
-  REGISTRY: ${{ vars.REGISTRY || 'git.firewire.cc' }}
-  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'git.firewire.cc/michael' }}
+  # GitHub Container Registry defaults when the project moves hosts.
+  REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'ghcr.io/mpenelange' }}
 
 jobs:
   build-crw:
@@ -35,10 +39,10 @@ jobs:
       image: ${{ steps.push.outputs.image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Log in to Forgejo registry
+      - name: Log in to registry
         env:
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$REGISTRY_USERNAME"
@@ -69,7 +73,7 @@ jobs:
 
   browser-regression:
     needs: build-crw
-    runs-on: validation
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       CRW_IMAGE: ${{ needs.build-crw.outputs.image }}
@@ -96,10 +100,10 @@ jobs:
           for ref in "$CAMOFOX_CANDIDATE" "$LIGHTPANDA_CANDIDATE"; do
             case "$ref" in ""|*@sha256:*) ;; *) echo "Not a digest reference: $ref" >&2; exit 1 ;; esac
           done
-      - name: Log in to Forgejo registry
+      - name: Log in to registry
         env:
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
@@ -137,7 +141,7 @@ jobs:
               --format '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.service"}} image={{.Config.Image}} restarts={{.RestartCount}} oom={{.State.OOMKilled}} status={{.State.Status}}'
           done | tee "artifacts/validation-$GITHUB_RUN_NUMBER/containers.txt"
           docker stats --no-stream --format '{{.Name}} mem={{.MemUsage}} pids={{.PIDs}}' | tee -a "artifacts/validation-$GITHUB_RUN_NUMBER/containers.txt"
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
           name: validation-${{ github.run_number }}

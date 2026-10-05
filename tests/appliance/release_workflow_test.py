@@ -94,7 +94,7 @@ class ReleaseTagContractTest(unittest.TestCase):
 class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_release_installs_pinned_rust_before_full_gate(self):
         text = WORKFLOW.read_text(encoding="utf-8")
-        install = text.index("uses: https://github.com/dtolnay/rust-toolchain@stable")
+        install = text.index("uses: dtolnay/rust-toolchain@stable")
         gate = text.index("make check")
         self.assertLess(install, gate)
         self.assertIn("toolchain: 1.98.1", text[install:gate])
@@ -122,9 +122,11 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("pull_request:", text)
         self.assertLess(text.index("make check"), text.index("docker buildx build"))
         self.assertIn("scripts/release_tags.py", text)
-        self.assertIn("git.firewire.cc/michael/fireghost-router", text)
-        self.assertIn("git.firewire.cc/michael/fireghost-crw", text)
-        self.assertIn("https://git.firewire.cc/michael/fireghost", text)
+        self.assertIn("IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'ghcr.io/mpenelange' }}", text)
+        self.assertIn("${{ env.IMAGE_NAMESPACE }}/fireghost-router", text)
+        self.assertIn("${{ env.IMAGE_NAMESPACE }}/fireghost-crw", text)
+        self.assertIn('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"', text)
+        self.assertIn("packages: write", text)
         self.assertIn("REGISTRY_USERNAME", text)
         self.assertIn("REGISTRY_TOKEN", text)
 

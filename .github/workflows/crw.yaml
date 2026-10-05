@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned Rust toolchain
-        uses: https://github.com/dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.1
           components: clippy, rustfmt
