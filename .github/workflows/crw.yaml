@@ -6,13 +6,13 @@ on:
     paths:
       - crw/**
       - Makefile
-      - .forgejo/workflows/crw.yaml
+      - .github/workflows/crw.yaml
   pull_request:
     branches: [main]
     paths:
       - crw/**
       - Makefile
-      - .forgejo/workflows/crw.yaml
+      - .github/workflows/crw.yaml
   workflow_dispatch:
 
 jobs:

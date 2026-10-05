@@ -8,12 +8,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_tags.py"
-WORKFLOW = ROOT / ".forgejo" / "workflows" / "release.yaml"
-FORGEJO_APPLIANCE = ROOT / ".forgejo" / "workflows" / "appliance.yaml"
-FORGEJO_CRW = ROOT / ".forgejo" / "workflows" / "crw.yaml"
-FORGEJO_ROUTER = ROOT / ".forgejo" / "workflows" / "router.yaml"
-GITHUB_CI = ROOT / ".github" / "workflows" / "ci.yaml"
-GITHUB_RELEASE = ROOT / ".github" / "workflows" / "release.yaml"
+WORKFLOW = ROOT / ".github" / "workflows" / "release.yaml"
+APPLIANCE_WORKFLOW = ROOT / ".github" / "workflows" / "appliance.yaml"
+CRW_WORKFLOW = ROOT / ".github" / "workflows" / "crw.yaml"
+ROUTER_WORKFLOW = ROOT / ".github" / "workflows" / "router.yaml"
 COMPOSE = ROOT / "docker-compose.yml"
 ENV_EXAMPLE = ROOT / ".env.example"
 
@@ -102,23 +100,19 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("toolchain: 1.98.1", text[install:gate])
 
     def test_non_release_workflows_do_not_run_for_tags(self):
-        for path in (FORGEJO_APPLIANCE, FORGEJO_CRW, FORGEJO_ROUTER):
+        for path in (APPLIANCE_WORKFLOW, CRW_WORKFLOW, ROUTER_WORKFLOW):
             with self.subTest(workflow=path.name):
                 text = path.read_text(encoding="utf-8")
                 push_block = text[text.index("  push:"):text.index("  pull_request:")]
                 self.assertIn("branches:", push_block)
                 self.assertNotIn("tags:", push_block)
 
-    def test_forgejo_smoke_uses_host_runner_localhost(self):
-        text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
+    def test_smoke_uses_host_runner_localhost(self):
+        text = APPLIANCE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("docker exec fake-cloud python -c 'import socket", text)
         self.assertIn("curl -fsS http://127.0.0.1:33000/health", text)
         self.assertIn("make smoke", text)
         self.assertNotIn("docker network connect", text)
-
-    def test_github_defines_no_build_or_release_workflows(self):
-        self.assertFalse(GITHUB_CI.exists())
-        self.assertFalse(GITHUB_RELEASE.exists())
 
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")
