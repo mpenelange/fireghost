@@ -181,8 +181,9 @@ jobs:
           export FIRECRAWL_ENABLED=false
           "${compose[@]}" up -d --pull always --wait
           router_address="$("${compose[@]}" port router 8080)"
+          # GitHub-hosted egress receives Reddit's bot challenge, not content.
           ROUTER_URL="http://$router_address" ROUTER_API_KEY="$ROUTER_API_KEY" \
-            python3 scripts/live-contract-test.py
+            LIVE_CONTRACT_REDDIT=0 python3 scripts/live-contract-test.py
       - name: Clear candidate images
         if: always()
         run: docker system prune -af --volumes
