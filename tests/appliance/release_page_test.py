@@ -4,7 +4,7 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".forgejo" / "workflows" / "release.yaml"
+WORKFLOW = ROOT / ".github" / "workflows" / "release.yaml"
 
 spec = importlib.util.spec_from_file_location("release_page", ROOT / "scripts" / "release_page.py")
 release_page = importlib.util.module_from_spec(spec)

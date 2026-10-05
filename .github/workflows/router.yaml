@@ -6,13 +6,13 @@ on:
     paths:
       - router/**
       - Makefile
-      - .forgejo/workflows/router.yaml
+      - .github/workflows/router.yaml
   pull_request:
     branches: [main]
     paths:
       - router/**
       - Makefile
-      - .forgejo/workflows/router.yaml
+      - .github/workflows/router.yaml
 
 jobs:
   check:

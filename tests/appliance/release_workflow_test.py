@@ -8,12 +8,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_tags.py"
-WORKFLOW = ROOT / ".forgejo" / "workflows" / "release.yaml"
-FORGEJO_APPLIANCE = ROOT / ".forgejo" / "workflows" / "appliance.yaml"
-FORGEJO_CRW = ROOT / ".forgejo" / "workflows" / "crw.yaml"
-FORGEJO_ROUTER = ROOT / ".forgejo" / "workflows" / "router.yaml"
-GITHUB_CI = ROOT / ".github" / "workflows" / "ci.yaml"
-GITHUB_RELEASE = ROOT / ".github" / "workflows" / "release.yaml"
+WORKFLOW = ROOT / ".github" / "workflows" / "release.yaml"
+APPLIANCE_WORKFLOW = ROOT / ".github" / "workflows" / "appliance.yaml"
+CRW_WORKFLOW = ROOT / ".github" / "workflows" / "crw.yaml"
+ROUTER_WORKFLOW = ROOT / ".github" / "workflows" / "router.yaml"
 COMPOSE = ROOT / "docker-compose.yml"
 ENV_EXAMPLE = ROOT / ".env.example"
 
@@ -96,29 +94,25 @@ class ReleaseTagContractTest(unittest.TestCase):
 class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_release_installs_pinned_rust_before_full_gate(self):
         text = WORKFLOW.read_text(encoding="utf-8")
-        install = text.index("uses: https://github.com/dtolnay/rust-toolchain@stable")
+        install = text.index("uses: dtolnay/rust-toolchain@stable")
         gate = text.index("make check")
         self.assertLess(install, gate)
         self.assertIn("toolchain: 1.98.1", text[install:gate])
 
     def test_non_release_workflows_do_not_run_for_tags(self):
-        for path in (FORGEJO_APPLIANCE, FORGEJO_CRW, FORGEJO_ROUTER):
+        for path in (APPLIANCE_WORKFLOW, CRW_WORKFLOW, ROUTER_WORKFLOW):
             with self.subTest(workflow=path.name):
                 text = path.read_text(encoding="utf-8")
                 push_block = text[text.index("  push:"):text.index("  pull_request:")]
                 self.assertIn("branches:", push_block)
                 self.assertNotIn("tags:", push_block)
 
-    def test_forgejo_smoke_uses_host_runner_localhost(self):
-        text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
+    def test_smoke_uses_host_runner_localhost(self):
+        text = APPLIANCE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("docker exec fake-cloud python -c 'import socket", text)
         self.assertIn("curl -fsS http://127.0.0.1:33000/health", text)
         self.assertIn("make smoke", text)
         self.assertNotIn("docker network connect", text)
-
-    def test_github_defines_no_build_or_release_workflows(self):
-        self.assertFalse(GITHUB_CI.exists())
-        self.assertFalse(GITHUB_RELEASE.exists())
 
     def test_workflow_is_tag_only_and_runs_checks_before_publishing_both_images(self):
         text = WORKFLOW.read_text(encoding="utf-8")
@@ -128,9 +122,11 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("pull_request:", text)
         self.assertLess(text.index("make check"), text.index("docker buildx build"))
         self.assertIn("scripts/release_tags.py", text)
-        self.assertIn("git.firewire.cc/michael/fireghost-router", text)
-        self.assertIn("git.firewire.cc/michael/fireghost-crw", text)
-        self.assertIn("https://git.firewire.cc/michael/fireghost", text)
+        self.assertIn("IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'ghcr.io/mpenelange' }}", text)
+        self.assertIn("${{ env.IMAGE_NAMESPACE }}/fireghost-router", text)
+        self.assertIn("${{ env.IMAGE_NAMESPACE }}/fireghost-crw", text)
+        self.assertIn('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"', text)
+        self.assertIn("packages: write", text)
         self.assertIn("REGISTRY_USERNAME", text)
         self.assertIn("REGISTRY_TOKEN", text)
 
