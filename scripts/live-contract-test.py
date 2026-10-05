@@ -30,6 +30,10 @@ def env_file_value(name: str) -> str:
 
 
 API_KEY = os.environ.get("ROUTER_API_KEY") or env_file_value("ROUTER_API_KEY")
+# Reddit serves a JavaScript challenge instead of content to datacenter egress
+# such as GitHub-hosted runners. Hosted CI opts out; local and staging gates,
+# which run from the appliance's own network, keep the anti-bot check.
+SCRAPE_REDDIT = os.environ.get("LIVE_CONTRACT_REDDIT", "1") != "0"
 
 
 def post(path: str, body: dict, timeout: float = 120.0) -> tuple[int, float, dict]:
@@ -87,17 +91,27 @@ def main() -> int:
         "scrape example.com",
         post("/v2/scrape", {"url": "https://example.com", "formats": ["markdown"]}),
     )
-    reddit_elapsed, reddit = require_success(
-        "scrape reddit",
-        post(
-            "/v2/scrape",
-            {"url": "https://www.reddit.com/r/selfhosted/", "formats": ["markdown"]},
-        ),
-    )
     example_markdown = example.get("data", {}).get("markdown", "")
-    reddit_markdown = reddit.get("data", {}).get("markdown", "")
-    if len(example_markdown) < 100 or len(reddit_markdown) < 1_000:
-        raise AssertionError("scrape markdown was unexpectedly incomplete")
+    if len(example_markdown) < 100:
+        raise AssertionError(
+            f"example.com scrape markdown was unexpectedly incomplete "
+            f"({len(example_markdown)} chars)"
+        )
+    reddit_elapsed, reddit_markdown = None, None
+    if SCRAPE_REDDIT:
+        reddit_elapsed, reddit = require_success(
+            "scrape reddit",
+            post(
+                "/v2/scrape",
+                {"url": "https://www.reddit.com/r/selfhosted/", "formats": ["markdown"]},
+            ),
+        )
+        reddit_markdown = reddit.get("data", {}).get("markdown", "")
+        if len(reddit_markdown) < 1_000:
+            raise AssertionError(
+                f"reddit scrape markdown was unexpectedly incomplete "
+                f"({len(reddit_markdown)} chars): {reddit_markdown[:200]!r}"
+            )
 
     queries = [
         "Linux",
@@ -142,8 +156,12 @@ def main() -> int:
                 "scrape": {
                     "exampleSeconds": round(example_elapsed, 3),
                     "exampleChars": len(example_markdown),
-                    "redditSeconds": round(reddit_elapsed, 3),
-                    "redditChars": len(reddit_markdown),
+                    "redditSeconds": (
+                        round(reddit_elapsed, 3) if reddit_elapsed is not None else None
+                    ),
+                    "redditChars": (
+                        len(reddit_markdown) if reddit_markdown is not None else None
+                    ),
                 },
                 "concurrency": {
                     "wallSeconds": round(concurrent_wall, 3),
