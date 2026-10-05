@@ -109,6 +109,17 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
                 self.assertIn("branches:", push_block)
                 self.assertNotIn("tags:", push_block)
 
+    def test_crw_workflow_checks_the_shipped_renderer_features(self):
+        text = FORGEJO_CRW.read_text(encoding="utf-8")
+        features = (
+            "--features crw-renderer/cdp,crw-renderer/camofox,crw-renderer/impersonated,"
+            "crw-server/camofox,crw-server/impersonated"
+        )
+        self.assertIn("apt-get install -y --no-install-recommends cmake clang libclang-dev", text)
+        self.assertIn(f"cargo clippy -p crw-renderer -p crw-server --all-targets {features} -- -D warnings", text)
+        self.assertIn(f"cargo test -p crw-renderer -p crw-server {features}", text)
+        self.assertLess(text.index("make check-crw"), text.index("cargo clippy -p crw-renderer"))
+
     def test_forgejo_smoke_uses_host_runner_localhost(self):
         text = FORGEJO_APPLIANCE.read_text(encoding="utf-8")
         self.assertIn("docker exec fake-cloud python -c 'import socket", text)

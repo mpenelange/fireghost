@@ -72,42 +72,41 @@ pub async fn scrape(
     )
     .await?;
 
-    // Return success:false when target HTTP status >= 400 and body is minimal.
-    // Check all text-producing formats so rawHtml-only requests aren't falsely flagged.
-    let status_code = data.metadata.status_code;
-    if status_code >= 400 {
-        let body_len = [
-            data.markdown.as_deref(),
-            data.plain_text.as_deref(),
-            data.html.as_deref(),
-            data.raw_html.as_deref(),
-        ]
-        .iter()
-        .filter_map(|opt| opt.map(|t| t.len()))
-        .max()
-        .unwrap_or(0);
-
-        if body_len < 200 {
-            let error_msg = data
-                .warning
-                .clone()
-                .unwrap_or_else(|| format!("Target returned HTTP {status_code}"));
-            return Ok(Json(ApiResponse {
-                success: false,
-                data: Some(data),
-                error: Some(error_msg),
-                error_code: Some("http_error".into()),
-                warning: None,
-            }));
-        }
+    // The origin answered with an error status and what came back is its error
+    // page, so this is `success:false` however the caller framed the request.
+    // `ScrapeData::http_error` owns both halves of that judgement (see its
+    // measured text bar) and is shared with v2, crawl and batch — the same URL
+    // must not be refunded on one surface and billed on another.
+    //
+    // The body stays in the envelope: the caller can still read the error page
+    // and `metadata.statusCode`. Only a genuine wall gets `clear_body()` below.
+    if let Some(error_msg) = data.http_error() {
+        return Ok(Json(ApiResponse {
+            success: false,
+            data: Some(data),
+            error: Some(error_msg),
+            error_code: Some("http_error".into()),
+            warning: None,
+        }));
     }
 
     // Anti-bot block: the verdict is now classified ONCE at the scrape choke
     // (`single::classify_block`) and stamped onto `data.block`, so v1/v2/crawl
-    // share one decision. `error_code` stays "anti_bot" (identical to the prior
-    // md_empty path) so credit-refund logic is unchanged.
+    // share one decision.
     if let Some(b) = data.block.clone() {
         let error_msg = b.message();
+        // A structural failure is not a wall: it is "we fetched the page fine and
+        // there was nothing usable in it". The customer-facing message has split
+        // these since `BlockOutcome::message()`; the machine-readable code now
+        // does too, so a client can branch without matching English. Refunds are
+        // unaffected — the SaaS keys on `success:false`, not on this code.
+        let error_code = if b.vendor == crw_core::types::STRUCTURAL_FAILURE_VENDOR
+            || b.vendor == crw_core::types::PARKED_DOMAIN_VENDOR
+        {
+            "no_usable_content"
+        } else {
+            "anti_bot"
+        };
         // Drop the interstitial/challenge shell so the caller gets a clean block
         // instead of the "Just a moment / Humans only" wall as markdown. Runs
         // after the http_error gate above, which reads the content lengths.
@@ -117,7 +116,35 @@ pub async fn scrape(
             success: false,
             data: Some(data),
             error: Some(error_msg),
-            error_code: Some("anti_bot".into()),
+            error_code: Some(error_code.into()),
+            warning: None,
+        }));
+    }
+
+    // Nothing the caller asked for came back. Until now this shipped as a
+    // success: a PDF the decompression-bomb guard refused, or an origin that
+    // answered 200 with nothing extractable, returned `success:true` with an
+    // empty body — and the SaaS refunds on `success:false`, so a `true` here is
+    // a charge for a response with no content in it. Measured on prod: four
+    // customer scrapes in six days, one of them carrying no warning at all,
+    // which is why `has_no_content` keys on the outcome rather than on warning
+    // text. `no_usable_content` is the code the structural/parked verdicts
+    // already use for exactly this meaning.
+    if data.has_no_content(&req.formats) {
+        // Several paths record why in `warnings` (plural) without ever setting
+        // the singular `warning` — a failed summary is one — so reading only the
+        // singular would hand the caller the generic sentence while the real
+        // reason sat one field over.
+        let error_msg = data
+            .warning
+            .clone()
+            .or_else(|| data.warnings.first().cloned())
+            .unwrap_or_else(|| "No content could be extracted from the page".to_string());
+        return Ok(Json(ApiResponse {
+            success: false,
+            data: Some(data),
+            error: Some(error_msg),
+            error_code: Some("no_usable_content".into()),
             warning: None,
         }));
     }

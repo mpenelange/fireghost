@@ -9,6 +9,12 @@ port = 3000
 # the default ladder_min.
 request_timeout_secs = 120
 rate_limit_rps = 10              # Max requests/second (global). 0 = unlimited.
+# Cross-origin allowlist for browser callers. Empty (default) = NO CORS headers
+# are sent, so browsers block cross-origin JS access — the safe default for a
+# server-to-server API. Set explicit origins only if a browser app must call the
+# engine directly. A literal "*" is ignored with a startup warning (that is the
+# permissive wildcard this setting replaces). Env: CRW_SERVER__CORS_ALLOWED_ORIGINS="https://a,https://b".
+# cors_allowed_origins = ["https://app.example.com"]
 
 # [request]
 # deadline_ms_default = 8000
@@ -26,7 +32,7 @@ pool_size = 4
                                   # Forces JS rendering when a request omits `renderJs`.
                                   # Per-request `renderJs` always wins over this default.
 
-# Failover order: LightPanda → Camofox. Configure one or both.
+# Failover order: impersonated HTTP → LightPanda → Camofox → Byparr.
 # In auto mode, CRW tries each renderer in order. LightPanda is fast and
 # light, but its JS engine can crash on complex SPAs (Next.js App Router
 # hydration, modern React 18+, etc.). When that happens — or when the
@@ -40,6 +46,18 @@ pool_size = 4
 [renderer.lightpanda]
 ws_url = "ws://127.0.0.1:9222/"
 
+# Chrome-impersonation HTTP tier (wreq). No endpoint: the tier is in-process.
+# Requires a build with `--features impersonated` (the published Docker image
+# ships it ON). Sits between the plain HTTP tier and the browser ladder in auto
+# mode, fires only when the plain tier hit an anti-bot wall (e.g. the Amazon.it
+# interstitial) or a fingerprint-shaped transport error, and is pinnable per
+# request with renderer = "impersonated-http". When a browser ladder is
+# configured the hop is capped at half the remaining request deadline so it can
+# never starve it. ON by default; disable with enabled = false.
+# [renderer.impersonated]
+# enabled = true               # runtime kill switch (default true)
+# timeout_ms = 15000           # per-request budget for the tier (default 15 s)
+
 # Camofox (camofox-browser REST) — the Firefox/Camoufox anti-detect tier. Not a
 # CDP endpoint: `base_url` is the camofox-browser HTTP server. In `auto` mode it
 # is tried after LightPanda. When set, it also backs `/v1/search`
@@ -47,6 +65,18 @@ ws_url = "ws://127.0.0.1:9222/"
 # [renderer.camofox]
 # base_url = "http://127.0.0.1:9377"
 # api_key = "..."                 # only if the camofox server runs with auth
+# challenge_wait_ms = 20000       # wait for a Cloudflare "Just a moment" page to clear; 0 = off
+# clearance_reuse = true          # cache cf_clearance + UA per host, reuse on the HTTP tier
+
+# Byparr (FlareSolverr-compatible challenge solver, e.g. ghcr.io/thephaseless/byparr).
+# Tried last, and only when an earlier attempt came back as an anti-bot challenge
+# or wall; each solve launches a browser. Byparr has no auth: keep it off public
+# interfaces.
+# [renderer.byparr]
+# base_url = "http://127.0.0.1:8191"
+# timeout_ms = 30000              # longest one solve may take, inside the request deadline
+# max_concurrent = 2              # concurrent solves
+# clearance_reuse = true          # cache cf_clearance + UA per host, reuse on the HTTP tier
 
 [crawler]
 max_concurrency = 10

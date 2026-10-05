@@ -4,7 +4,7 @@
     "crwVendor": {
       "url": "https://github.com/adambenhassen/crw-camofox.git",
       "ref": "refs/heads/feat/camofox-renderer",
-      "reviewedCommit": "84f12bb3ef4c4111142e4da894444f2052fea493",
+      "reviewedCommit": "796d8c9fa695165867ba8a778f39c9e575e8e154",
       "importPath": "crw"
     },
     "crwFoundation": {

@@ -15,7 +15,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.2.0"
+version = "1.5.0"
 edition = "2024"
 license = "AGPL-3.0"
 repository = "https://github.com/us/crw"
@@ -34,6 +34,11 @@ tower-http = { version = "0.6", features = ["cors", "trace", "timeout", "set-hea
 
 # HTTP client
 reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "rustls", "gzip", "brotli", "deflate", "socks", "stream", "multipart"] }
+# Chrome TLS/JA3/HTTP2 impersonation client (optional; only crw-renderer
+# references it, behind the `impersonated` feature). `socks` is required:
+# without it wreq routes a socks5 proxy URL down its HTTP-proxy path.
+wreq = { version = "0.16", features = ["gzip", "brotli", "zstd", "deflate", "charset", "socks"] }
+wreq-util = "0.2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -55,6 +60,11 @@ regex = "1"
 # dep of `crw-extract` only, behind its default-on `pdf` feature. No system
 # libraries — preserves the single-static-binary story. The open-core
 # boundary gate asserts lopdf/ttf-parser are ABSENT when `pdf` is disabled.
+#
+# Upstream pins `=1.17.0` after measuring 29 real PDFs against poppler (98.15%
+# word recall vs 0.1.6's 97.72%; arXiv 1412.6980 pages 6-11 now 97-100%).
+# Fireghost runs the newer 1.21 line, validated with the 2026-09-19 upgrade
+# review (docs/audits/2026-09-19-upgrades.md) and crw-extract's pdf tests.
 pdf-inspector = "1.21"
 
 # Diffing (change-tracking / monitor). Myers diff over lines; the parse-diff
@@ -99,7 +109,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 url = { version = "2", features = ["serde"] }
 sha2 = "0.10"
 hex = "0.4"
-base64 = "0.22"
+base64 = "0.23"
 
 # Self-host monitor mode (feature-gated, default OFF). These are optional deps
 # of `crw-monitor` only and MUST NOT leak into the default `crw-server` build —
@@ -132,15 +142,15 @@ insta = { version = "1", features = ["json"] }
 # and layer their own `features` / `optional` on top. `path` is resolved
 # relative to THIS (root) manifest. Only crates that are depended upon by
 # another crate appear here; leaf binaries (crw-mcp, crw-cli) just consume.
-crw-mcp-proto = { path = "crates/crw-mcp-proto", version = "1.2.0" }
-crw-core = { path = "crates/crw-core", version = "1.2.0" }
-crw-extract = { path = "crates/crw-extract", version = "1.2.0" }
-crw-renderer = { path = "crates/crw-renderer", version = "1.2.0" }
-crw-search = { path = "crates/crw-search", version = "1.2.0" }
-crw-diff = { path = "crates/crw-diff", version = "1.2.0" }
-crw-crawl = { path = "crates/crw-crawl", version = "1.2.0" }
-crw-monitor = { path = "crates/crw-monitor", version = "1.2.0" }
-crw-server = { path = "crates/crw-server", version = "1.2.0" }
+crw-mcp-proto = { path = "crates/crw-mcp-proto", version = "1.5.0" }
+crw-core = { path = "crates/crw-core", version = "1.5.0" }
+crw-extract = { path = "crates/crw-extract", version = "1.5.0" }
+crw-renderer = { path = "crates/crw-renderer", version = "1.5.0" }
+crw-search = { path = "crates/crw-search", version = "1.5.0" }
+crw-diff = { path = "crates/crw-diff", version = "1.5.0" }
+crw-crawl = { path = "crates/crw-crawl", version = "1.5.0" }
+crw-monitor = { path = "crates/crw-monitor", version = "1.5.0" }
+crw-server = { path = "crates/crw-server", version = "1.5.0" }
 
 [profile.release]
 lto = true

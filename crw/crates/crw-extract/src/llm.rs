@@ -41,9 +41,62 @@ fn shared_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
+            // A BYOK base URL is validated before use; a redirect must not undo it.
+            .redirect(crw_core::url_safety::safe_redirect_policy())
             .build()
             .expect("reqwest client build (LLM shared)")
     })
+}
+
+/// hyper's wording for a pooled keep-alive connection the peer had already
+/// closed. Matched on the message because hyper is not a direct dependency of
+/// this crate; `crates/crw-extract/tests/transport_retry.rs` drives the real
+/// failure end to end, so a hyper rewording fails a test rather than silently
+/// disabling the retry below.
+const DEAD_POOLED_CONNECTION: &str = "connection closed before message completed";
+
+/// Send a provider POST, retrying once when the connection died before the
+/// provider could have seen the request.
+///
+/// Every LLM call here rides a process-wide pooled client, and a provider (or
+/// any middlebox between us) may close an idle keep-alive connection whenever
+/// it likes. We only find out on the next send, so an otherwise good request
+/// fails having never reached the provider. Retrying that costs one extra
+/// round trip and turns a spurious user-visible extraction failure into a
+/// success.
+pub(crate) async fn send_provider_post(
+    req: reqwest::RequestBuilder,
+) -> reqwest::Result<reqwest::Response> {
+    let retry = req.try_clone();
+    let err = match req.send().await {
+        Ok(resp) => return Ok(resp),
+        Err(e) => e,
+    };
+    match retry {
+        Some(retry) if request_never_reached_provider(&err) => retry.send().await,
+        _ => Err(err),
+    }
+}
+
+/// True only when the request provably never got to the provider, so replaying
+/// it cannot duplicate work that was already billed.
+fn request_never_reached_provider(err: &reqwest::Error) -> bool {
+    // A timeout is deliberately not retried: the provider may have received the
+    // request and be working on it, and these calls cost money.
+    if err.is_timeout() {
+        return false;
+    }
+    if err.is_connect() {
+        return true;
+    }
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(e) = source {
+        if e.to_string().contains(DEAD_POOLED_CONNECTION) {
+            return true;
+        }
+        source = e.source();
+    }
+    false
 }
 
 fn truncate_on_char_boundary(s: &str, max_bytes: usize) -> &str {
@@ -325,21 +378,31 @@ async fn call_anthropic(
     if let Some(t) = temperature {
         body["temperature"] = serde_json::json!(t);
     }
-    let resp = client
-        .post(url)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| CrwError::Internal(format!("LLM request failed: {e}")))?;
+    let resp = send_provider_post(
+        client
+            .post(url)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .header("content-type", "application/json")
+            .json(&body),
+    )
+    .await
+    .map_err(|e| {
+        // The endpoint names the provider; log it, return the stripped message.
+        tracing::warn!("provider request failed: {e}");
+        CrwError::Internal(format!(
+            "LLM request failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
 
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| CrwError::Internal(format!("LLM response read failed: {e}")))?;
+    let text = resp.text().await.map_err(|e| {
+        CrwError::Internal(format!(
+            "LLM response read failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
     if !status.is_success() {
         // NOTE: body may contain the request echoed back by some gateways.
         // The HTTP status code is enough — do not leak the body.
@@ -424,14 +487,22 @@ async fn call_openai(
     let mut attempt: u32 = 0;
     let (status, text) = loop {
         attempt += 1;
-        let resp = client
-            .post(url)
-            .bearer_auth(api_key)
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| CrwError::Internal(format!("LLM request failed: {e}")))?;
+        let resp = send_provider_post(
+            client
+                .post(url)
+                .bearer_auth(api_key)
+                .header("content-type", "application/json")
+                .json(&body),
+        )
+        .await
+        .map_err(|e| {
+            // The endpoint names the provider; log it, return the stripped message.
+            tracing::warn!("provider request failed: {e}");
+            CrwError::Internal(format!(
+                "LLM request failed: {}",
+                crw_core::error::reqwest_message(e)
+            ))
+        })?;
 
         let status = resp.status();
         let is_retryable = status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -445,10 +516,12 @@ async fn call_openai(
             continue;
         }
 
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| CrwError::Internal(format!("LLM response read failed: {e}")))?;
+        let text = resp.text().await.map_err(|e| {
+            CrwError::Internal(format!(
+                "LLM response read failed: {}",
+                crw_core::error::reqwest_message(e)
+            ))
+        })?;
         break (status, text);
     };
     if !status.is_success() {
@@ -501,20 +574,30 @@ async fn call_azure(
         body["temperature"] = serde_json::json!(t);
         body["seed"] = serde_json::json!(42);
     }
-    let resp = client
-        .post(&url)
-        .header("api-key", api_key)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| CrwError::Internal(format!("LLM request failed: {e}")))?;
+    let resp = send_provider_post(
+        client
+            .post(&url)
+            .header("api-key", api_key)
+            .header("content-type", "application/json")
+            .json(&body),
+    )
+    .await
+    .map_err(|e| {
+        // The endpoint names the provider; log it, return the stripped message.
+        tracing::warn!("provider request failed: {e}");
+        CrwError::Internal(format!(
+            "LLM request failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
 
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| CrwError::Internal(format!("LLM response read failed: {e}")))?;
+    let text = resp.text().await.map_err(|e| {
+        CrwError::Internal(format!(
+            "LLM response read failed: {}",
+            crw_core::error::reqwest_message(e)
+        ))
+    })?;
     if !status.is_success() {
         return Err(CrwError::Internal(format!("LLM HTTP {status} from azure")));
     }

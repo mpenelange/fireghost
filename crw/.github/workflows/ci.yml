@@ -2,15 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/camofox-renderer]
   pull_request:
-    branches: [main]
+    branches: [main, feat/camofox-renderer]
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v6
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af
+          df -h /
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -67,3 +76,10 @@ jobs:
       # artifacts CI never runs. (Kept in release.yml as a pre-publish gate.)
       - name: Test
         run: cargo test --workspace
+
+      # The Camofox tier and the ladder wiring around it are feature-gated, and
+      # the workspace default builds without them, so the step above never runs
+      # `tests/camofox_tests.rs` or the camofox arms of the renderer tests. The
+      # Docker image ships with `cdp,camofox,impersonated`; test what ships.
+      - name: Test (camofox + impersonated tiers)
+        run: cargo test -p crw-renderer -p crw-server --features crw-renderer/cdp,crw-renderer/camofox,crw-renderer/impersonated,crw-server/camofox,crw-server/impersonated

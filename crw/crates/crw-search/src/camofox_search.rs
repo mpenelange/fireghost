@@ -33,7 +33,9 @@ use serde_json::json;
 
 use crw_core::types::SearchEngine;
 
-use crate::client::{SearchError, SearxngResponse, SearxngResult};
+use crate::client::{
+    MAX_ERROR_BODY_BYTES, SearchError, SearxngResponse, SearxngResult, read_capped,
+};
 use crate::params::SearxngParams;
 
 /// Stable `userId` for the search client's camofox sessions (separate from the
@@ -309,6 +311,12 @@ impl CamofoxSearchClient {
         &self.base_url
     }
 
+    /// Base URL the `github` engine calls instead of the browser, so errors from
+    /// that engine can name the host that actually failed.
+    pub fn github_api_base(&self) -> &str {
+        &self.github_api_base
+    }
+
     fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match &self.api_key {
             Some(k) => req.bearer_auth(k),
@@ -338,15 +346,14 @@ impl CamofoxSearchClient {
         response: reqwest::Response,
         operation: &str,
     ) -> Result<CamofoxApiResponse, SearchError> {
-        let status = response.status();
-        if !status.is_success() {
-            return Err(SearchError::Upstream {
-                status: status.as_u16(),
-                body: format!("camofox: {operation} failed"),
-            });
+        if !response.status().is_success() {
+            return Err(upstream_error(operation, response).await);
         }
         let body = response.json::<CamofoxApiResponse>().await.map_err(|e| {
-            SearchError::InvalidResponse(format!("camofox: bad {operation} response: {e}"))
+            SearchError::InvalidResponse(format!(
+                "camofox: bad {operation} response: {}",
+                crw_core::error::reqwest_message(e)
+            ))
         })?;
         if !body.ok {
             return Err(SearchError::Upstream {
@@ -379,15 +386,14 @@ impl CamofoxSearchClient {
                         SearchError::Transport(e.without_url().to_string())
                     }
                 })?;
-        let status = response.status();
-        if !status.is_success() {
-            return Err(SearchError::Upstream {
-                status: status.as_u16(),
-                body: "camofox: list tabs failed".to_string(),
-            });
+        if !response.status().is_success() {
+            return Err(upstream_error("list tabs", response).await);
         }
         let body = response.json::<ListTabsResponse>().await.map_err(|e| {
-            SearchError::InvalidResponse(format!("camofox: bad list tabs response: {e}"))
+            SearchError::InvalidResponse(format!(
+                "camofox: bad list tabs response: {}",
+                crw_core::error::reqwest_message(e)
+            ))
         })?;
         if !body.ok {
             return Err(SearchError::Upstream {
@@ -484,6 +490,9 @@ impl CamofoxSearchClient {
                     all.extend(rows);
                 }
                 Err(e) => {
+                    // The API response gets only the stripped reason; the full
+                    // error (with camofox's message) is only visible here.
+                    tracing::warn!(engine = label, error = %e, "camofox: engine failed");
                     unresponsive.push(serde_json::json!([label, engine_failure_reason(&e)]));
                     last_err = Some(e);
                 }
@@ -541,15 +550,17 @@ impl CamofoxSearchClient {
             )
             .await?;
         if !create.status().is_success() {
-            return Err(SearchError::Upstream {
-                status: create.status().as_u16(),
-                body: "camofox: create tab failed".to_string(),
-            });
+            return Err(upstream_error("create tab", create).await);
         }
         let id = create
             .json::<CreateTabResponse>()
             .await
-            .map_err(|e| SearchError::InvalidResponse(format!("camofox: bad /tabs response: {e}")))?
+            .map_err(|e| {
+                SearchError::InvalidResponse(format!(
+                    "camofox: bad /tabs response: {}",
+                    crw_core::error::reqwest_message(e)
+                ))
+            })?
             .tab_id;
         *tab = Some(id.clone());
         Ok(id)
@@ -746,7 +757,10 @@ impl CamofoxSearchClient {
             });
         }
         let data = resp.json::<GithubSearchResponse>().await.map_err(|e| {
-            SearchError::InvalidResponse(format!("github: bad search response: {e}"))
+            SearchError::InvalidResponse(format!(
+                "github: bad search response: {}",
+                crw_core::error::reqwest_message(e)
+            ))
         })?;
 
         let n = data.items.len();
@@ -810,7 +824,22 @@ async fn resolve_location(http: &reqwest::Client, url: &str) -> Option<String> {
         .to_str()
         .ok()?;
     let target = url::Url::parse(url).ok()?.join(location).ok()?;
+    // Google answers a rate-limited or cookieless request with a redirect to
+    // its own consent or `/sorry` interstitial, which is not the result. Leave
+    // the row on its (working) redirect URL instead of dropping it as internal.
+    if is_google_interstitial(&target) {
+        return None;
+    }
     matches!(target.scheme(), "http" | "https").then(|| target.to_string())
+}
+
+/// Google's consent wall or rate-limit (`/sorry`) page.
+fn is_google_interstitial(url: &url::Url) -> bool {
+    match url.host_str() {
+        Some("consent.google.com") => true,
+        Some(_) if is_google_host(url) => url.path().starts_with("/sorry"),
+        _ => false,
+    }
 }
 
 /// Replace Google redirect links with their destinations, resolving the whole
@@ -844,6 +873,44 @@ async fn resolve_google_links(
             keep.then_some(row)
         })
         .collect()
+}
+
+/// Cap on how much of camofox's `error` message is carried into the error.
+/// The route layer trims `Upstream.body` again (to 200 chars) before it reaches
+/// an HTTP client; this cap only bounds what lands in logs.
+const UPSTREAM_BODY_CAP: usize = 300;
+
+/// Turn a non-2xx camofox response into an `Upstream` error carrying camofox's
+/// own `error` message (e.g. a profile/Camoufox version mismatch), so the
+/// cause is visible instead of a bare status. Only that JSON field passes
+/// through: a non-JSON body (a proxy's HTML error page, a crash trace) is
+/// logged, not surfaced, since `Upstream.body` reaches API responses. `what`
+/// names the step (`create tab`, `navigate`, `list tabs`).
+async fn upstream_error(what: &str, resp: reqwest::Response) -> SearchError {
+    let status = resp.status().as_u16();
+    let raw = match read_capped(resp, MAX_ERROR_BODY_BYTES).await {
+        Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+        Err(e) => {
+            tracing::debug!(status, step = what, error = %e, "camofox: error body unreadable");
+            String::new()
+        }
+    };
+    let detail = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("error")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| {
+            if !raw.trim().is_empty() {
+                tracing::debug!(status, step = what, body = %raw.trim(), "camofox: non-JSON error body");
+            }
+            String::new()
+        });
+    let detail: String = detail.trim().chars().take(UPSTREAM_BODY_CAP).collect();
+    let body = if detail.is_empty() {
+        format!("camofox: {what} failed")
+    } else {
+        format!("camofox: {what} failed: {detail}")
+    };
+    SearchError::Upstream { status, body }
 }
 
 fn engine_failure_reason(e: &SearchError) -> String {
@@ -1400,5 +1467,177 @@ mod google_redirect_tests {
             resolve_location(&http, "http://www.google.com/goto?url=js").await,
             None
         );
+    }
+
+    #[tokio::test]
+    async fn consent_and_rate_limit_redirects_keep_the_result_row() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "consent"))
+            .respond_with(ResponseTemplate::new(302).insert_header(
+                "location",
+                "https://consent.google.com/ml?continue=https://www.google.com/goto",
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/goto"))
+            .and(query_param("url", "sorry"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", "/sorry/index"))
+            .mount(&server)
+            .await;
+        let rows = vec![
+            row("http://www.google.com/goto?url=consent"),
+            row("http://www.google.com/goto?url=sorry"),
+        ];
+        let urls: Vec<String> = resolve_google_links(&proxied_client(&server), rows)
+            .await
+            .into_iter()
+            .filter_map(|r| r.url)
+            .collect();
+        assert_eq!(
+            urls,
+            vec![
+                "http://www.google.com/goto?url=consent",
+                "http://www.google.com/goto?url=sorry",
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod upstream_error_tests {
+    //! Ported from upstream 1.5.0: camofox's own `error` message reaches the
+    //! `Upstream` body, a non-JSON or empty body degrades to the step label.
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Item 12: the github engine's errors name the host it actually calls.
+    #[test]
+    fn github_api_base_is_the_rest_api_not_the_browser() {
+        let client =
+            CamofoxSearchClient::new("http://camofox:9377", None, None, Duration::from_secs(5));
+        assert_eq!(client.github_api_base(), "https://api.github.com");
+        assert_eq!(client.base_url(), "http://camofox:9377");
+    }
+
+    /// A failed camofox call carries the server's own `error` message in the
+    /// `Upstream` body (truncated), not a fixed label — the message is what
+    /// tells a profile-version pin apart from a crashed browser.
+    #[tokio::test]
+    async fn create_tab_error_surfaces_camofox_message() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+                "error": "Profile for user \"crw-search\" was created with Camoufox 135.0.1-beta.24, but the current version is 152.0.4-beta.28"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(5));
+        let params = SearxngParams {
+            q: "rust".to_string(),
+            camofox_engines: vec![SearchEngine::Google],
+            ..Default::default()
+        };
+        let err = client.fetch(&params).await.unwrap_err();
+        match err {
+            SearchError::Upstream { status, body } => {
+                assert_eq!(status, 500);
+                assert!(
+                    body.starts_with("camofox: create tab failed: Profile for user"),
+                    "{body}"
+                );
+                assert!(body.contains("152.0.4-beta.28"), "{body}");
+            }
+            other => panic!("expected Upstream, got {other:?}"),
+        }
+    }
+
+    /// A non-JSON error body (a proxy's HTML page, a crash trace) stays out of
+    /// the message — `Upstream.body` reaches API responses — so the error
+    /// degrades to the bare step label.
+    #[tokio::test]
+    async fn navigate_error_with_non_json_body_keeps_label() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "t1" })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/t1/navigate"))
+            .respond_with(
+                ResponseTemplate::new(502)
+                    .set_body_string("<html><body>Bad Gateway at /internal/x</body></html>"),
+            )
+            .mount(&server)
+            .await;
+
+        let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(5));
+        let params = SearxngParams {
+            q: "rust".to_string(),
+            camofox_engines: vec![SearchEngine::Bing],
+            ..Default::default()
+        };
+        match client.fetch(&params).await.unwrap_err() {
+            SearchError::Upstream { status, body } => {
+                assert_eq!(status, 502);
+                assert_eq!(body, "camofox: navigate failed");
+            }
+            other => panic!("expected Upstream, got {other:?}"),
+        }
+    }
+
+    /// An empty error body degrades to the bare step label.
+    #[tokio::test]
+    async fn navigate_error_without_body_keeps_label() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/tabs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "tabId": "t1" })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/tabs/t1/navigate"))
+            .respond_with(ResponseTemplate::new(502))
+            .mount(&server)
+            .await;
+
+        let client = CamofoxSearchClient::new(server.uri(), None, None, Duration::from_secs(5));
+        let params = SearxngParams {
+            q: "rust".to_string(),
+            camofox_engines: vec![SearchEngine::Bing],
+            ..Default::default()
+        };
+        let err = client.fetch(&params).await.unwrap_err();
+        match err {
+            SearchError::Upstream { status, body } => {
+                assert_eq!(status, 502);
+                assert_eq!(body, "camofox: navigate failed");
+            }
+            other => panic!("expected Upstream, got {other:?}"),
+        }
+    }
+
+    /// Google's consent wall or `/sorry` rate-limit page is not a result: the
+    /// row keeps its working redirect URL instead of being dropped as
+    /// Google-internal.
+    #[test]
+    fn google_interstitials_are_recognised() {
+        let parse = |u: &str| url::Url::parse(u).unwrap();
+        assert!(is_google_interstitial(&parse(
+            "https://consent.google.com/ml?continue=https://www.google.com/goto"
+        )));
+        assert!(is_google_interstitial(&parse(
+            "https://www.google.com/sorry/index?continue=https://www.google.com/goto"
+        )));
+        assert!(!is_google_interstitial(&parse(
+            "https://www.google.com/search?q=x"
+        )));
+        assert!(!is_google_interstitial(&parse("https://example.com/sorry")));
     }
 }

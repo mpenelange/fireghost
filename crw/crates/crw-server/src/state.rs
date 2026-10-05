@@ -5,7 +5,7 @@ use crw_core::types::{
     CrawlRequest, CrawlState, CrawlStatus, RequestedRenderer, ScrapeRequest,
     resolve_pinned_renderer, resolve_render_js,
 };
-use crw_crawl::crawl::{CrawlOptions, run_crawl};
+use crw_crawl::crawl::{CrawlOptions, failed_page, run_crawl};
 use crw_crawl::single::scrape_url;
 use crw_renderer::FallbackRenderer;
 use crw_search::{CamofoxSearchClient, SearchError, SearxngParams, SearxngResponse};
@@ -37,12 +37,20 @@ impl SearchBackend {
             SearchBackend::Camofox(c) => c.base_url(),
         }
     }
+
+    /// Host the `github` engine calls (the GitHub REST API, not the browser).
+    pub fn github_api_base(&self) -> &str {
+        match self {
+            SearchBackend::Camofox(c) => c.github_api_base(),
+        }
+    }
 }
 
 /// Validate that a request's pinned renderer is available before accepting
 /// the job. Returns `InvalidRequest` (→ HTTP 400) when the named renderer is
-/// not in the configured pool. Skipped when `renderJs:false` is set, since
-/// HTTP-only ignores the pin.
+/// not in the configured pool. Skipped for a browser pin when `renderJs:false`
+/// is set, since HTTP-only ignores that pin; an `impersonated-http` pin is a
+/// transport choice and is validated regardless.
 ///
 /// We surface this explicitly (rather than silently falling back to "auto")
 /// so users get clear feedback when they ask for a renderer the operator
@@ -58,12 +66,25 @@ pub(crate) fn validate_renderer_pin(
         return Ok(());
     };
 
-    // Mirror the fetch-path resolution at `crw-crawl/src/single.rs:41-50` so
+    // The impersonated tier executes no JS, so an explicit `renderJs: true`
+    // alongside its pin is contradictory. Checked BEFORE availability so the
+    // caller gets the precise reason in every build, feature or not.
+    if renderer == Some(RequestedRenderer::ImpersonatedHttp) && render_js == Some(true) {
+        return Err(CrwError::InvalidRequest(
+            "renderer 'impersonated-http' never executes JS; remove renderJs:true (or omit it)"
+                .into(),
+        ));
+    }
+
+    // Mirror the fetch-path resolution in `crw-crawl/src/single.rs` so
     // validation is consistent with what the actual request does. "Pinned
-    // implies JS" — when a renderer is pinned and the request omits
-    // `renderJs`, force the request to JS=true so a `render_js_default=false`
-    // server config doesn't silently send the request through HTTP-only.
-    let effective_request = if render_js.is_none() {
+    // implies JS": a browser pin with `renderJs` omitted is coerced to JS so a
+    // `render_js_default=false` server config doesn't silently send it
+    // through HTTP-only. The impersonated-http tier never executes JS
+    // (`RequestedRenderer::implies_js`), so it takes neither the coercion nor
+    // the HTTP-only skip below: it is a transport choice, validated regardless.
+    let pin_implies_js = renderer.is_some_and(|r| r.implies_js());
+    let effective_request = if render_js.is_none() && pin_implies_js {
         Some(true)
     } else {
         render_js
@@ -71,11 +92,11 @@ pub(crate) fn validate_renderer_pin(
     let effective_render_js =
         resolve_render_js(effective_request, state.config.renderer.render_js_default);
 
-    if effective_render_js == Some(false) {
+    if effective_render_js == Some(false) && pin_implies_js {
         return Ok(());
     }
 
-    let available = state.renderer.js_renderer_names();
+    let available = state.renderer.available_renderer_names();
     if !available.contains(&name) {
         return Err(CrwError::InvalidRequest(format!(
             "renderer '{}' not available; configured renderers: [{}]. \
@@ -277,6 +298,7 @@ impl AppState {
             status: CrawlStatus::InProgress,
             total: 0,
             completed: 0,
+            blocked: 0,
             data: vec![],
             error: None,
         };
@@ -306,6 +328,7 @@ impl AppState {
         let jitter_factor = self.config.crawler.stealth.jitter_factor;
         let deadline_ms_per_page = self.config.effective_deadline_ms(None, req.wait_for);
         let per_host_max_concurrent = self.config.crawler.per_host_max_concurrent;
+        let http_retry_threshold_bytes = self.config.extraction.http_retry_threshold_bytes;
 
         let handle = tokio::spawn(async move {
             let _permit = match crawl_semaphore.acquire().await {
@@ -317,6 +340,7 @@ impl AppState {
                         status: CrawlStatus::Failed,
                         total: 0,
                         completed: 0,
+                        blocked: 0,
                         data: vec![],
                         error: Some("Server is overloaded, try again later".into()),
                     });
@@ -337,6 +361,7 @@ impl AppState {
                 jitter_factor,
                 deadline_ms_per_page,
                 per_host_max_concurrent,
+                http_retry_threshold_bytes,
             })
             .await;
         });
@@ -365,6 +390,7 @@ impl AppState {
             status: CrawlStatus::InProgress,
             total,
             completed: 0,
+            blocked: 0,
             data: vec![],
             error: None,
         });
@@ -395,6 +421,7 @@ impl AppState {
                         status: CrawlStatus::Failed,
                         total,
                         completed: 0,
+                        blocked: 0,
                         data: vec![],
                         error: Some("Server is overloaded, try again later".into()),
                     });
@@ -409,6 +436,7 @@ impl AppState {
                     status: CrawlStatus::Completed,
                     total: 0,
                     completed: 0,
+                    blocked: 0,
                     data: vec![],
                     error: None,
                 });
@@ -448,16 +476,38 @@ impl AppState {
                             render_js_default,
                             deadline,
                         )
-                        .await
-                        .ok();
+                        .await;
                         // Mutate the shared status in place — push one document and
                         // bump the counter without cloning the whole accumulated Vec
                         // on every completion (avoids O(n^2) copying on large
-                        // batches). A failed scrape still advances `completed`.
+                        // batches). A failed scrape still advances `completed`, and
+                        // is retained as a blocked placeholder carrying the reason
+                        // instead of vanishing from the results.
                         tx.send_modify(|st| {
-                            if let Some(d) = scraped {
-                                st.data.push(d);
+                            let mut d = scraped
+                                .unwrap_or_else(|err| failed_page(&req.url, 0, err.to_string()));
+                            // `scrape_url` stamps the verdict but this path used to
+                            // push it through untouched, so a wall shipped as an
+                            // ordinary batch document (and `/v2`'s adapter drops
+                            // `block`, hiding it completely). Clear the shell and
+                            // count it, exactly as the single scrape route does.
+                            let is_wall = d.block.is_some();
+                            if !is_wall && let Some(reason) = d.http_error() {
+                                d.block = Some(crw_core::types::BlockOutcome {
+                                    vendor: crw_core::types::HTTP_ERROR_VENDOR.to_string(),
+                                    reason,
+                                });
                             }
+                            if d.block.is_some() {
+                                // Same split as `/v1/scrape` and the crawl loop: a
+                                // wall loses its shell, an origin error page stays
+                                // readable.
+                                if is_wall {
+                                    d.clear_body();
+                                }
+                                st.blocked += 1;
+                            }
+                            st.data.push(d);
                             st.completed += 1;
                             if st.completed >= total {
                                 st.status = CrawlStatus::Completed;
@@ -531,6 +581,19 @@ impl AppState {
                 )
                 .await
                 {
+                    // A wall or an origin error page is not a completed
+                    // extraction: `scrape_url` skips the LLM call for it, so
+                    // counting it as `Ok` marked the job Completed with empty
+                    // data and charged for it.
+                    Ok(d) if d.block.is_some() || d.http_error().is_some() => {
+                        last_err = Some(
+                            d.block
+                                .as_ref()
+                                .map(|b| b.message())
+                                .or_else(|| d.http_error())
+                                .unwrap_or_else(|| "Blocked".into()),
+                        );
+                    }
                     Ok(d) => {
                         any_ok = true;
                         if let Some(serde_json::Value::Object(obj)) = d.json {
@@ -552,12 +615,14 @@ impl AppState {
                 if !any_ok && last_err.is_some() {
                     rec.status = ExtractStatus::Failed;
                     rec.error = last_err;
+                    // Nothing was extracted, so nothing is charged.
+                    rec.credits_used = credits;
                 } else {
                     rec.status = ExtractStatus::Completed;
                     rec.data = Some(serde_json::Value::Object(merged));
+                    rec.credits_used = credits.max(1);
                 }
                 rec.tokens_used = tokens;
-                rec.credits_used = credits.max(1);
             }
         });
 

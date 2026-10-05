@@ -6,6 +6,7 @@ fn extract_markdown_format() {
     let html = "<html><head><title>Test</title></head><body><article><h1>Hello</h1><p>World</p></article></body></html>";
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -49,6 +50,7 @@ fn extract_images_format_populates_from_raw_html() {
         <body><article><img src=\"/pic.png\" alt=\"Pic\"></article></body></html>";
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -96,6 +98,7 @@ fn extract_all_formats() {
 
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: Some("http".into()),
@@ -142,6 +145,7 @@ fn extract_metadata_populated() {
 
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -176,6 +180,7 @@ fn extract_metadata_populated() {
 fn extract_empty_html() {
     let data = crw_extract::extract(ExtractOptions {
         raw_html: "",
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -212,6 +217,7 @@ fn extract_with_include_exclude_tags() {
         r#"<html><body><div class="ad">Ad</div><article><p>Content</p></article></body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -255,6 +261,7 @@ fn prepends_metadata_title_when_missing_from_markdown() {
     </body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -296,6 +303,7 @@ fn does_not_duplicate_title_already_in_markdown() {
     </body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -339,6 +347,7 @@ fn strips_site_name_suffix_from_title_when_prepending() {
     </body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -390,6 +399,7 @@ fn preserves_en_dash_inside_title_parentheses() {
     </body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -437,6 +447,7 @@ fn does_not_prepend_title_when_css_selector_provided() {
     </body></html>"#;
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://example.com",
         status_code: 200,
         rendered_with: None,
@@ -486,6 +497,7 @@ fn prepends_title_when_only_domain_selector_applies() {
     domain_map.insert("www.raspberrypi.com".to_string(), "main".to_string());
     let data = crw_extract::extract(ExtractOptions {
         raw_html: html,
+        content_type: None,
         source_url: "https://www.raspberrypi.com/news/x/",
         status_code: 200,
         rendered_with: None,
@@ -515,5 +527,209 @@ fn prepends_title_when_only_domain_selector_applies() {
     assert!(
         md.contains("New extended temperature range for Compute Module 4"),
         "domain-default selector must not suppress title prepend: {md:?}"
+    );
+}
+// crw#530: a `text/plain` source (raw.githubusercontent.com and friends) is
+// not HTML. Running it through the HTML-to-markdown converter anyway escaped
+// every backtick (destroying fenced code blocks) and collapsed newlines into
+// spaces (HTML's whitespace-collapse rule, merging paragraphs and code lines
+// together) — corruption no response-side repair could undo. `content_type:
+// Some("text/plain")` must return the body byte-for-byte.
+#[test]
+fn text_plain_source_markdown_is_byte_for_byte_passthrough() {
+    let body = "## One-command install\n\n```bash\ncurl -fsSL https://fastcrw.com/install | sh\n```\n\nRuns local and free, no account needed.\n";
+    let data = crw_extract::extract(ExtractOptions {
+        raw_html: body,
+        content_type: Some("text/plain"),
+        source_url: "https://raw.githubusercontent.com/us/crw/main/README.md",
+        status_code: 200,
+        rendered_with: None,
+        elapsed_ms: 0,
+        render_decision: None,
+        credit_cost: 0,
+        warnings: Vec::new(),
+        formats: &[
+            OutputFormat::Markdown,
+            OutputFormat::PlainText,
+            OutputFormat::Html,
+        ],
+        only_main_content: true,
+        include_tags: &[],
+        exclude_tags: &[],
+        css_selector: None,
+        xpath: None,
+        chunk_strategy: None,
+        query: None,
+        filter_mode: None,
+        top_k: None,
+        domain_selectors: None,
+        captured_responses: &[],
+        llm_fallback: None,
+        debug: false,
+        debug_sink: None,
+    })
+    .unwrap();
+
+    assert_eq!(
+        data.markdown.as_deref(),
+        Some(body),
+        "markdown must be byte-for-byte"
+    );
+    assert_eq!(
+        data.plain_text.as_deref(),
+        Some(body),
+        "plain text must be byte-for-byte"
+    );
+    assert_eq!(
+        data.html.as_deref(),
+        Some(body),
+        "html must be byte-for-byte"
+    );
+}
+
+// A plain-text README's table of contents is a run of short link lines, the
+// exact shape the onlyMainContent nav strip removes from HTML pages. On a
+// non-HTML body it must survive: the body is already final text.
+#[test]
+fn text_plain_table_of_contents_is_not_stripped_as_nav() {
+    let prose = "This paragraph carries enough ordinary words to clear the nav strip body floor. ";
+    let body = format!(
+        "# Project\n\n- [Install](#install)\n- [Usage](#usage)\n- [Config](#config)\n- [License](#license)\n\n{}\n",
+        prose.repeat(6)
+    );
+    let data = crw_extract::extract(ExtractOptions {
+        raw_html: &body,
+        content_type: Some("text/plain"),
+        source_url: "https://raw.githubusercontent.com/us/crw/main/README.md",
+        status_code: 200,
+        rendered_with: None,
+        elapsed_ms: 0,
+        render_decision: None,
+        credit_cost: 0,
+        warnings: Vec::new(),
+        formats: &[OutputFormat::Markdown],
+        only_main_content: true,
+        include_tags: &[],
+        exclude_tags: &[],
+        css_selector: None,
+        xpath: None,
+        chunk_strategy: None,
+        query: None,
+        filter_mode: None,
+        top_k: None,
+        domain_selectors: None,
+        captured_responses: &[],
+        llm_fallback: None,
+        debug: false,
+        debug_sink: None,
+    })
+    .unwrap();
+
+    assert_eq!(data.markdown.as_deref(), Some(body.as_str()));
+}
+
+// Issue #365: an Elementor product page rendered with duplicated responsive
+// navigation used to come back as the whole unfiltered page — six copies of the
+// menu, the footer, a popup form and stray ``` fences where nested lists were.
+// Drives the full extract() path, not the individual helpers.
+//
+// The menus live INSIDE #main, so they reach markdown conversion whichever
+// candidate the ladder picks — that is what makes this guard the real
+// behaviour rather than readability's narrowing.
+#[test]
+fn elementor_page_with_duplicated_nav_extracts_cleanly() {
+    let menu = r#"<div class="elementor-widget-wrap"><ul>
+        <li><a href="/about/">Company overview and history</a>
+          <ul><li><a href="/about/awards/">Awards and certifications page</a></li></ul>
+        </li>
+      </ul></div>"#;
+    // The template ships the same menu three times (desktop, mobile, dropdown).
+    let html = format!(
+        r#"<html><head><title>30 RK PANORA</title></head><body>
+        <div id="main" role="main">
+          {menu}{menu}{menu}
+          <div class="elementor-widget-wrap elementor-element-populated">
+            <div class="elementor-element elementor-widget elementor-widget-woocommerce-product-title">
+              <div class="elementor-widget-container">
+                <h1>30 RK PANORA M 102 STP</h1>
+              </div>
+            </div>
+            <div class="elementor-element elementor-widget elementor-widget-text-editor">
+              <div class="elementor-widget-container">
+                <p>Matt tiles offer a sophisticated, non-shiny surface finish
+                   that suits a timeless and serene interior.</p>
+                <p>Size</p><p>30x120CM</p><p>Surface</p><p>Porcelain Matt</p>
+              </div>
+            </div>
+          </div>
+          <aside class="widget_text">Subscribe to our newsletter today please</aside>
+        </div>
+        </body></html>"#
+    );
+
+    let data = crw_extract::extract(ExtractOptions {
+        raw_html: &html,
+        content_type: None,
+        source_url: "https://example.com/product/30-rk-panora/",
+        status_code: 200,
+        rendered_with: None,
+        elapsed_ms: 0,
+        render_decision: None,
+        credit_cost: 0,
+        warnings: Vec::new(),
+        formats: &[OutputFormat::Markdown],
+        only_main_content: true,
+        include_tags: &[],
+        exclude_tags: &[],
+        css_selector: None,
+        xpath: None,
+        chunk_strategy: None,
+        query: None,
+        filter_mode: None,
+        top_k: None,
+        domain_selectors: None,
+        captured_responses: &[],
+        llm_fallback: None,
+        debug: false,
+        debug_sink: None,
+    })
+    .unwrap();
+
+    let md = data.markdown.unwrap_or_default();
+
+    // The product content survives onlyMainContent — this is what the
+    // over-broad "widget" class filter used to delete.
+    assert!(md.contains("30 RK PANORA M 102 STP"), "title lost: {md}");
+    assert!(md.contains("Porcelain Matt"), "spec lost: {md}");
+    assert!(
+        md.contains("Matt tiles offer a sophisticated"),
+        "description lost: {md}"
+    );
+
+    // The nav is present exactly once, not three times. Exactly-one, so the
+    // test fails both if dedup is removed and if the nav is dropped wholesale
+    // for the wrong reason.
+    assert_eq!(
+        md.matches("Company overview and history").count(),
+        1,
+        "nav should appear exactly once: {md}"
+    );
+    assert_eq!(
+        md.matches("Awards and certifications page").count(),
+        1,
+        "nested nav entry should appear exactly once: {md}"
+    );
+
+    // A widget area in page chrome is still boilerplate and must go.
+    assert!(
+        !md.contains("Subscribe to our newsletter today"),
+        "widget area survived: {md}"
+    );
+
+    // A nested menu list must stay a list, not become a code block.
+    assert!(!md.contains("```"), "spurious code fence: {md}");
+    assert!(
+        md.contains("[Awards and certifications page]"),
+        "nested list link lost: {md}"
     );
 }

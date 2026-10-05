@@ -130,6 +130,8 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
     };
 
     let crawl_req = CrawlRequest {
+        // No CLI flag for per-request headers, same as `crw scrape`.
+        headers: std::collections::HashMap::new(),
         url: args.url.clone(),
         max_depth: Some(args.depth),
         max_pages: Some(args.limit),
@@ -149,11 +151,16 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
         status: CrawlStatus::InProgress,
         total: 0,
         completed: 0,
+        blocked: 0,
         data: vec![],
         error: None,
     });
 
     // Spawn the crawl task
+    // The extraction knob the crawl has to match the single-scrape path on.
+    let crawl_extraction_cfg = crw_core::config::AppConfig::load()
+        .unwrap_or_default()
+        .extraction;
     let crawl_opts = CrawlOptions {
         id,
         req: crawl_req,
@@ -168,6 +175,7 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
         jitter_factor: 0.2,
         deadline_ms_per_page: args.timeout,
         per_host_max_concurrent: 1,
+        http_retry_threshold_bytes: crawl_extraction_cfg.http_retry_threshold_bytes,
     };
 
     let crawl_handle = tokio::spawn(async move {
@@ -216,7 +224,19 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
         // Check if done
         match state.status {
             CrawlStatus::Completed => {
-                eprintln!("Crawl completed: {} pages", state.completed);
+                // `completed` counts every URL the crawl finished with, and
+                // that now includes the ones it could not read. Report the
+                // pages the caller actually got, and name the rest rather than
+                // folding them into the same number.
+                let scraped = state.completed.saturating_sub(state.blocked);
+                if state.blocked > 0 {
+                    eprintln!(
+                        "Crawl completed: {scraped} pages ({} unreadable)",
+                        state.blocked
+                    );
+                } else {
+                    eprintln!("Crawl completed: {scraped} pages");
+                }
                 break;
             }
             CrawlStatus::Failed => {

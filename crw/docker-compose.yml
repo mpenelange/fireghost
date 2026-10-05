@@ -3,11 +3,19 @@ services:
     build:
       context: .
       args:
-        CRW_VERSION: ${CRW_VERSION:-1.2.0-local}
+        CRW_VERSION: ${CRW_VERSION:-1.5.0-local}
         CRW_REVISION: ${CRW_REVISION:-unknown}
         CRW_BUILD_DATE: ${CRW_BUILD_DATE:-unknown}
     ports:
-      - "3000:3000"
+      # Override the host bind address / port via `.env` (CRW_BIND_ADDRESS,
+      # CRW_HOST_PORT) for boxes already using 3000, or to stop publishing on
+      # public interfaces (set CRW_BIND_ADDRESS=127.0.0.1 when fronting crw
+      # with a reverse proxy). Namespaced to `crw` so they can't collide with a
+      # generic `HOST_PORT` in the operator's env. Despite the `CRW_` prefix
+      # this is Compose-only host-side interpolation: it is NOT passed into the
+      # container, so the engine's figment config never sees it. Container port
+      # stays 3000; default bind stays 0.0.0.0 (all interfaces).
+      - "${CRW_BIND_ADDRESS:-0.0.0.0}:${CRW_HOST_PORT:-3000}:3000"
     depends_on:
       lightpanda:
         condition: service_started
@@ -16,6 +24,11 @@ services:
       # render/search after `compose up` doesn't race the browser cold start.
       camofox:
         condition: service_healthy
+      # Not service_healthy: Byparr's image healthcheck launches a browser and
+      # loads a public page (every 15 min), and crw only calls it after a
+      # challenge anyway.
+      byparr:
+        condition: service_started
     environment:
       - RUST_LOG=info
       - CRW_CONFIG=config.docker
@@ -55,6 +68,14 @@ services:
       - CAMOFOX_PORT=9377
       - CAMOFOX_API_KEY=${CAMOFOX_API_KEY:-}
       - CAMOFOX_AUTH_MODE=${CAMOFOX_AUTH_MODE:-disabled}
+      # camofox-browser refuses to OPEN a private/internal URL (its default on a
+      # non-loopback bind; pinned so a changed default or an .env override is a
+      # visible diff). It does NOT stop a redirect or JS navigation from landing
+      # there — verified live against crw:3000 — so crw separately refuses to
+      # return a page whose final URL is internal. Requests the browser makes on
+      # the way still leave this container; restrict its egress at the network
+      # level if that matters for your deployment.
+      - CAMOFOX_ALLOW_PRIVATE_NETWORK=false
     shm_size: "1g"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9377/health"]
@@ -62,6 +83,21 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # Cloudflare challenge solver. The ladder calls it last, and only when the
+  # HTTP tier or Camofox came back with an anti-bot challenge: Byparr opens a
+  # fresh stealth Firefox, clicks the Turnstile checkbox, and returns the page
+  # plus the cf_clearance cookie crw then reuses on the HTTP tier. Reachable
+  # only on the compose network as `byparr:8191`. It has NO auth: never publish
+  # its port. Like camofox, requests the browser makes along the way leave this
+  # container; crw refuses to return a page whose final URL is internal.
+  # Pinned (never `:latest`) so upgrades are deliberate.
+  byparr:
+    # 3.0.4, pinned to its multi-arch index digest.
+    image: ghcr.io/thephaseless/byparr@sha256:874f719518f617d03a60e03411fc5d090647e1a877041e81f8dc965927c7deb6
+    restart: unless-stopped
+    # Each solve launches its own Firefox; `max_concurrent` defaults to 2.
+    shm_size: "2g"
 
   # Interactive browser MCP for AI agents (e.g. Hermes), bridging the camofox
   # browser REST API to MCP over Streamable HTTP. This is the upstream companion
@@ -107,6 +143,35 @@ services:
   # request falls through to Camofox — defeating the lightweight tier.
   lightpanda:
     image: lightpanda/browser@sha256:b4f155389e172bbc82c3dcbc2282e64db3e2160b27871ef1c53dbc28f7e96887
+    # LightPanda sends usage telemetry to a third-party endpoint by default.
+    # Disable it so the default stack makes no unexpected outbound connections —
+    # important for air-gapped / compliance deployments. The image stays pinned to
+    # the reviewed digest (see upstreams.json); upgrades are deliberate.
+    environment:
+      - LIGHTPANDA_DISABLE_TELEMETRY=true
+    # Refuse private/internal destinations in the browser itself, on the
+    # resolved socket address. The engine also validates every intercepted CDP
+    # request, but that cannot see websockets or worker targets, and it resolves
+    # in a different container than the browser connects from. Overrides the
+    # image CMD, so the whole serve line is repeated. The extra CIDRs are the
+    # ranges the engine rejects that LightPanda's private group omits.
+    #
+    # These flags need a recent image (verified on the pinned 1.0.0-nightly.8609
+    # digest). Unlike the embedded launcher, which just falls through to the
+    # next renderer when a binary rejects them, an older image here exits and
+    # restart-loops, taking the tier down. Re-check them when moving the pin.
+    command:
+      - "/bin/lightpanda"
+      - "serve"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "9222"
+      - "--log-level"
+      - "info"
+      - "--block-private-networks"
+      - "--block-cidrs"
+      - "0.0.0.0/8,10.0.0.0/8,127.0.0.0/8,169.254.0.0/16,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,224.0.0.0/4,240.0.0.0/4,192.0.0.0/24,192.0.2.0/24,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,fc00::/7,fe80::/10,fec0::/10,ff00::/8,::/96,64:ff9b:1::/48,2002::/16"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]

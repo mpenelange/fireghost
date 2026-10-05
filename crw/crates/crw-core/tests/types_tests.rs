@@ -179,6 +179,7 @@ fn scrape_data_skip_serializing_none() {
         content_type: None,
         change_tracking: None,
         block: None,
+        truncated: false,
     };
 
     let json = serde_json::to_value(&data).unwrap();
@@ -292,6 +293,7 @@ fn scrape_data_serializes_debug_extraction_as_camel_case() {
         content_type: None,
         change_tracking: None,
         block: None,
+        truncated: false,
     };
     let v = serde_json::to_value(&data).unwrap();
     assert!(v.get("debugExtraction").is_none(), "absent when None");
@@ -405,4 +407,36 @@ fn parsers_accepts_string_and_object_forms() {
     // Omitted → None (auto-parse default).
     let req3: ScrapeRequest = serde_json::from_str(r#"{"url":"https://x.com"}"#).unwrap();
     assert!(req3.parsers.is_none());
+}
+
+#[test]
+fn requested_renderer_impersonated_http_round_trip() {
+    use crw_core::types::{RendererKind, RequestedRenderer, resolve_pinned_renderer};
+    let parsed: RequestedRenderer = serde_json::from_str("\"impersonated-http\"").unwrap();
+    assert_eq!(parsed, RequestedRenderer::ImpersonatedHttp);
+    assert_eq!(
+        serde_json::to_string(&RequestedRenderer::ImpersonatedHttp).unwrap(),
+        "\"impersonated-http\""
+    );
+    assert_eq!(
+        resolve_pinned_renderer(Some(RequestedRenderer::ImpersonatedHttp)),
+        Some("impersonated-http")
+    );
+    assert_eq!(RendererKind::ImpersonatedHttp.as_str(), "impersonated-http");
+    let k: RendererKind = serde_json::from_str("\"impersonated-http\"").unwrap();
+    assert_eq!(k, RendererKind::ImpersonatedHttp);
+    assert_eq!(
+        serde_json::to_string(&RendererKind::ImpersonatedHttp).unwrap(),
+        "\"impersonated-http\""
+    );
+}
+
+#[test]
+fn requested_renderer_implies_js_is_false_only_for_wire_level_pins() {
+    use crw_core::types::RequestedRenderer;
+    assert!(!RequestedRenderer::ImpersonatedHttp.implies_js());
+    assert!(!RequestedRenderer::Auto.implies_js());
+    assert!(RequestedRenderer::Lightpanda.implies_js());
+    assert!(RequestedRenderer::Camofox.implies_js());
+    assert!(RequestedRenderer::Chrome.implies_js());
 }

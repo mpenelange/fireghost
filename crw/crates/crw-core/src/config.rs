@@ -496,6 +496,17 @@ pub struct ServerConfig {
     /// Maximum requests per second (global). 0 = unlimited.
     #[serde(default = "default_rate_limit_rps")]
     pub rate_limit_rps: u64,
+    /// Cross-origin allowlist for browser callers. Empty (default) = NO CORS
+    /// headers are emitted, so browsers block cross-origin JS access — the safe
+    /// default for a server-to-server API. Populate only if a browser app must
+    /// call the engine directly (e.g. `["https://app.example.com"]`). Entries are
+    /// normalized to the origin a browser sends (lowercase, no trailing slash).
+    /// A literal `"*"`, `"null"`, or an entry with a path is ignored with a
+    /// warning at startup, not a startup error: wildcard CORS is exactly the
+    /// permissive default this setting replaces. Accepts a TOML array or a comma-separated env string via
+    /// `CRW_SERVER__CORS_ALLOWED_ORIGINS`.
+    #[serde(default, deserialize_with = "deserialize_string_vec")]
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl Default for ServerConfig {
@@ -505,6 +516,7 @@ impl Default for ServerConfig {
             port: default_port(),
             request_timeout_secs: default_request_timeout(),
             rate_limit_rps: default_rate_limit_rps(),
+            cors_allowed_origins: Vec::new(),
         }
     }
 }
@@ -592,6 +604,17 @@ pub struct RendererConfig {
     /// LightPanda. See [`CamofoxEndpoint`].
     #[serde(default)]
     pub camofox: Option<CamofoxEndpoint>,
+    /// Byparr challenge-solver tier, tried after every other JS tier and only
+    /// on an anti-bot challenge. See [`ByparrEndpoint`].
+    #[serde(default)]
+    pub byparr: Option<ByparrEndpoint>,
+    /// In-process Chrome-impersonation HTTP tier (wreq). Unlike every other
+    /// tier there is no endpoint; `enabled` is the runtime kill switch and
+    /// defaults to true. Inert in a build without the `impersonated` cargo
+    /// feature (`impersonated_in_chain()` folds to false). See
+    /// [`ImpersonatedConfig`].
+    #[serde(default)]
+    pub impersonated: ImpersonatedConfig,
     /// Residential-proxy Chrome tier (opt-in 4th renderer). Same Chromium
     /// browser as `chrome`, but egress routed through a forwarder that adds
     /// upstream proxy auth (e.g. DataImpulse). Tried after Chrome fails —
@@ -604,9 +627,14 @@ pub struct RendererConfig {
     /// fallback tier needs more headroom than direct Chrome.
     #[serde(default)]
     pub chrome_proxy_timeout_ms: Option<u64>,
-    /// Enable Chrome resource interception (`Fetch.enable` blocking of media,
-    /// fonts, trackers). Default `false`; flipped after the CDP-fake suite
-    /// validates pump + cleanup behaviour. See plan Phase 2.
+    /// Enable Chrome *resource* interception (blocking of media, fonts,
+    /// trackers). Default `false`.
+    ///
+    /// This no longer controls whether `Fetch.enable` runs: the interception
+    /// pump is always on, because it also validates every destination the
+    /// browser reaches on its own (redirects, JS navigation, iframes, XHR),
+    /// which the route-layer URL check cannot see. This flag only decides
+    /// whether the ad/resource blocklist runs alongside that check.
     #[serde(default)]
     pub chrome_intercept_resources: bool,
     /// Additionally block `stylesheet` requests when interception is enabled.
@@ -614,8 +642,11 @@ pub struct RendererConfig {
     /// CSS-driven visibility / lazy-content triggers.
     #[serde(default)]
     pub chrome_intercept_stylesheets: bool,
-    /// Per-host opt-out for chrome interception. Hosts in this list run with
-    /// interception disabled even when `chrome_intercept_resources = true`.
+    /// Per-host opt-out for the resource blocklist. Hosts in this list skip
+    /// ad/resource blocking even when `chrome_intercept_resources = true`.
+    ///
+    /// It no longer turns `Fetch.enable` off for those hosts: the destination
+    /// check is a security control and has no per-host opt-out.
     #[serde(default)]
     pub chrome_host_intercept_disable: Vec<String>,
     /// Hard chrome-tier navigation budget in ms. Wraps `wait_for_page_ready`
@@ -835,6 +866,8 @@ impl Default for RendererConfig {
             playwright: None,
             chrome: None,
             camofox: None,
+            byparr: None,
+            impersonated: ImpersonatedConfig::default(),
             chrome_proxy: None,
             chrome_proxy_timeout_ms: None,
             chrome_intercept_resources: false,
@@ -879,6 +912,22 @@ impl RendererConfig {
     pub fn chrome_proxy_timeout(&self) -> u64 {
         self.chrome_proxy_timeout_ms
             .unwrap_or_else(|| self.chrome_timeout().saturating_add(15_000))
+    }
+
+    /// True when the Chrome-impersonation HTTP tier participates in the fetch
+    /// chain. Deliberately not gated on `mode`: the tier is an HTTP strategy,
+    /// and `mode = "none"` means "no JS", not "no fetching strategies". Always
+    /// false in a build without the `impersonated` feature; the leading `cfg!`
+    /// is what keeps the default-on runtime flag inert there.
+    pub fn impersonated_in_chain(&self) -> bool {
+        cfg!(feature = "impersonated") && self.impersonated.enabled
+    }
+
+    /// Per-request budget (ms) for the impersonated tier. Defaults to 15 s
+    /// (see [`ImpersonatedConfig::timeout_ms`]), independent of the HTTP
+    /// tier's timeout.
+    pub fn impersonated_timeout(&self) -> u64 {
+        self.impersonated.timeout_ms
     }
 
     /// Compose the DataImpulse-style proxy credentials for a single request.
@@ -952,6 +1001,18 @@ impl RendererConfig {
         // when mode is `None` (no fetching at all).
         if !matches!(self.mode, RendererMode::None) {
             sum = sum.saturating_add(self.http_timeout());
+            // Byparr is plain HTTP (no `cdp` feature), runs one solve per
+            // request at most, and carries no CDP overhead.
+            if let Some(b) = &self.byparr {
+                sum = sum.saturating_add(b.timeout_ms);
+            }
+        }
+
+        // Chrome-impersonation HTTP tier: one bounded HTTP request between the
+        // plain fetch and the browser ladder, in every mode. Inert in the lean
+        // build because `impersonated_in_chain()` is always false there.
+        if self.impersonated_in_chain() {
+            sum = sum.saturating_add(self.impersonated_timeout());
         }
 
         // CDP tiers only contribute when the binary was built with the `cdp`
@@ -999,6 +1060,81 @@ pub struct CamofoxEndpoint {
     pub base_url: String,
     #[serde(default)]
     pub api_key: Option<String>,
+    /// Longest the Camofox tier waits, on the open tab, for a Cloudflare
+    /// managed challenge ("Just a moment...") to clear before it snapshots
+    /// whatever is on screen. `0` disables the wait. Always clamped to the
+    /// request deadline.
+    #[serde(default = "default_challenge_wait_ms")]
+    pub challenge_wait_ms: u64,
+    /// After a successful render that earned a `cf_clearance` cookie, cache
+    /// the tab's cookies + user agent per host so the HTTP tier can reuse
+    /// them and skip the browser on the next scrape of that host.
+    #[serde(default = "default_clearance_reuse")]
+    pub clearance_reuse: bool,
+}
+
+fn default_challenge_wait_ms() -> u64 {
+    20_000
+}
+
+/// HTTP endpoint for the Byparr challenge-solver tier (a FlareSolverr-compatible
+/// server, e.g. `http://byparr:8191`). The ladder calls it last, and only when
+/// an earlier attempt came back as an anti-bot challenge or wall. Byparr has no
+/// auth: never expose it beyond the internal network.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ByparrEndpoint {
+    pub base_url: String,
+    /// Longest one Byparr solve may take (sent as `maxTimeout`). Always
+    /// clamped to the request deadline.
+    #[serde(default = "default_byparr_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Concurrent solves. Each one launches its own browser.
+    #[serde(default = "default_byparr_max_concurrent")]
+    pub max_concurrent: usize,
+    /// Cache the `cf_clearance` cookies + user agent Byparr returns so the HTTP
+    /// tier can reuse them on the next scrape of that host.
+    #[serde(default = "default_clearance_reuse")]
+    pub clearance_reuse: bool,
+}
+
+fn default_byparr_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_byparr_max_concurrent() -> usize {
+    2
+}
+
+fn default_clearance_reuse() -> bool {
+    true
+}
+
+/// In-process Chrome-impersonation HTTP tier (wreq), loaded under
+/// `[renderer.impersonated]`. Non-Option on purpose: an absent section means
+/// "on with defaults", which is the deployment contract.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImpersonatedConfig {
+    /// Runtime kill switch. Default true: the tier is ON in any build
+    /// compiled with the `impersonated` feature.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Per-request timeout in ms. Default 15 s: one bounded HTTP request,
+    /// well under the browser tiers' budgets.
+    #[serde(default = "default_impersonated_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+impl Default for ImpersonatedConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            timeout_ms: default_impersonated_timeout_ms(),
+        }
+    }
+}
+
+fn default_impersonated_timeout_ms() -> u64 {
+    15_000
 }
 
 /// Stealth mode configuration for evading bot detection.
@@ -1566,6 +1702,43 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn camofox_endpoint_defaults_for_challenge_and_clearance() {
+        let ep: CamofoxEndpoint =
+            toml::from_str("base_url = \"http://camofox:9377\"").expect("minimal endpoint parses");
+        assert_eq!(ep.challenge_wait_ms, 20_000);
+        assert!(ep.clearance_reuse);
+
+        let ep: CamofoxEndpoint = toml::from_str(
+            "base_url = \"http://camofox:9377\"\nchallenge_wait_ms = 0\nclearance_reuse = false",
+        )
+        .expect("explicit values parse");
+        assert_eq!(ep.challenge_wait_ms, 0);
+        assert!(!ep.clearance_reuse);
+    }
+
+    #[test]
+    fn byparr_endpoint_defaults() {
+        let ep: ByparrEndpoint =
+            toml::from_str("base_url = \"http://byparr:8191\"").expect("minimal endpoint parses");
+        assert_eq!(ep.timeout_ms, 30_000);
+        assert_eq!(ep.max_concurrent, 2);
+        assert!(ep.clearance_reuse);
+    }
+
+    #[test]
+    fn byparr_timeout_extends_the_full_ladder_budget() {
+        let mut r = RendererConfig::default();
+        let without = r.min_deadline_for_full_ladder_ms();
+        r.byparr = Some(ByparrEndpoint {
+            base_url: "http://byparr:8191".into(),
+            timeout_ms: 30_000,
+            max_concurrent: 2,
+            clearance_reuse: true,
+        });
+        assert_eq!(r.min_deadline_for_full_ladder_ms(), without + 30_000);
+    }
 
     /// Env var tests modify process-wide state; serialize them to avoid cross-test
     /// interference (e.g. `force_js` alias + `render_js_default` direct both set).

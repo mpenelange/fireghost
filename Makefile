@@ -17,7 +17,7 @@ MONOREPO_SOURCE ?= https://git.firewire.cc/michael/fireghost
 MONOREPO_REVISION ?= $(shell git rev-parse HEAD)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 ROUTER_VERSION ?= dev
-CRW_CANDIDATE_VERSION ?= 1.2.0-monorepo.$(shell git rev-parse --short=7 HEAD)
+CRW_CANDIDATE_VERSION ?= 1.5.0-monorepo.$(shell git rev-parse --short=7 HEAD)
 CRW_BUILD_IMAGE ?= hermes-web-retrieval-crw:$(CRW_CANDIDATE_VERSION)
 # The combined monorepo gate favors bounded artifacts over debugger symbols.
 # Component developers can still run the native crw/Makefile directly.

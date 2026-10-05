@@ -18,9 +18,9 @@
 //! [`BreakerOutcome`] which distinguishes deadline-clamped attempts (parent
 //! end-to-end deadline ate the budget) from genuine tier failures. Only
 //! `TierTimeout`/`ConnectionError`/`RenderError` advance the failure window;
-//! `DeadlineClamped` is observed via `crw_breaker_ignored_total` only.
-//! `Truncated` is configurable (default ignored — chrome partial-DOM is a
-//! feature, not a tier failure).
+//! `DeadlineClamped` and `SiteBlocked` are observed via
+//! `crw_breaker_ignored_total` only. `Truncated` is configurable (default
+//! ignored — chrome partial-DOM is a feature, not a tier failure).
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -80,6 +80,16 @@ pub enum BreakerOutcome {
     TierTimeout,
     ConnectionError,
     RenderError,
+    /// The origin refused *us*, not this tier: an anti-bot wall, a vendor
+    /// block, a Cloudflare interstitial, or a block status. Every tier would
+    /// see the same thing, so it says nothing about tier health. Observed via
+    /// `crw_breaker_ignored_total` only, exactly like `DeadlineClamped`.
+    ///
+    /// Recording it as `RenderError` is what let a blocked host trip the
+    /// per-host breaker for lightpanda *and* chrome, leaving `fetch_with_js`
+    /// with no renderer and stranding the one tier (residential egress) that
+    /// could have served the page.
+    SiteBlocked,
 }
 
 impl BreakerOutcome {
@@ -88,6 +98,7 @@ impl BreakerOutcome {
             BreakerOutcome::Success => false,
             BreakerOutcome::Truncated => count_truncated_as_failure,
             BreakerOutcome::DeadlineClamped => false,
+            BreakerOutcome::SiteBlocked => false,
             BreakerOutcome::TierTimeout
             | BreakerOutcome::ConnectionError
             | BreakerOutcome::RenderError => true,
@@ -95,11 +106,15 @@ impl BreakerOutcome {
     }
 
     /// True if this outcome should advance the failure window at all.
-    /// `DeadlineClamped` is fully ignored (only counted in observability).
-    /// `Truncated` is conditionally ignored.
+    /// `DeadlineClamped` and `SiteBlocked` are fully ignored (only counted in
+    /// observability). `Truncated` is conditionally ignored.
+    ///
+    /// NOTE: this match and `ignored_reason` below both end in a wildcard, so
+    /// adding a variant and updating only `is_failure` compiles and silently
+    /// keeps advancing the window. Any new variant must be considered here too.
     fn advances_window(&self, count_truncated_as_failure: bool) -> bool {
         match self {
-            BreakerOutcome::DeadlineClamped => false,
+            BreakerOutcome::DeadlineClamped | BreakerOutcome::SiteBlocked => false,
             BreakerOutcome::Truncated => count_truncated_as_failure,
             _ => true,
         }
@@ -108,6 +123,7 @@ impl BreakerOutcome {
     pub fn ignored_reason(&self) -> Option<&'static str> {
         match self {
             BreakerOutcome::DeadlineClamped => Some("deadline_clamped"),
+            BreakerOutcome::SiteBlocked => Some("site_blocked"),
             BreakerOutcome::Truncated => Some("truncated"),
             _ => None,
         }
@@ -136,12 +152,22 @@ impl AttemptContext {
 /// Classify a tier-attempt result into a BreakerOutcome. Callers must
 /// supply the AttemptContext captured *before* the call so deadline
 /// classification is deterministic regardless of post-await wall time.
+///
+/// `site_blocked` wins over every failure class, including a timeout: an origin
+/// that walls us can also be slow about it, and the wall is still not this
+/// tier's fault. Callers must compute it fresh per attempt — never from a
+/// cumulative "did anything in this request see a block" flag, or one tier's
+/// block would mask the next tier's genuine render failure.
 pub fn classify_outcome(
     success: bool,
     is_truncated: bool,
     error_was_timeout: bool,
+    site_blocked: bool,
     ctx: &AttemptContext,
 ) -> BreakerOutcome {
+    if !success && site_blocked {
+        return BreakerOutcome::SiteBlocked;
+    }
     if success {
         if is_truncated {
             BreakerOutcome::Truncated
@@ -494,7 +520,7 @@ const REGISTRY_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 #[derive(Clone)]
 pub struct BreakerRegistry {
     config: BreakerConfig,
-    global: Arc<[(RendererKind, Arc<CircuitBreaker>); 5]>,
+    global: Arc<[(RendererKind, Arc<CircuitBreaker>); 7]>,
     host: Cache<(String, RendererKind), Arc<CircuitBreaker>>,
 }
 
@@ -512,6 +538,11 @@ impl BreakerRegistry {
                 Arc::new(CircuitBreaker::new(config)),
             ),
             (RendererKind::Camofox, Arc::new(CircuitBreaker::new(config))),
+            (RendererKind::Byparr, Arc::new(CircuitBreaker::new(config))),
+            (
+                RendererKind::ImpersonatedHttp,
+                Arc::new(CircuitBreaker::new(config)),
+            ),
         ]);
         let host = Cache::builder()
             .max_capacity(REGISTRY_CAPACITY)
@@ -538,7 +569,9 @@ impl BreakerRegistry {
                 return Arc::clone(breaker);
             }
         }
-        unreachable!("RendererKind is closed: Http | Lightpanda | Chrome | ChromeProxy | Camofox")
+        unreachable!(
+            "RendererKind is closed: Http | Lightpanda | Chrome | ChromeProxy | Camofox | Byparr"
+        )
     }
 
     pub async fn host_for(&self, host: &str, renderer: RendererKind) -> Arc<CircuitBreaker> {
@@ -638,23 +671,49 @@ impl BreakerRegistry {
         global_outcome: Option<BreakerOutcome>,
         host_outcome: Option<BreakerOutcome>,
     ) {
-        if let Some(outcome) = global_outcome {
-            if let Some(reason) = outcome.ignored_reason() {
-                metrics()
-                    .breaker_ignored_total
-                    .with_label_values(&[renderer.as_str(), reason])
-                    .inc();
-            }
-            let g_tripped = self.global_for(renderer).record_outcome(outcome);
-            if g_tripped {
-                self.emit_breaker_opened(renderer, "global", host);
-            }
+        // Emit the ignored-reason metric for whichever outcome is present, not
+        // just the global one. The host-only callers pass `global_outcome: None`,
+        // so keeping this inside the global branch made every outcome they record
+        // invisible on the dashboard — including the `site_blocked` pressure this
+        // counter exists to surface. Prefer the global label when both are
+        // present so a single call counts once.
+        if let Some(reason) = global_outcome
+            .or(host_outcome)
+            .and_then(|o| o.ignored_reason())
+        {
+            metrics()
+                .breaker_ignored_total
+                .with_label_values(&[renderer.as_str(), reason])
+                .inc();
         }
-        if let Some(outcome) = host_outcome {
-            let h_tripped = self.host_for(host, renderer).await.record_outcome(outcome);
-            if h_tripped {
-                self.emit_breaker_opened(renderer, "host", host);
+        // A tier we are NOT recording to must still have its probe released.
+        //
+        // `try_acquire` increments `admitted` when the breaker is HalfOpen, and
+        // only `record_outcome` or `cancel_probe` ever moves that counter. A
+        // caller that acquires a permit and then passes `None` for that tier
+        // leaves the slot held: `admitted` saturates at `max_probes`,
+        // `try_acquire` returns Rejected for EVERY host, and only
+        // `lazy_evaluate`'s 30s eval_timeout breaks the deadlock.
+        //
+        // `cancel_probe` is a no-op on Closed and Open, so this is free for the
+        // host-only callers that were already correct.
+        match global_outcome {
+            Some(outcome) => {
+                let g_tripped = self.global_for(renderer).record_outcome(outcome);
+                if g_tripped {
+                    self.emit_breaker_opened(renderer, "global", host);
+                }
             }
+            None => self.global_for(renderer).cancel_probe(),
+        }
+        match host_outcome {
+            Some(outcome) => {
+                let h_tripped = self.host_for(host, renderer).await.record_outcome(outcome);
+                if h_tripped {
+                    self.emit_breaker_opened(renderer, "host", host);
+                }
+            }
+            None => self.host_for(host, renderer).await.cancel_probe(),
         }
     }
 
@@ -847,6 +906,8 @@ mod tests {
             RendererKind::Chrome,
             RendererKind::ChromeProxy,
             RendererKind::Camofox,
+            RendererKind::Byparr,
+            RendererKind::ImpersonatedHttp,
         ] {
             let _ = reg.global_for(kind); // must not panic
         }
@@ -1079,22 +1140,121 @@ mod tests {
     #[test]
     fn classify_outcome_deadline_clamped() {
         let ctx = AttemptContext::capture(Duration::from_millis(500), Duration::from_millis(2500));
-        let outcome = classify_outcome(false, false, true, &ctx);
+        let outcome = classify_outcome(false, false, true, false, &ctx);
         assert_eq!(outcome, BreakerOutcome::DeadlineClamped);
     }
 
     #[test]
     fn classify_outcome_tier_timeout_with_full_budget() {
         let ctx = AttemptContext::capture(Duration::from_millis(8000), Duration::from_millis(2500));
-        let outcome = classify_outcome(false, false, true, &ctx);
+        let outcome = classify_outcome(false, false, true, false, &ctx);
         assert_eq!(outcome, BreakerOutcome::TierTimeout);
     }
 
     #[test]
     fn classify_outcome_truncated_success() {
         let ctx = AttemptContext::capture(Duration::from_millis(8000), Duration::from_millis(2500));
-        let outcome = classify_outcome(true, true, false, &ctx);
+        let outcome = classify_outcome(true, true, false, false, &ctx);
         assert_eq!(outcome, BreakerOutcome::Truncated);
+    }
+
+    /// The bug this exists for: an anti-bot wall is a property of the ORIGIN, so
+    /// every tier egressing from this IP sees it. Counting it as a tier failure
+    /// tripped the per-host breaker for lightpanda AND chrome, which left
+    /// `fetch_with_js` with no renderer to run and stranded the residential tier
+    /// that could have served the page.
+    #[test]
+    fn site_blocks_never_open_the_breaker() {
+        let b = CircuitBreaker::new(small_cfg());
+        // Far more than `min_calls`, all blocks.
+        for _ in 0..200 {
+            b.record_outcome(BreakerOutcome::SiteBlocked);
+        }
+        assert!(
+            !b.is_open(),
+            "a walled origin must not be recorded as renderer ill-health"
+        );
+        assert_eq!(
+            b.snapshot().window_call_count,
+            0,
+            "SiteBlocked must not advance the window at all"
+        );
+    }
+
+    /// A blocked host must not mask a genuinely broken tier: `SiteBlocked` is
+    /// ignored, but real failures interleaved with it still count.
+    #[test]
+    fn site_blocks_do_not_mask_real_failures() {
+        let b = CircuitBreaker::new(small_cfg());
+        for _ in 0..50 {
+            b.record_outcome(BreakerOutcome::SiteBlocked);
+            b.record_outcome(fail());
+        }
+        assert!(
+            b.is_open(),
+            "interleaved genuine failures must still trip the breaker"
+        );
+    }
+
+    #[test]
+    fn site_blocked_is_observable_and_non_advancing() {
+        assert_eq!(
+            BreakerOutcome::SiteBlocked.ignored_reason(),
+            Some("site_blocked"),
+            "must be visible on the dashboard, not silently dropped"
+        );
+        assert!(!BreakerOutcome::SiteBlocked.is_failure(false));
+        assert!(!BreakerOutcome::SiteBlocked.advances_window(false));
+        // Guard against the wildcard trap: `advances_window` and
+        // `ignored_reason` both end in `_ =>`, so a new variant that updates only
+        // `is_failure` would compile and silently keep advancing the window.
+        assert!(!BreakerOutcome::DeadlineClamped.advances_window(false));
+    }
+
+    /// `site_blocked` outranks a timeout: an origin that walls us can also be
+    /// slow about it, and the wall is still not the tier's fault.
+    #[test]
+    fn classify_outcome_site_blocked_beats_timeout() {
+        let ctx = AttemptContext::capture(Duration::from_millis(8000), Duration::from_millis(2500));
+        assert_eq!(
+            classify_outcome(false, false, true, true, &ctx),
+            BreakerOutcome::SiteBlocked
+        );
+        // …but a SUCCESS is still a success, block flag or not.
+        assert_eq!(
+            classify_outcome(true, false, false, true, &ctx),
+            BreakerOutcome::Success
+        );
+    }
+
+    /// Documents a real side effect of non-advancing outcomes rather than
+    /// leaving it to be discovered later: because the HalfOpen arm returns the
+    /// admitted slot, a stream of `SiteBlocked` never reaches `max_probes`, so
+    /// HalfOpen cannot be decided by probe count and exits only via
+    /// `eval_timeout`. Until then it admits unbounded probes. Accepted because
+    /// per-host in-flight work is separately capped by `host_limiter`, and the
+    /// alternative (counting blocks) is the bug this whole change removes.
+    #[test]
+    fn site_blocked_probes_are_returned_not_counted() {
+        let cfg = BreakerConfig {
+            max_probes: 2,
+            ..small_cfg()
+        };
+        let b = CircuitBreaker::new(cfg);
+        for _ in 0..cfg.min_calls * 2 {
+            b.record_outcome(fail());
+        }
+        assert!(b.is_open());
+        std::thread::sleep(cfg.base_cooldown + Duration::from_millis(50));
+        // Now HalfOpen. Every probe reports a site block.
+        for _ in 0..10 {
+            assert_eq!(b.try_acquire(), Permit::Probe, "slot is always returned");
+            b.record_outcome(BreakerOutcome::SiteBlocked);
+        }
+        assert!(
+            !b.is_open(),
+            "ignored outcomes must not re-open the breaker by themselves"
+        );
     }
 
     #[test]
@@ -1102,5 +1262,99 @@ mod tests {
         let reg = BreakerRegistry::with_defaults();
         // Must not panic: global_for iterates a fixed 4-element array now.
         let _ = reg.global_for(RendererKind::ChromeProxy);
+    }
+
+    /// A tier handed `None` must have its probe RELEASED, not left held.
+    ///
+    /// `try_acquire` increments `admitted` on HalfOpen and only `record_outcome`
+    /// or `cancel_probe` moves it back. The scoped call sites acquire a permit
+    /// for both tiers, then record to one and disarm the guard, so before this
+    /// was fixed the global slot stayed held: `admitted` saturated at
+    /// `max_probes`, every host got `Permit::Rejected`, and only the 30s
+    /// `eval_timeout` broke it. That is a recall path, because the ladder skips
+    /// a Rejected tier for every host while it lasts.
+    #[tokio::test]
+    async fn scoped_outcome_releases_the_global_probe_it_does_not_record() {
+        let cfg = BreakerConfig {
+            min_calls: 5,
+            window_size: 10,
+            max_probes: 1,
+            base_cooldown: Duration::from_millis(20),
+            ..BreakerConfig::default()
+        };
+        let reg = BreakerRegistry::new(cfg);
+        for _ in 0..5 {
+            reg.record_outcome(
+                "example.com",
+                RendererKind::Chrome,
+                BreakerOutcome::ConnectionError,
+            )
+            .await;
+        }
+        std::thread::sleep(cfg.base_cooldown + Duration::from_millis(10));
+
+        let (permit, guard) = reg
+            .acquire_with_guard("example.com", RendererKind::Chrome)
+            .await;
+        assert_eq!(permit, Permit::Probe, "the global tier must be half-open");
+        assert_eq!(
+            reg.global_for(RendererKind::Chrome).try_acquire(),
+            Permit::Rejected,
+            "the probe quota is held while the attempt is in flight"
+        );
+
+        // Exactly what a host-scoped call site does: record to the host tier,
+        // hand the global tier None, then disarm.
+        reg.record_scoped_outcome(
+            "example.com",
+            RendererKind::Chrome,
+            None,
+            Some(BreakerOutcome::RenderError),
+        )
+        .await;
+        guard.disarm();
+
+        assert_ne!(
+            reg.global_for(RendererKind::Chrome).try_acquire(),
+            Permit::Rejected,
+            "the global probe must be released when the tier is handed None, or \
+             the tier stays shut for every host until eval_timeout"
+        );
+    }
+
+    /// One busy domain must not be able to disable a tier for every other host.
+    ///
+    /// The global window counts REQUESTS, not hosts: `min_calls: 50` with
+    /// `failure_rate_threshold: 0.80`. After the correct `SiteBlocked`
+    /// suppression only ~214 lightpanda outcomes reached any window in 6h of
+    /// production, and github.com alone contributed 38 of them, all failures, so
+    /// two domains satisfied the floor on their own and tripped the tier
+    /// globally. Content verdicts are host-scoped now, which is what makes this
+    /// hold.
+    #[tokio::test]
+    async fn single_host_thin_failures_never_open_the_global_tier() {
+        let reg = BreakerRegistry::with_defaults();
+        for _ in 0..200 {
+            reg.record_scoped_outcome(
+                "onebusyhost.com",
+                RendererKind::Lightpanda,
+                None,
+                Some(BreakerOutcome::RenderError),
+            )
+            .await;
+        }
+        assert_eq!(
+            reg.global_for(RendererKind::Lightpanda).snapshot().state,
+            "closed",
+            "200 content failures on ONE host must not disable the tier globally"
+        );
+        assert_eq!(
+            reg.host_for("onebusyhost.com", RendererKind::Lightpanda)
+                .await
+                .snapshot()
+                .state,
+            "open",
+            "the host tier must still learn that this host is unsuitable"
+        );
     }
 }

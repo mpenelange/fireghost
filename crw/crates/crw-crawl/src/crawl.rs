@@ -1,8 +1,6 @@
 use crw_core::config::LlmConfig;
 use crw_core::error::CrwResult;
-use crw_core::types::{
-    CrawlRequest, CrawlState, CrawlStatus, RequestedRenderer, ScrapeData, resolve_pinned_renderer,
-};
+use crw_core::types::{CrawlRequest, CrawlState, CrawlStatus, ScrapeData, resolve_pinned_renderer};
 use crw_extract::readability::extract_links;
 use crw_renderer::FallbackRenderer;
 use futures::StreamExt;
@@ -44,6 +42,11 @@ pub struct CrawlOptions<'a> {
     /// Cap on concurrent in-flight requests per eTLD+1 host. `1` enforces
     /// strict politeness; raise via config when scraping owned infrastructure.
     pub per_host_max_concurrent: u32,
+    /// From `ExtractionConfig::http_retry_threshold_bytes`. `classify_block` takes
+    /// it, and a crawl that judged blocks differently from a single scrape of the
+    /// same URL would bill the customer for a wall on one surface and refund it
+    /// on the other.
+    pub http_retry_threshold_bytes: usize,
 }
 
 /// Validate that a URL is safe to fetch (scheme + host check).
@@ -59,6 +62,7 @@ fn send_failed(id: Uuid, state_tx: &tokio::sync::watch::Sender<CrawlState>, erro
         status: CrawlStatus::Failed,
         total: 0,
         completed: 0,
+        blocked: 0,
         data: vec![],
         error: Some(error),
     });
@@ -80,9 +84,14 @@ fn enqueue_discovered_links(
             if !is_safe_url(&link_url) {
                 continue;
             }
-            let link_host = link_url.host_str().unwrap_or("");
-            let link_origin = format!("{}://{}", link_url.scheme(), link_host);
-            if link_origin != origin {
+            // Full origin, port included. `map` next door already compares
+            // this way (`discover_urls`). Building it as scheme + host dropped
+            // the port, so a seed on `https://example.com/` treated
+            // `https://example.com:8443/` as the same site and crawled it. That
+            // was merely over-broad while the crawl sent no headers of its own;
+            // with `CrawlRequest::headers` it would replay the caller's
+            // credentials to a different service on the same host.
+            if link_url.origin().ascii_serialization() != origin {
                 continue;
             }
             let normalized = normalize_url(&link);
@@ -92,6 +101,53 @@ fn enqueue_discovered_links(
             }
         }
     }
+}
+
+/// Build the placeholder document a crawl or batch returns for a URL it could not read.
+///
+/// Carries only the URL, the status (0 when there was no response at all) and
+/// the reason, stamped through the same `block` field the scrape and batch
+/// paths already use, so every surface that already understands "this document
+/// is not a page you asked for" understands this one too, and the caller's
+/// `completed - blocked` billing keeps it free.
+pub fn failed_page(url: &str, status_code: u16, reason: String) -> ScrapeData {
+    ScrapeData {
+        metadata: crw_core::types::PageMetadata {
+            source_url: url.to_string(),
+            status_code,
+            ..Default::default()
+        },
+        block: Some(crw_core::types::BlockOutcome {
+            vendor: crw_core::types::HTTP_ERROR_VENDOR.to_string(),
+            reason,
+        }),
+        ..Default::default()
+    }
+}
+
+/// Record a failed page and publish progress, mirroring the success path's
+/// bookkeeping so `completed`, `blocked` and `total` never disagree.
+fn push_failed_page(
+    data: ScrapeData,
+    id: Uuid,
+    state_tx: &tokio::sync::watch::Sender<CrawlState>,
+    results: &mut Vec<ScrapeData>,
+    blocked: &mut u32,
+    total: u32,
+) {
+    results.push(data);
+    *blocked += 1;
+    // Progress carries no data: the full array ships once, in Completed.
+    let _ = state_tx.send(CrawlState {
+        id,
+        success: true,
+        status: CrawlStatus::InProgress,
+        total,
+        completed: results.len() as u32,
+        blocked: *blocked,
+        data: Vec::new(),
+        error: None,
+    });
 }
 
 /// Run a BFS crawl starting from a URL.
@@ -119,21 +175,22 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         jitter_factor: _,
         deadline_ms_per_page,
         per_host_max_concurrent,
+        http_retry_threshold_bytes,
     } = opts;
 
     let max_depth = req.max_depth.unwrap_or(2).min(10);
     let max_pages = req.max_pages.unwrap_or(100).min(1000) as usize;
 
-    // Apply "pinned implies JS" once per crawl, mirroring single.rs.
+    // Apply "pinned implies JS" once per crawl, mirroring single.rs. The rule
+    // lives in `RequestedRenderer::implies_js`: browser pins coerce a JS
+    // render, the wire-level impersonated-http pin and an explicit Auto do not.
     let pinned_renderer = resolve_pinned_renderer(req.renderer);
-    let effective_render_js = if req.renderer.is_some()
-        && req.renderer != Some(RequestedRenderer::Auto)
-        && req.render_js.is_none()
-    {
-        Some(true)
-    } else {
-        req.render_js
-    };
+    let effective_render_js =
+        if req.renderer.is_some_and(|r| r.implies_js()) && req.render_js.is_none() {
+            Some(true)
+        } else {
+            req.render_js
+        };
 
     let base_url = match url::Url::parse(&req.url) {
         Ok(u) => {
@@ -149,13 +206,11 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         }
     };
 
-    let origin = match base_url.host_str() {
-        Some(host) => format!("{}://{}", base_url.scheme(), host),
-        None => {
-            send_failed(id, &state_tx, "URL has no host".into());
-            return;
-        }
-    };
+    if base_url.host_str().is_none() {
+        send_failed(id, &state_tx, "URL has no host".into());
+        return;
+    }
+    let origin = base_url.origin().ascii_serialization();
 
     let mut client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
@@ -169,7 +224,10 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         if let Ok(p) = reqwest::Proxy::all(proxy_url) {
             client_builder = client_builder.proxy(p);
         } else {
-            tracing::warn!("Invalid crawl proxy URL: {proxy_url}");
+            tracing::warn!(
+                "Invalid crawl proxy URL: {}",
+                crw_core::redact_proxy_url(proxy_url)
+            );
         }
     }
     let client = client_builder
@@ -195,6 +253,10 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
     let mut visited: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     let mut results: Vec<ScrapeData> = Vec::new();
+    // How many completed pages came back a wall or an origin error page. The
+    // caller bills off `completed`, so it needs this to bill `completed - blocked`
+    // without walking the paginated array.
+    let mut blocked: u32 = 0;
 
     queue.push_back((req.url.clone(), 0));
     visited.insert(normalize_url(&req.url));
@@ -227,7 +289,7 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         let mut fetch_result = match renderer
             .fetch(
                 &url,
-                &Default::default(),
+                &req.headers,
                 effective_render_js,
                 req.wait_for,
                 pinned_renderer,
@@ -238,9 +300,45 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!(url, error = %e, "Crawl: failed to fetch page");
+                push_failed_page(
+                    failed_page(&url, 0, e.to_string()),
+                    id,
+                    &state_tx,
+                    &mut results,
+                    &mut blocked,
+                    visited.len() as u32,
+                );
                 continue;
             }
         };
+
+        // The CDN answered for a dead origin, so this page has no content and no
+        // links worth following: its body is the CDN's error page. It is
+        // recorded as a blocked page rather than a crawled one: a crawl of a
+        // site whose origin is down was reporting `completed: 1` with
+        // Cloudflare's apology as the page. `blocked` keeps it out of the bill
+        // (the caller charges `completed - blocked`) while the caller can still
+        // see which URL failed and why.
+        if crate::single::is_cdn_origin_error(fetch_result.status_code) {
+            tracing::warn!(
+                url,
+                status = fetch_result.status_code,
+                "Crawl: CDN could not reach the origin"
+            );
+            push_failed_page(
+                failed_page(
+                    &url,
+                    fetch_result.status_code,
+                    "CDN could not reach origin".to_string(),
+                ),
+                id,
+                &state_tx,
+                &mut results,
+                &mut blocked,
+                visited.len() as u32,
+            );
+            continue;
+        }
 
         // Extract links for further crawling.
         if depth < max_depth {
@@ -277,6 +375,18 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
                 Ok(data) => data,
                 Err(err) => {
                     tracing::warn!(url, error = %err, "Crawl: PDF conversion failed");
+                    push_failed_page(
+                        failed_page(
+                            &url,
+                            fetch_result.status_code,
+                            format!("PDF conversion failed: {err}"),
+                        ),
+                        id,
+                        &state_tx,
+                        &mut results,
+                        &mut blocked,
+                        visited.len() as u32,
+                    );
                     continue;
                 }
             }
@@ -287,6 +397,7 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
             // async fan-out.
             match crate::extract_pool::extract_offloaded(crw_extract::OwnedExtractInput {
                 raw_html: fetch_result.html.clone(),
+                content_type: fetch_result.content_type.clone(),
                 source_url: fetch_result.url.clone(),
                 status_code: fetch_result.status_code,
                 rendered_with: fetch_result.rendered_with.clone(),
@@ -314,6 +425,18 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
                 Ok(data) => data,
                 Err(err) => {
                     tracing::warn!(url, error = %err, "Crawl: extraction failed");
+                    push_failed_page(
+                        failed_page(
+                            &url,
+                            fetch_result.status_code,
+                            format!("extraction failed: {err}"),
+                        ),
+                        id,
+                        &state_tx,
+                        &mut results,
+                        &mut blocked,
+                        visited.len() as u32,
+                    );
                     continue;
                 }
             }
@@ -325,7 +448,69 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         // POST /v1/change-tracking/diff, not inline here.
         data.content_type = fetch_result.content_type.clone();
 
+        // Same verdict a single scrape gets. Without this a crawl shipped the
+        // Cloudflare wall as the page's markdown, `success: true`, billed — the
+        // classifier was simply never called on this path.
+        //
+        // With one exception: `structural_failure` is not applied here. It means
+        // "we got a 200 and produced nothing", and `single::scrape_url` only
+        // reaches that verdict after a JS escalation has already failed to
+        // recover the page. A crawl does one fetch and no escalation, so the same
+        // verdict here would fail JS-hydrated pages that `/v1/scrape` recovers —
+        // the cross-surface divergence this change exists to remove, inverted.
+        data.block = crate::single::classify_block(
+            fetch_result.status_code,
+            fetch_result.content_type.as_deref(),
+            &fetch_result.html,
+            data.markdown.as_deref(),
+            http_retry_threshold_bytes,
+            &fetch_result.url,
+            fetch_result.final_url.as_deref(),
+        )
+        .filter(|b| b.vendor != crw_core::types::STRUCTURAL_FAILURE_VENDOR);
+        // The same two fallbacks `single::scrape_url` applies, so a crawled page
+        // and a single scrape of it get the same verdict: name the wall on an
+        // origin error page, then trust the renderer ladder's own wall verdict
+        // for a body no bigger than an error page.
+        if data.block.is_none() && data.http_error().is_some() {
+            data.block = crate::single::classify_error_page_wall(
+                fetch_result.status_code,
+                &fetch_result.html,
+            );
+        }
+        if data.block.is_none() && data.is_error_page_sized() {
+            data.block = fetch_result.wall.clone();
+        }
+        // An origin error page is not the page that was asked for either. One
+        // helper, so `/v1/scrape` and a crawl of the same URL agree. It is
+        // stamped onto `block` because a crawl returns documents, not an
+        // envelope with an error code — and the caller's billing filters on
+        // exactly this field.
+        let is_wall = data.block.is_some();
+        if !is_wall && let Some(reason) = data.http_error() {
+            data.block = Some(crw_core::types::BlockOutcome {
+                vendor: crw_core::types::HTTP_ERROR_VENDOR.to_string(),
+                reason,
+            });
+        }
+        if data.block.is_some() {
+            // Only a wall loses its body, matching `/v1/scrape`: there the
+            // challenge shell is dropped and the origin's error page is kept for
+            // the caller to read. Either way the page is marked and not billed.
+            if is_wall {
+                data.clear_body();
+            }
+            blocked += 1;
+        }
+
+        // Never send a refused page to the model. A wall dodges this by accident
+        // (`clear_body()` nulled the markdown); an origin error page keeps its
+        // body on purpose, so without the check a crawl with a `jsonSchema` over
+        // a 404-heavy site makes one real provider call per error page — pages
+        // that are then counted `blocked` and not billed, so we pay and nobody
+        // is charged.
         if let (Some(schema), Some(llm)) = (&req.json_schema, llm_config)
+            && data.block.is_none()
             && let Some(md) = &data.markdown
         {
             match crw_extract::structured::extract_structured_with_usage(md, schema, llm, None)
@@ -353,6 +538,7 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
             status: CrawlStatus::InProgress,
             total: visited.len() as u32,
             completed: results.len() as u32,
+            blocked,
             data: vec![],
             error: None,
         });
@@ -364,6 +550,7 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         status: CrawlStatus::Completed,
         total: visited.len() as u32,
         completed: results.len() as u32,
+        blocked,
         data: results,
         error: None,
     });
@@ -418,6 +605,9 @@ pub struct DiscoverResult {
     pub urls: Vec<String>,
     pub dropped_action_count: usize,
     pub stripped_tracking_count: usize,
+    /// Sitemap documents fetched and parsed during discovery (issue #440).
+    /// Empty when `use_sitemap` is off or the site has no reachable sitemap.
+    pub sitemaps: Vec<String>,
 }
 
 /// If the sitemap phase yields at least this many URLs and `crawl_fallback`
@@ -611,6 +801,7 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
     // not among the discovered URLs — a caller asking for 10 would get 11.
     let mut all_urls: HashSet<String> = HashSet::new();
     all_urls.insert(base_url.to_string());
+    let mut sitemaps: Vec<String> = Vec::new();
 
     // robots.txt is fetched OUTSIDE the `use_sitemap` block: the BFS phase needs
     // its Disallow rules even when sitemap discovery is switched off. (It used to
@@ -731,7 +922,7 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
         // zero-result 504 this whole change exists to prevent. The inner deadline
         // still does the real work (it returns partial sitemap results); this timeout
         // is the guarantee that the phase can never outlive its budget.
-        let sitemap_urls = match remaining_budget(overall_deadline) {
+        let walk = match remaining_budget(overall_deadline) {
             Some(budget) => tokio::time::timeout(
                 budget,
                 crate::sitemap::fetch_sitemap_tree(
@@ -748,9 +939,10 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
             )
             .await
             .unwrap_or_default(),
-            None => Vec::new(),
+            None => crate::sitemap::SitemapWalk::default(),
         };
-        for u in sitemap_urls {
+        sitemaps = walk.sitemaps;
+        for u in walk.pages {
             if all_urls.len() >= max_urls {
                 break;
             }
@@ -769,6 +961,7 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
             urls,
             dropped_action_count,
             stripped_tracking_count,
+            sitemaps,
         });
     }
 
@@ -943,6 +1136,7 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
         urls,
         dropped_action_count,
         stripped_tracking_count,
+        sitemaps,
     })
 }
 
@@ -970,6 +1164,66 @@ mod tests {
             normalize_url("https://example.com/page/"),
             "https://example.com/page"
         );
+    }
+
+    /// A page the crawl could not read must come back marked, not silently
+    /// dropped and not billable: `block` is what every surface (v1, v2, the
+    /// SaaS biller's `completed - blocked`) already reads to tell a real page
+    /// from a refused one.
+    #[test]
+    fn failed_page_is_marked_blocked_and_carries_the_reason() {
+        let d = failed_page("https://example.com/dead", 0, "connect timeout".into());
+        assert_eq!(d.metadata.source_url, "https://example.com/dead");
+        // No response at all, so there is no status to report.
+        assert_eq!(d.metadata.status_code, 0);
+        assert!(d.markdown.is_none() && d.html.is_none());
+        let block = d.block.expect("a failed page must be marked");
+        assert_eq!(block.vendor, crw_core::types::HTTP_ERROR_VENDOR);
+        assert_eq!(block.reason, "connect timeout");
+        // Not priced by the engine; the caller excludes blocked pages anyway.
+        assert_eq!(d.credit_cost, 0);
+    }
+
+    /// The CDN-origin-error case keeps the status it answered with, so a caller
+    /// can tell a 523 apart from a transport failure.
+    #[test]
+    fn failed_page_keeps_an_upstream_status_code() {
+        let d = failed_page(
+            "https://example.com/x",
+            523,
+            "CDN could not reach origin".into(),
+        );
+        assert_eq!(d.metadata.status_code, 523);
+        assert_eq!(
+            d.block.map(|b| b.reason).as_deref(),
+            Some("CDN could not reach origin")
+        );
+    }
+
+    /// A different port is a different origin, matching `discover_urls`'s BFS
+    /// phase. Harmless while the crawl sent no caller headers, a
+    /// credential-scope hole once `CrawlRequest::headers` existed, since an
+    /// admin console on `:9999` would receive the seed's `Authorization`.
+    #[test]
+    fn enqueue_same_host_different_port_is_a_different_origin() {
+        let enqueued = |link: &str| {
+            let html = format!(r#"<html><body><a href="{link}">x</a></body></html>"#);
+            let mut visited = HashSet::new();
+            let mut queue = VecDeque::new();
+            enqueue_discovered_links(
+                &html,
+                "https://example.com/",
+                "https://example.com",
+                100,
+                &mut visited,
+                &mut queue,
+                0,
+            );
+            queue.len()
+        };
+        assert_eq!(enqueued("https://example.com:9999/admin"), 0);
+        // The default port is not a different origin: `Url::origin()` omits it.
+        assert_eq!(enqueued("https://example.com:443/page"), 1);
     }
 
     #[test]

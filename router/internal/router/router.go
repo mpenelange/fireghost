@@ -583,28 +583,49 @@ func cloudSearchSucceeded(status int, body []byte) bool {
 		result.Data != nil && result.Data.Web != nil && len(*result.Data.Web) > 0
 }
 
+// scrapeData is the part of a CRW scrape document the fallback decision reads.
+type scrapeData struct {
+	Markdown *string `json:"markdown"`
+	Metadata *struct {
+		StatusCode int `json:"statusCode"`
+	} `json:"metadata"`
+}
+
 func shouldFallbackScrape(status int, requestBody, responseBody []byte) bool {
 	if status >= http.StatusOK && status < http.StatusMultipleChoices {
 		var result struct {
-			Success *bool  `json:"success"`
-			Warning string `json:"warning"`
-			Error   string `json:"error"`
-			Data    *struct {
-				Markdown *string `json:"markdown"`
-			} `json:"data"`
+			Success *bool       `json:"success"`
+			Warning string      `json:"warning"`
+			Error   string      `json:"error"`
+			Data    *scrapeData `json:"data"`
 		}
 		if json.Unmarshal(responseBody, &result) != nil {
 			return false
 		}
+		markdownMissing := markdownRequested(requestBody) && (result.Data == nil || result.Data.Markdown == nil || strings.TrimSpace(*result.Data.Markdown) == "")
 		if result.Success != nil && !*result.Success {
-			return hasRetryableScrapeIndicator(result.Warning + " " + result.Error)
+			message := result.Warning + " " + result.Error
+			if hasRetryableScrapeIndicator(message) {
+				return true
+			}
+			// CRW reports an empty or unusable page as success:false with no
+			// retryable wording. Without requested markdown there is nothing to
+			// keep, so it falls back unless the failure is deterministic or the
+			// target itself answered with a terminal status.
+			return markdownMissing && !hasDeterministicScrapeIndicator(message) && !terminalTargetStatus(result.Data)
 		}
-		return markdownRequested(requestBody) && (result.Data == nil || result.Data.Markdown == nil || strings.TrimSpace(*result.Data.Markdown) == "")
+		return markdownMissing
 	}
 	switch status {
 	case http.StatusUnauthorized, http.StatusNotFound, http.StatusGone:
 		return false
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		// A document CRW cannot parse (an office file, an archive) is a gap in
+		// CRW, not in the target: Firecrawl Cloud parses those. Only CRW's
+		// explicit error code qualifies; other "unsupported" requests stay final.
+		if scrapeErrorCode(responseBody) == "unsupported_content_type" {
+			return true
+		}
 		if hasDeterministicScrapeIndicator(string(responseBody)) {
 			return false
 		}
@@ -612,6 +633,31 @@ func shouldFallbackScrape(status int, requestBody, responseBody []byte) bool {
 	}
 	message := strings.ToLower(string(responseBody))
 	return !strings.Contains(message, "robots") && !strings.Contains(message, "invalid url")
+}
+
+// terminalTargetStatus reports whether a 2xx CRW body describes a target that
+// itself answered 401, 404 or 410; those stay final like the equivalent
+// non-2xx statuses.
+func terminalTargetStatus(data *scrapeData) bool {
+	if data == nil || data.Metadata == nil {
+		return false
+	}
+	switch data.Metadata.StatusCode {
+	case http.StatusUnauthorized, http.StatusNotFound, http.StatusGone:
+		return true
+	}
+	return false
+}
+
+// scrapeErrorCode returns CRW's machine-readable `error_code`, if any.
+func scrapeErrorCode(body []byte) string {
+	var envelope struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return ""
+	}
+	return envelope.ErrorCode
 }
 
 func hasDeterministicScrapeIndicator(message string) bool {
@@ -632,6 +678,7 @@ func hasRetryableScrapeIndicator(message string) bool {
 		"renderer exhausted", "renderer-exhausted", "renderer_exhausted",
 		"invalid extraction", "invalid-extraction", "invalid_extraction",
 		"connection reset", "connection-reset", "connection_reset",
+		"no usable content", "no content could be extracted",
 	} {
 		if strings.Contains(message, indicator) {
 			return true

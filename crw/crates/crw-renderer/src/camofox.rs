@@ -9,7 +9,8 @@
 //! so it slots into `FallbackRenderer`'s failover ladder unchanged.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use crw_core::Deadline;
@@ -18,6 +19,8 @@ use crw_core::types::FetchResult;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::clearance::{CLEARANCE_COOKIE, Clearance, ClearanceCache, Cookie, cookie_matches_host};
+use crate::detector;
 use crate::traits::PageFetcher;
 
 /// Stable `userId` for all sessions opened by one renderer instance. The
@@ -39,12 +42,112 @@ const OUTER_HTML_EXPR: &str = "document.documentElement.outerHTML";
 /// context toward MAX_SESSIONS, so the reap must still get a real chance to run.
 const CLEANUP_BUDGET: Duration = Duration::from_secs(3);
 
+/// `POST /tabs` fails transiently right after the context's last tab was
+/// closed: camofox eagerly tears the context down and relaunches it, and a
+/// create landing in that window fails with `window is null` (or, once the
+/// breaker trips, `browser has been closed`). A relaunch takes a few seconds,
+/// so a 5xx create is retried this many times in total with a growing pause
+/// ([`CREATE_TAB_BACKOFF`] doubling each time), inside the request deadline.
+/// The tab is created blank and navigated separately: camofox counts a failed
+/// navigate-in-create toward its consecutive-failure breaker (3 by default),
+/// so retrying creates that also navigate would trip the breaker faster.
+const CREATE_TAB_ATTEMPTS: u32 = 4;
+const CREATE_TAB_BACKOFF: Duration = Duration::from_millis(500);
+
+/// Default cap on the passive Cloudflare-challenge wait. Mirrors
+/// `CamofoxEndpoint::challenge_wait_ms`'s default.
+const DEFAULT_CHALLENGE_WAIT: Duration = Duration::from_secs(20);
+
+/// Interval between challenge probes while the interstitial is on screen.
+const CHALLENGE_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Budget always held back from the challenge loop so the snapshot that
+/// follows (final-URL check, status probe, outerHTML evaluate) still runs.
+const MIN_EVAL_BUDGET: Duration = Duration::from_secs(2);
+
+/// One cheap DOM probe, computed in the page so no markup crosses the wire:
+/// the title and whether the managed challenge's own script is loaded. The
+/// marker is `challenge-platform/h/`, never the bare
+/// `/cdn-cgi/challenge-platform/` directory, whose telemetry loader Cloudflare
+/// also injects into cleared pages (a false positive there costs the whole
+/// wait). Measured live: a managed challenge carries the title and the script
+/// but none of the old `#challenge-*` element ids.
+const CHALLENGE_PROBE_EXPR: &str = "JSON.stringify({t:document.title,m:document.documentElement.outerHTML.includes('challenge-platform/h/')})";
+
+/// Parsed [`CHALLENGE_PROBE_EXPR`] result.
+#[derive(Deserialize)]
+struct ChallengeProbe {
+    #[serde(default)]
+    t: String,
+    #[serde(default)]
+    m: bool,
+}
+
+/// What a challenge probe says is on screen.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ChallengeState {
+    /// A managed challenge that may clear if the tab is left alone.
+    Challenge,
+    /// Cloudflare's hard block ("Attention Required!"). It never clears, so it
+    /// is never polled.
+    Wall,
+    /// Anything else, including an unparseable probe (an older server, a page
+    /// that threw): proceed as before the loop existed.
+    Clear,
+}
+
+pub(crate) fn probe_challenge_state(raw: &str) -> ChallengeState {
+    let Ok(p) = serde_json::from_str::<ChallengeProbe>(raw) else {
+        return ChallengeState::Clear;
+    };
+    let title = p.t.trim();
+    if title.starts_with("Attention Required!") {
+        ChallengeState::Wall
+    } else if p.m || title.eq_ignore_ascii_case("just a moment...") {
+        ChallengeState::Challenge
+    } else {
+        ChallengeState::Clear
+    }
+}
+
 /// Renderer backed by a camofox-browser REST endpoint.
 pub struct CamofoxRenderer {
     name: String,
     base_url: String,
     api_key: Option<String>,
     client: reqwest::Client,
+    /// Serializes `POST /tabs`. Concurrent creates on a freshly (re)launched
+    /// context race for camofox's reusable initial blank page and abort each
+    /// other's navigation (`NS_BINDING_ABORTED`). A blank create is
+    /// milliseconds when the context is warm, so holding this only across the
+    /// create call costs nothing in steady state; navigation itself runs
+    /// concurrently.
+    create_lock: tokio::sync::Mutex<()>,
+    /// Cap on the passive challenge wait; `ZERO` disables the loop.
+    challenge_wait: Duration,
+    /// Sleep between challenge probes ([`CHALLENGE_POLL_INTERVAL`]).
+    challenge_poll_interval: Duration,
+    /// Where a `cf_clearance` earned by a render is stored for the HTTP tier.
+    /// `None` = capture disabled (config `clearance_reuse = false`).
+    clearance: Option<Arc<ClearanceCache>>,
+}
+
+/// `GET /tabs/:id/cookies`: a bare array on current servers (measured live);
+/// a `{cookies: [...]}` wrapper is accepted too so a server change does not
+/// silently disable capture.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CookiesResponse {
+    List(Vec<Cookie>),
+    Wrapped { cookies: Vec<Cookie> },
+}
+
+impl CookiesResponse {
+    fn into_cookies(self) -> Vec<Cookie> {
+        match self {
+            Self::List(c) | Self::Wrapped { cookies: c } => c,
+        }
+    }
 }
 
 /// `POST /tabs` response — we only need the tab id.
@@ -58,8 +161,31 @@ struct CreateTabResponse {
 #[derive(Deserialize)]
 struct EvaluateResponse {
     result: Option<String>,
+    /// camofox caps one evaluate result at 1 MiB of serialized value and, over
+    /// that, replaces it with a `[Truncated: …]` placeholder string and sets
+    /// this flag. Absent on older servers, hence the default.
     #[serde(default)]
     truncated: bool,
+}
+
+/// Slice size for chunked document retrieval (UTF-16 units, JS `slice`
+/// semantics). Kept well under camofox's 1 MiB serialized-result cap so a
+/// slice never trips it even with heavy JSON escaping; halved on the spot
+/// if one does.
+const HTML_CHUNK_UNITS: usize = 256 * 1024;
+
+/// Upper bound on chunked retrieval. Documents beyond this are cut, with a
+/// warning; nothing downstream wants more than that from one page.
+const MAX_CHUNKED_HTML_UNITS: usize = 16 * 1024 * 1024;
+
+/// JS length of the document's outerHTML, as a string so the result is
+/// always the `String` the response type expects.
+const OUTER_HTML_LEN_EXPR: &str = "String(document.documentElement.outerHTML.length)";
+
+/// Whether an evaluate result is camofox's truncation placeholder, for
+/// servers that predate the `truncated` flag.
+fn is_truncation_placeholder(result: &str) -> bool {
+    result.starts_with("[Truncated: result was ")
 }
 
 /// `GET /health` response.
@@ -86,6 +212,237 @@ impl CamofoxRenderer {
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key,
             client,
+            create_lock: tokio::sync::Mutex::new(()),
+            challenge_wait: DEFAULT_CHALLENGE_WAIT,
+            challenge_poll_interval: CHALLENGE_POLL_INTERVAL,
+            clearance: None,
+        }
+    }
+
+    /// Enable clearance capture into `cache` (config `clearance_reuse`).
+    pub fn with_clearance_cache(mut self, cache: Arc<ClearanceCache>) -> Self {
+        self.clearance = Some(cache);
+        self
+    }
+
+    /// The tab's cookie jar, the whole round-trip bounded by `budget`. The jar
+    /// is the whole browser context's, every site this userId visited.
+    async fn tab_cookies(&self, tab_id: &str, budget: Duration) -> CrwResult<Vec<Cookie>> {
+        if budget.is_zero() {
+            return Err(CrwError::Timeout(0));
+        }
+        let fut = async {
+            let resp = self
+                .auth(
+                    // `USER_ID` is a fixed ASCII token, so it needs no encoding.
+                    self.client.get(format!(
+                        "{}/tabs/{tab_id}/cookies?userId={USER_ID}",
+                        self.base_url
+                    )),
+                )
+                .send()
+                .await
+                .map_err(|e| {
+                    CrwError::RendererError(format!(
+                        "camofox /cookies request failed: {}",
+                        crw_core::error::reqwest_message(e)
+                    ))
+                })?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let detail = error_detail(resp).await;
+                return Err(CrwError::RendererError(format!(
+                    "camofox /cookies returned {status}{detail}"
+                )));
+            }
+            resp.json::<CookiesResponse>()
+                .await
+                .map(CookiesResponse::into_cookies)
+                .map_err(|e| {
+                    CrwError::RendererError(format!(
+                        "camofox /cookies bad response: {}",
+                        crw_core::error::reqwest_message(e)
+                    ))
+                })
+        };
+        match tokio::time::timeout(budget, fut).await {
+            Ok(r) => r,
+            Err(_) => Err(CrwError::Timeout(budget.as_millis() as u64)),
+        }
+    }
+
+    /// After a challenge-free render: if the tab holds a `cf_clearance` cookie
+    /// for this host, store this host's cookies + the user agent for the HTTP
+    /// tier. Best-effort: every failure logs at `debug` and returns.
+    async fn capture_clearance(&self, tab_id: &str, url: &str, deadline: Deadline) {
+        let Some(cache) = &self.clearance else {
+            return;
+        };
+        let Some(host) = url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+        else {
+            return;
+        };
+        if deadline.remaining() < MIN_EVAL_BUDGET {
+            tracing::debug!(url, "camofox: no budget left for clearance capture");
+            return;
+        }
+        let cookies: Vec<Cookie> = match self.tab_cookies(tab_id, deadline.remaining()).await {
+            // Only this host's cookies. The jar is context-wide, so a clearance
+            // earned on another site would otherwise be cached for this one.
+            Ok(c) => c
+                .into_iter()
+                .filter(|c| cookie_matches_host(&c.domain, &host) && !c.domain.trim().is_empty())
+                .collect(),
+            Err(e) => {
+                tracing::debug!(url, error = %e, "camofox: cookie export failed");
+                return;
+            }
+        };
+        if !cookies.iter().any(|c| c.name == CLEARANCE_COOKIE) {
+            return;
+        }
+        let ua = match self
+            .post_decode_within::<EvaluateResponse>(
+                &format!("/tabs/{tab_id}/evaluate"),
+                json!({ "userId": USER_ID, "expression": "navigator.userAgent" }),
+                deadline.remaining(),
+                deadline,
+            )
+            .await
+        {
+            Ok(r) => r.result.unwrap_or_default(),
+            Err(e) => {
+                tracing::debug!(url, error = %e, "camofox: user agent read failed");
+                return;
+            }
+        };
+        if ua.is_empty() {
+            return;
+        }
+        let now_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        if let Some(clearance) = Clearance::from_browser(cookies, ua, now_unix) {
+            tracing::info!(host = %host, "camofox: cached cf_clearance for the HTTP tier");
+            cache.insert(&host, clearance).await;
+        }
+    }
+
+    /// Override the passive challenge wait cap (config `challenge_wait_ms`).
+    pub fn with_challenge_wait(mut self, wait: Duration) -> Self {
+        self.challenge_wait = wait;
+        self
+    }
+
+    /// Override the sleep between challenge probes. For tests.
+    #[doc(hidden)]
+    pub fn with_challenge_poll_interval(mut self, interval: Duration) -> Self {
+        self.challenge_poll_interval = interval;
+        self
+    }
+
+    /// Wait, on the open tab, for a Cloudflare managed challenge to clear.
+    ///
+    /// Probes the DOM every `challenge_poll_interval` for up to
+    /// `challenge_wait`, always leaving [`MIN_EVAL_BUDGET`] of the deadline for
+    /// the snapshot that follows. Never fails the fetch: on give-up the caller
+    /// snapshots whatever is on screen, exactly as before this loop existed,
+    /// and the ladder's post-render check classifies it. One failed probe in a
+    /// row is tolerated, because the challenge clears by reloading the tab and
+    /// an evaluate in that window fails; a second ends the wait.
+    async fn wait_out_challenge(&self, tab_id: &str, url: &str, deadline: Deadline) {
+        if self.challenge_wait.is_zero() {
+            return;
+        }
+        let path = format!("/tabs/{tab_id}/evaluate");
+        let body = json!({ "userId": USER_ID, "expression": CHALLENGE_PROBE_EXPR });
+        let started = Instant::now();
+        let mut polls = 0u32;
+        let mut failed_in_a_row = 0u32;
+        loop {
+            let left_for_loop = self
+                .challenge_wait
+                .saturating_sub(started.elapsed())
+                .min(deadline.remaining().saturating_sub(MIN_EVAL_BUDGET));
+            if left_for_loop.is_zero() {
+                break;
+            }
+            let state = match self
+                .post_decode_within::<EvaluateResponse>(
+                    &path,
+                    body.clone(),
+                    left_for_loop,
+                    deadline,
+                )
+                .await
+            {
+                Ok(r) => {
+                    failed_in_a_row = 0;
+                    probe_challenge_state(r.result.as_deref().unwrap_or_default())
+                }
+                Err(e) => {
+                    failed_in_a_row += 1;
+                    if failed_in_a_row >= 2 {
+                        tracing::debug!(url, error = %e, "camofox: challenge probe failed twice; ending the wait");
+                        break;
+                    }
+                    tracing::debug!(url, error = %e, "camofox: challenge probe failed; retrying once");
+                    ChallengeState::Challenge
+                }
+            };
+            match state {
+                ChallengeState::Clear => {
+                    if polls > 0 {
+                        tracing::info!(
+                            url,
+                            polls,
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "camofox: challenge cleared"
+                        );
+                        crw_core::metrics::metrics()
+                            .render_route_decision_total
+                            .with_label_values(&["camofox", "challengeCleared"])
+                            .inc();
+                    }
+                    return;
+                }
+                ChallengeState::Wall => {
+                    tracing::debug!(url, "camofox: Cloudflare block page on screen; not waiting");
+                    return;
+                }
+                ChallengeState::Challenge => {}
+            }
+            if polls == 0 {
+                tracing::info!(
+                    url,
+                    "camofox: Cloudflare challenge on screen, waiting for it to clear"
+                );
+            }
+            polls += 1;
+            let sleep = self.challenge_poll_interval.min(
+                self.challenge_wait
+                    .saturating_sub(started.elapsed())
+                    .min(deadline.remaining().saturating_sub(MIN_EVAL_BUDGET)),
+            );
+            if sleep.is_zero() {
+                break;
+            }
+            tokio::time::sleep(sleep).await;
+        }
+        if polls > 0 {
+            tracing::warn!(
+                url,
+                polls,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "camofox: challenge did not clear within budget"
+            );
+            crw_core::metrics::metrics()
+                .render_route_decision_total
+                .with_label_values(&["camofox", "challengeStuck"])
+                .inc();
         }
     }
 
@@ -102,7 +459,335 @@ impl CamofoxRenderer {
             .json(&body)
             .send()
             .await
-            .map_err(|e| CrwError::RendererError(format!("camofox {path} request failed: {e}")))
+            .map_err(|e| {
+                // The camofox URL is internal; log it, return the stripped message.
+                tracing::warn!("camofox {path} request failed: {e}");
+                CrwError::RendererError(format!(
+                    "camofox {path} request failed: {}",
+                    crw_core::error::reqwest_message(e)
+                ))
+            })
+    }
+
+    /// Open a blank tab, retrying a 5xx create (see [`CREATE_TAB_ATTEMPTS`]).
+    /// Each attempt's send + decode is bounded by the remaining deadline; a
+    /// non-5xx failure surfaces at once. Creates are serialized on
+    /// [`Self::create_lock`].
+    async fn create_tab(&self, deadline: Deadline) -> CrwResult<String> {
+        let _serialized = self.create_lock.lock().await;
+        let body = json!({ "userId": USER_ID, "sessionKey": SESSION_KEY });
+        let mut attempt = 1;
+        let mut backoff = CREATE_TAB_BACKOFF;
+        loop {
+            let budget = deadline.remaining();
+            if budget.is_zero() {
+                return Err(CrwError::Timeout(deadline.requested_ms()));
+            }
+            let can_retry = attempt < CREATE_TAB_ATTEMPTS;
+            let fut = async {
+                let resp = self.post_json("/tabs", body.clone()).await?;
+                let status = resp.status();
+                if status.is_success() {
+                    return resp
+                        .json::<CreateTabResponse>()
+                        .await
+                        .map(|r| Ok(r.tab_id))
+                        .map_err(|e| {
+                            CrwError::RendererError(format!(
+                                "camofox /tabs bad response: {}",
+                                crw_core::error::reqwest_message(e)
+                            ))
+                        });
+                }
+                let detail = error_detail(resp).await;
+                if status.is_server_error() && can_retry {
+                    return Ok(Err(format!("{status}{detail}")));
+                }
+                Err(CrwError::RendererError(format!(
+                    "camofox /tabs returned {status}{detail}"
+                )))
+            };
+            match tokio::time::timeout(budget, fut).await {
+                Ok(Ok(Ok(tab_id))) => return Ok(tab_id),
+                Ok(Ok(Err(transient))) => {
+                    tracing::info!(
+                        attempt,
+                        error = %transient,
+                        "camofox: tab create failed, retrying"
+                    );
+                    tokio::time::sleep(backoff.min(deadline.remaining())).await;
+                    backoff *= 2;
+                    attempt += 1;
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(CrwError::Timeout(budget.as_millis() as u64)),
+            }
+        }
+    }
+
+    /// Navigate an open tab to `url`, send + decode bounded by the remaining
+    /// deadline. A non-2xx answer carries camofox's message.
+    async fn navigate_tab(&self, tab_id: &str, url: &str, deadline: Deadline) -> CrwResult<()> {
+        let budget = deadline.remaining();
+        if budget.is_zero() {
+            return Err(CrwError::Timeout(deadline.requested_ms()));
+        }
+        let path = format!("/tabs/{tab_id}/navigate");
+        let fut = async {
+            let resp = self
+                .post_json(&path, json!({ "userId": USER_ID, "url": url }))
+                .await?;
+            let status = resp.status();
+            if status.is_success() {
+                return Ok(());
+            }
+            let detail = error_detail(resp).await;
+            Err(CrwError::RendererError(format!(
+                "camofox {path} returned {status}{detail}"
+            )))
+        };
+        let e = match tokio::time::timeout(budget, fut).await {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(e)) => e,
+            Err(_) => return Err(CrwError::Timeout(budget.as_millis() as u64)),
+        };
+        match (e, self.tab_location(tab_id, deadline).await.ok()) {
+            (e, Some(TabLocation::Loaded(_))) => {
+                // camofox's navigate route builds an ARIA snapshot of the
+                // page after the navigation resolved (and after it recorded
+                // the navigation as successful), with its own 10 s timeout
+                // and no way to opt out. On very large documents that
+                // snapshot times out and the route answers 500 (with a
+                // sanitized body, so the cause is not visible here) although
+                // the page is loaded. The tab holding a real document is the
+                // tell that the navigation itself committed; we never use the
+                // snapshot, so carry on.
+                tracing::warn!(
+                    url,
+                    error = %e,
+                    "camofox: navigate reported failure but the page committed; continuing"
+                );
+                Ok(())
+            }
+            // Firefox showed its own error page (DNS failure, refused, blocked
+            // port). `location.href` still reads as the requested URL, so this
+            // is only visible through `document.documentURI`.
+            (_, Some(TabLocation::ErrorPage(code))) => Err(navigation_failed(&code)),
+            // The browser answered and the tab never left about:blank: the page
+            // did not load. camofox-browser sanitizes the Firefox error
+            // (NS_ERROR_UNKNOWN_HOST, connection refused) to "Internal server
+            // error", so this is the only evidence. Say "navigation failed" so
+            // the ladder can pair it with the HTTP tier's `TargetUnreachable` and
+            // attribute a dead origin to the caller.
+            (CrwError::RendererError(msg), Some(TabLocation::Blank)) => {
+                Err(navigation_failed(&msg))
+            }
+            (e, _) => Err(e),
+        }
+    }
+
+    /// Fail unless the tab's current document is a destination the outbound
+    /// policy allows. Same rules as the CDP tiers' per-request check
+    /// (`crw_core::url_safety::classify_safe_host_resolved`): no-socket schemes
+    /// pass, anything else must be http(s) to a public address. A Firefox error
+    /// page fails as a navigation failure: its text is not the page.
+    async fn check_final_url(&self, tab_id: &str, deadline: Deadline) -> CrwResult<()> {
+        let href = match self.tab_location(tab_id, deadline).await? {
+            TabLocation::Loaded(href) => href,
+            TabLocation::ErrorPage(code) => return Err(navigation_failed(&code)),
+            // Still on about:blank after navigate succeeded: nothing to check,
+            // and the empty-document guard after the evaluate handles it.
+            TabLocation::Blank => return Ok(()),
+        };
+        let Ok(parsed) = url::Url::parse(&href) else {
+            return Err(CrwError::RendererError(
+                "camofox: could not read the page's final URL".to_string(),
+            ));
+        };
+        if matches!(parsed.scheme(), "about" | "data" | "blob") {
+            return Ok(());
+        }
+        let verdict = if matches!(parsed.scheme(), "http" | "https") {
+            match tokio::time::timeout(
+                deadline.remaining(),
+                crw_core::url_safety::classify_safe_host_resolved(&parsed),
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(_) => return Err(CrwError::Timeout(deadline.requested_ms())),
+            }
+        } else {
+            Err(crw_core::url_safety::HostRejection::Policy(
+                "scheme".to_string(),
+            ))
+        };
+        match verdict {
+            Ok(()) => Ok(()),
+            Err(crw_core::url_safety::HostRejection::Policy(_)) => {
+                crw_core::metrics::metrics()
+                    .chrome_blocked_requests_total
+                    .with_label_values(&["camofox_final_url"])
+                    .inc();
+                tracing::warn!(tab_id, "camofox: page navigated to a blocked destination");
+                Err(CrwError::RendererError(
+                    "camofox: the page navigated to a blocked destination".to_string(),
+                ))
+            }
+            // Our resolver could not answer. Fail closed, and say it is ours.
+            Err(crw_core::url_safety::HostRejection::Unresolved(reason)) => {
+                Err(CrwError::RendererError(format!(
+                    "camofox: outbound destination check unavailable ({reason})"
+                )))
+            }
+        }
+    }
+
+    /// Where the tab is. Errors when the probe itself fails or no budget remains.
+    async fn tab_location(&self, tab_id: &str, deadline: Deadline) -> CrwResult<TabLocation> {
+        let r = self
+            .post_decode_within::<EvaluateResponse>(
+                &format!("/tabs/{tab_id}/evaluate"),
+                json!({ "userId": USER_ID, "expression": TAB_LOCATION_EXPR }),
+                deadline.remaining().min(Duration::from_secs(5)),
+                deadline,
+            )
+            .await?;
+        Ok(TabLocation::from_probe(
+            r.result.as_deref().unwrap_or_default(),
+        ))
+    }
+
+    /// The HTTP status of the tab's document, or `None` when the probe fails
+    /// or the browser does not report one.
+    async fn nav_status(&self, tab_id: &str, deadline: Deadline) -> Option<u16> {
+        match self
+            .post_decode_within::<EvaluateResponse>(
+                &format!("/tabs/{tab_id}/evaluate"),
+                json!({ "userId": USER_ID, "expression": NAV_STATUS_EXPR }),
+                deadline.remaining().min(Duration::from_secs(5)),
+                deadline,
+            )
+            .await
+        {
+            Ok(r) => parse_nav_status(r.result.as_deref()),
+            Err(e) => {
+                tracing::debug!(tab_id, error = %e, "camofox: navigation status probe failed");
+                None
+            }
+        }
+    }
+
+    /// Retrieve the document's outerHTML in slices, for pages whose HTML
+    /// exceeds camofox's single-result cap. Slices are taken by UTF-16 offset
+    /// (JS string semantics); the expression never ends a slice on a lone
+    /// high surrogate, and the next offset advances by the received slice's
+    /// UTF-16 length, so multibyte characters are never split.
+    ///
+    /// Returns the HTML plus a caller-facing warning when it is incomplete:
+    /// cut at [`MAX_CHUNKED_HTML_UNITS`], or stopped early because the document
+    /// shrank mid-retrieval. A partial document is never returned silently.
+    async fn evaluate_html_chunked(
+        &self,
+        tab_id: &str,
+        deadline: Deadline,
+    ) -> CrwResult<(String, Option<String>)> {
+        let path = format!("/tabs/{tab_id}/evaluate");
+        let total: usize = self
+            .post_decode_within::<EvaluateResponse>(
+                &path,
+                json!({ "userId": USER_ID, "expression": OUTER_HTML_LEN_EXPR }),
+                deadline.remaining(),
+                deadline,
+            )
+            .await?
+            .result
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .map_err(|e| CrwError::RendererError(format!("camofox: bad document length: {e}")))?;
+        let end = total.min(MAX_CHUNKED_HTML_UNITS);
+        if total > end {
+            tracing::warn!(
+                tab_id,
+                total_units = total,
+                cap_units = end,
+                "camofox: document exceeds the chunked retrieval cap; cutting"
+            );
+        }
+        let mut html = String::with_capacity(end);
+        let mut start = 0usize;
+        let mut chunk = HTML_CHUNK_UNITS;
+        while start < end {
+            let stop = (start + chunk).min(end);
+            let expr = format!(
+                "(function(s,a,b){{if(b<s.length){{var c=s.charCodeAt(b-1);\
+                 if(c>=0xD800&&c<=0xDBFF)b--;}}return s.slice(a,b);}})\
+                 (document.documentElement.outerHTML,{start},{stop})"
+            );
+            let r = self
+                .post_decode_within::<EvaluateResponse>(
+                    &path,
+                    json!({ "userId": USER_ID, "expression": expr }),
+                    deadline.remaining(),
+                    deadline,
+                )
+                .await?;
+            if r.truncated || r.result.as_deref().is_some_and(is_truncation_placeholder) {
+                if chunk <= 4096 {
+                    return Err(CrwError::RendererError(
+                        "camofox: evaluate slice truncated even at the minimum chunk size".into(),
+                    ));
+                }
+                chunk /= 2;
+                continue;
+            }
+            let piece = r.result.unwrap_or_default();
+            let advanced: usize = piece.chars().map(char::len_utf16).sum();
+            if advanced == 0 {
+                // The document shrank under us (navigation, script rewrite);
+                // return what we have rather than spin.
+                break;
+            }
+            html.push_str(&piece);
+            start += advanced;
+        }
+        let warning = if start < end {
+            tracing::warn!(
+                tab_id,
+                received_units = start,
+                total_units = total,
+                "camofox: document shrank during chunked retrieval; returning partial HTML"
+            );
+            Some(format!(
+                "camofox_document_incomplete: document changed during retrieval; \
+                 kept {start} of {total} UTF-16 units"
+            ))
+        } else if total > end {
+            Some(format!(
+                "camofox_document_truncated: kept the first {end} of {total} UTF-16 units"
+            ))
+        } else {
+            None
+        };
+        Ok((html, warning))
+    }
+
+    /// Best-effort `DELETE /tabs/{id}` — never fails the caller. Uses a fixed
+    /// grace budget (NOT the deadline, which may already be spent) so a tab
+    /// opened above is still reaped instead of leaking toward MAX_SESSIONS.
+    /// Deadline expiry is the common trigger for this path.
+    async fn close_tab(&self, tab_id: &str) {
+        let _ = tokio::time::timeout(
+            CLEANUP_BUDGET,
+            self.auth(
+                self.client
+                    .delete(format!("{}/tabs/{tab_id}", self.base_url)),
+            )
+            .json(&json!({ "userId": USER_ID }))
+            .send(),
+        )
+        .await;
     }
 
     /// Fire-and-discard POST bounded by `budget`. The response is dropped
@@ -117,9 +802,11 @@ impl CamofoxRenderer {
         path: &str,
         body: serde_json::Value,
         budget: Duration,
+        deadline: Deadline,
     ) -> CrwResult<()> {
         if budget.is_zero() {
-            return Err(CrwError::Timeout(0));
+            // Report the caller's budget, not 0: nothing was awaited here.
+            return Err(CrwError::Timeout(deadline.requested_ms()));
         }
         match tokio::time::timeout(budget, self.post_json(path, body)).await {
             Ok(r) => r.map(|_| ()),
@@ -136,27 +823,129 @@ impl CamofoxRenderer {
         path: &str,
         body: serde_json::Value,
         budget: Duration,
+        deadline: Deadline,
     ) -> CrwResult<T> {
         if budget.is_zero() {
-            return Err(CrwError::Timeout(0));
+            // Report the caller's budget, not 0: nothing was awaited here.
+            return Err(CrwError::Timeout(deadline.requested_ms()));
         }
         let fut = async {
             let resp = self.post_json(path, body).await?;
             if !resp.status().is_success() {
+                let status = resp.status();
+                let detail = error_detail(resp).await;
                 return Err(CrwError::RendererError(format!(
-                    "camofox {path} returned {}",
-                    resp.status()
+                    "camofox {path} returned {status}{detail}"
                 )));
             }
-            resp.json::<T>()
-                .await
-                .map_err(|e| CrwError::RendererError(format!("camofox {path} bad response: {e}")))
+            resp.json::<T>().await.map_err(|e| {
+                CrwError::RendererError(format!(
+                    "camofox {path} bad response: {}",
+                    crw_core::error::reqwest_message(e)
+                ))
+            })
         };
         match tokio::time::timeout(budget, fut).await {
             Ok(r) => r,
             Err(_) => Err(CrwError::Timeout(budget.as_millis() as u64)),
         }
     }
+}
+
+/// Cap on how much of camofox's `error` message is carried into the error.
+const ERROR_BODY_CAP: usize = 300;
+
+/// `: <message>` from a failed camofox response, or `""` when there is none.
+/// camofox reports the real cause in the body's `error` field (e.g. a
+/// profile/Camoufox version mismatch); only that field passes through, a
+/// non-JSON body (a proxy's HTML page) is logged, not surfaced, since renderer
+/// errors reach API responses.
+async fn error_detail(resp: reqwest::Response) -> String {
+    let status = resp.status().as_u16();
+    let raw = match resp.text().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::debug!(status, error = %e, "camofox: error body unreadable");
+            String::new()
+        }
+    };
+    let msg = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("error")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| {
+            if !raw.trim().is_empty() {
+                tracing::debug!(status, body = %raw.trim(), "camofox: non-JSON error body");
+            }
+            String::new()
+        });
+    let msg: String = msg.trim().chars().take(ERROR_BODY_CAP).collect();
+    if msg.is_empty() {
+        String::new()
+    } else {
+        format!(": {msg}")
+    }
+}
+
+/// `location.href`, or `document.documentURI` when Firefox is showing one of its
+/// own error pages. Firefox keeps `location.href` at the requested URL on those,
+/// so the error page is only visible through `documentURI`
+/// (`about:neterror?e=dnsNotFound&u=…`).
+const TAB_LOCATION_EXPR: &str = "(/^about:(neterror|certerror|blocked)/.test(document.documentURI) \
+     ? document.documentURI : location.href)";
+
+/// The document's HTTP status from its Navigation Timing entry. camofox-browser's
+/// navigate route returns no status, but Firefox records it here: `404` for a
+/// GitHub not-found page, measured live. `0` when there is no entry.
+const NAV_STATUS_EXPR: &str =
+    "String((performance.getEntriesByType('navigation')[0] || {}).responseStatus || 0)";
+
+fn parse_nav_status(result: Option<&str>) -> Option<u16> {
+    result?
+        .trim()
+        .parse::<u16>()
+        .ok()
+        .filter(|s| (100..=599).contains(s))
+}
+
+/// What the tab is showing, from [`TAB_LOCATION_EXPR`].
+#[derive(Debug, PartialEq, Eq)]
+enum TabLocation {
+    /// No navigation committed.
+    Blank,
+    /// Firefox's own error page; carries its `e=` code (`dnsNotFound`,
+    /// `connectionFailure`, `deniedPortAccess`, …).
+    ErrorPage(String),
+    /// A real document at this URL.
+    Loaded(String),
+}
+
+impl TabLocation {
+    fn from_probe(result: &str) -> Self {
+        if result.is_empty() || result == "about:blank" {
+            return Self::Blank;
+        }
+        if let Some(query) = ["about:neterror", "about:certerror", "about:blocked"]
+            .iter()
+            .find_map(|p| result.strip_prefix(p))
+        {
+            let code = query
+                .trim_start_matches('?')
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("e="))
+                .filter(|c| !c.is_empty())
+                .unwrap_or("unknown");
+            return Self::ErrorPage(code.to_string());
+        }
+        Self::Loaded(result.to_string())
+    }
+}
+
+/// The error the ladder reads as "the origin could not be loaded"
+/// (`is_origin_navigation_failure` matches "navigation failed").
+fn navigation_failed(detail: &str) -> CrwError {
+    CrwError::RendererError(format!(
+        "camofox: navigation failed, page did not load: {detail}"
+    ))
 }
 
 #[async_trait]
@@ -182,14 +971,11 @@ impl PageFetcher for CamofoxRenderer {
         //    idle-evicts it. Eliminating that race needs the warm-tab+mutex model
         //    the search client uses (crw-search::camofox_search); tracked as the
         //    next step, out of scope for the deadline fix.
-        let tab_id = self
-            .post_decode_within::<CreateTabResponse>(
-                "/tabs",
-                json!({ "userId": USER_ID, "sessionKey": SESSION_KEY, "url": url }),
-                deadline.remaining(),
-            )
-            .await?
-            .tab_id;
+        let tab_id = self.create_tab(deadline).await?;
+        if let Err(e) = self.navigate_tab(&tab_id, url, deadline).await {
+            self.close_tab(&tab_id).await;
+            return Err(e);
+        }
 
         // 2. Wait for readiness, bounded by the smaller of the caller's
         //    `wait_for_ms` hint and the remaining request budget. The HTTP call
@@ -202,42 +988,73 @@ impl PageFetcher for CamofoxRenderer {
                 &format!("/tabs/{tab_id}/wait"),
                 json!({ "userId": USER_ID, "timeout": wait_ms }),
                 deadline.remaining(),
+                deadline,
             )
             .await;
 
-        // 3. Evaluate the rendered DOM, send + body decode bounded by the budget.
-        let html = self
+        // 2b. If the page is a Cloudflare managed challenge, give Camoufox a
+        //     bounded chance to clear it before snapshotting. Before the
+        //     final-URL check and the status probe, because clearing reloads
+        //     the tab.
+        self.wait_out_challenge(&tab_id, url, deadline).await;
+
+        // 3. Refuse to return a page that ended up somewhere internal. The route
+        //    layer checked the URL the caller gave, but a redirect or a JS
+        //    navigation inside the browser can land on the metadata endpoint or
+        //    a compose service, and camofox renders whatever it lands on. Checked
+        //    after the wait so client-side redirects have happened. The probe
+        //    failing means we cannot tell where the page is, so it fails closed.
+        //
+        //    This guards what crw RETURNS. Requests the browser makes along the
+        //    way (a redirect hop, subresources) still reach the network:
+        //    camofox-browser's `CAMOFOX_ALLOW_PRIVATE_NETWORK=false` only checks
+        //    the URL it is asked to open (verified live: a redirect to a compose
+        //    service was followed). Network-level egress rules are the only
+        //    complete control.
+        if let Err(e) = self.check_final_url(&tab_id, deadline).await {
+            self.close_tab(&tab_id).await;
+            return Err(e);
+        }
+
+        // Best-effort: without it the page is reported as a 200, as before,
+        // flagged as synthetic so the ladder can prefer an origin 404/410.
+        let observed_status = self.nav_status(&tab_id, deadline).await;
+        let status_synthetic = observed_status.is_none();
+        let status_code = observed_status.unwrap_or(200);
+
+        // 4. Evaluate the rendered DOM, send + body decode bounded by the budget.
+        //    A document larger than camofox's 1 MiB result cap comes back as a
+        //    placeholder; fetch those in slices instead of treating the
+        //    placeholder as the page.
+        let html = match self
             .post_decode_within::<EvaluateResponse>(
                 &format!("/tabs/{tab_id}/evaluate"),
                 json!({ "userId": USER_ID, "expression": OUTER_HTML_EXPR }),
                 deadline.remaining(),
+                deadline,
             )
-            .await;
+            .await
+        {
+            Ok(r) if r.truncated || r.result.as_deref().is_some_and(is_truncation_placeholder) => {
+                self.evaluate_html_chunked(&tab_id, deadline).await
+            }
+            Ok(r) => Ok((r.result.unwrap_or_default(), None)),
+            Err(e) => Err(e),
+        };
 
-        // 4. Best-effort close — never fail the fetch on cleanup. Uses a fixed
-        //    grace budget (NOT the deadline, which may already be spent) so a
-        //    tab opened above is still reaped instead of leaking toward
-        //    MAX_SESSIONS. Deadline expiry is the common trigger for this path.
-        let _ = tokio::time::timeout(
-            CLEANUP_BUDGET,
-            self.auth(
-                self.client
-                    .delete(format!("{}/tabs/{tab_id}", self.base_url)),
-            )
-            .json(&json!({ "userId": USER_ID }))
-            .send(),
-        )
-        .await;
-
-        let evaluation = html?;
-        // Oversized evaluation results are replaced by a diagnostic string,
-        // not usable HTML. Reject it so the renderer ladder can fail over.
-        if evaluation.truncated {
-            return Err(CrwError::RendererError(
-                "camofox: evaluate returned truncated document".to_string(),
-            ));
+        // 4b. Clearance capture: only for a challenge-free document, only when a
+        //     cache is wired. Never fails the fetch.
+        if let Ok((h, _)) = &html
+            && !h.is_empty()
+            && !detector::looks_like_cloudflare_challenge(h)
+        {
+            self.capture_clearance(&tab_id, url, deadline).await;
         }
-        let html = evaluation.result.unwrap_or_default();
+
+        // 5. Best-effort close — never fail the fetch on cleanup.
+        self.close_tab(&tab_id).await;
+
+        let (html, partial_warning) = html?;
         if html.is_empty() {
             return Err(CrwError::RendererError(
                 "camofox: evaluate returned empty document".to_string(),
@@ -246,16 +1063,15 @@ impl PageFetcher for CamofoxRenderer {
 
         // The camofox-browser REST API exposes only `tabId` and the evaluated
         // `result` — it returns no navigation status code, final URL, or response
-        // content-type. So these three are best-effort synthetic values, NOT
-        // observed from the wire: a camofox-rendered 404 or redirect is reported
-        // here as a 200. Downstream anti-bot/block classification still runs on
-        // the returned `html` (see crw_crawl::single::classify_block), which is
-        // the real signal for this tier; surfacing true status/final_url needs an
-        // API that returns them.
+        // content-type. The status comes from the page's Navigation Timing entry
+        // (`nav_status`); final URL and content-type are synthetic, NOT observed
+        // from the wire: a camofox-rendered redirect is reported without its
+        // final URL. Downstream anti-bot/block classification still runs on the
+        // returned `html` (see crw_crawl::single::classify_block).
         Ok(FetchResult {
             url: url.to_string(),
             final_url: None,
-            status_code: 200,
+            status_code,
             html,
             content_type: Some("text/html".to_string()),
             raw_bytes: None,
@@ -264,9 +1080,11 @@ impl PageFetcher for CamofoxRenderer {
             warning: None,
             render_decision: None,
             credit_cost: 0,
-            warnings: Vec::new(),
+            warnings: partial_warning.into_iter().collect(),
+            wall: None,
             truncated: false,
             deadline_exceeded: deadline.expired(),
+            status_synthetic,
             captured_responses: Vec::new(),
         })
     }
@@ -289,5 +1107,61 @@ impl PageFetcher for CamofoxRenderer {
                 .unwrap_or(false),
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChallengeState, TabLocation, parse_nav_status, probe_challenge_state};
+
+    #[test]
+    fn probe_reads_title_and_marker() {
+        use ChallengeState::*;
+        assert_eq!(
+            probe_challenge_state(r#"{"t":"Just a moment...","m":false}"#),
+            Challenge
+        );
+        assert_eq!(probe_challenge_state(r#"{"t":"Site","m":true}"#), Challenge);
+        assert_eq!(probe_challenge_state(r#"{"t":"Site","m":false}"#), Clear);
+        // The hard block wins over the marker: it never clears.
+        assert_eq!(
+            probe_challenge_state(r#"{"t":"Attention Required! | Cloudflare","m":true}"#),
+            Wall
+        );
+        assert_eq!(probe_challenge_state("<html>not json</html>"), Clear);
+        assert_eq!(probe_challenge_state(""), Clear);
+    }
+
+    #[test]
+    fn nav_status_reads_the_document_status() {
+        assert_eq!(parse_nav_status(Some("404")), Some(404));
+        assert_eq!(parse_nav_status(Some("200")), Some(200));
+        // No navigation entry, or a browser without `responseStatus`.
+        assert_eq!(parse_nav_status(Some("0")), None);
+        assert_eq!(parse_nav_status(Some("undefined")), None);
+        assert_eq!(parse_nav_status(None), None);
+        assert_eq!(parse_nav_status(Some("<html></html>")), None);
+    }
+
+    #[test]
+    fn tab_location_reads_firefox_error_pages() {
+        assert_eq!(TabLocation::from_probe("about:blank"), TabLocation::Blank);
+        assert_eq!(TabLocation::from_probe(""), TabLocation::Blank);
+        assert_eq!(
+            TabLocation::from_probe("about:neterror?e=dnsNotFound&u=https%3A//x.invalid/&c=UTF-8"),
+            TabLocation::ErrorPage("dnsNotFound".into())
+        );
+        assert_eq!(
+            TabLocation::from_probe("about:certerror?e=nssFailure2"),
+            TabLocation::ErrorPage("nssFailure2".into())
+        );
+        assert_eq!(
+            TabLocation::from_probe("about:neterror"),
+            TabLocation::ErrorPage("unknown".into())
+        );
+        assert_eq!(
+            TabLocation::from_probe("https://example.com/"),
+            TabLocation::Loaded("https://example.com/".into())
+        );
     }
 }

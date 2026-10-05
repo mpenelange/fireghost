@@ -367,6 +367,7 @@ impl EngineSource {
         use crw_crawl::crawl::{CrawlOptions, run_crawl};
 
         let req = CrawlRequest {
+            headers: Default::default(),
             url: url.to_string(),
             max_depth: None,
             max_pages,
@@ -384,6 +385,7 @@ impl EngineSource {
             status: CrawlStatus::InProgress,
             total: 0,
             completed: 0,
+            blocked: 0,
             data: vec![],
             error: None,
         };
@@ -409,6 +411,7 @@ impl EngineSource {
                 jitter_factor: cfg.crawler.stealth.jitter_factor,
                 deadline_ms_per_page: cfg.effective_deadline_ms(None, None),
                 per_host_max_concurrent: cfg.crawler.per_host_max_concurrent,
+                http_retry_threshold_bytes: cfg.extraction.http_retry_threshold_bytes,
             })
             .await;
         });

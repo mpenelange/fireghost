@@ -8,6 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crw_core::error::CrwError;
@@ -69,18 +70,22 @@ pub struct PageQuery {
 /// Internal projection of a v2 `scrapeOptions` object.
 pub(crate) struct ScrapeOpts {
     pub formats: Vec<OutputFormat>,
+    pub headers: HashMap<String, String>,
     pub json_schema: Option<Value>,
     pub only_main_content: bool,
     pub wait_for: Option<u64>,
+    pub render_js: Option<bool>,
 }
 
 /// Pull the internal scrape projection out of a v2 `scrapeOptions` object.
 pub(crate) fn scrape_opts_to_internal(opts: &Option<Value>) -> Result<ScrapeOpts, CrwError> {
     let mut out = ScrapeOpts {
         formats: vec![OutputFormat::Markdown],
+        headers: HashMap::new(),
         json_schema: None,
         only_main_content: true,
         wait_for: None,
+        render_js: None,
     };
     if let Some(Value::Object(m)) = opts {
         if let Some(f) = m.get("formats") {
@@ -91,11 +96,40 @@ pub(crate) fn scrape_opts_to_internal(opts: &Option<Value>) -> Result<ScrapeOpts
             out.formats = d.formats;
             out.json_schema = d.json_schema;
         }
+        // Firecrawl carries per-page request headers here, and `/v2/scrape`
+        // already honours its own `headers`. Dropping them on the crawl path
+        // would be the same silent-ignore failure as #346, so a non-object (or
+        // a non-string value) is an error rather than a quiet no-op.
+        if let Some(h) = m.get("headers")
+            && !h.is_null()
+        {
+            out.headers = serde_json::from_value(h.clone()).map_err(|e| {
+                CrwError::InvalidRequest(format!(
+                    "scrapeOptions.headers must be an object of strings: {e}"
+                ))
+            })?;
+        }
         if let Some(b) = m.get("onlyMainContent").and_then(Value::as_bool) {
             out.only_main_content = b;
         }
         if let Some(w) = m.get("waitFor").and_then(Value::as_u64) {
             out.wait_for = Some(w);
+        }
+        // crw extension, same semantics as `/v1/crawl`'s `renderJs`. Absent (or
+        // null) leaves `None` so the server default still applies; an explicit
+        // `false` must survive all the way to `CrawlRequest` or a v2 caller has
+        // no way to keep a crawl off the browser tiers. A non-boolean is an
+        // error rather than a silent fallback to auto — quietly ignoring this
+        // key is the exact failure #346 reported. The snake_case alias mirrors
+        // the one on the v2 scrape wire; the sibling keys here are camelCase
+        // only, but dropping it would mean `render_js` gets silently ignored —
+        // again the same failure mode.
+        if let Some(v) = m.get("renderJs").or_else(|| m.get("render_js"))
+            && !v.is_null()
+        {
+            out.render_js = Some(v.as_bool().ok_or_else(|| {
+                CrwError::InvalidRequest("scrapeOptions.renderJs must be a boolean".into())
+            })?);
         }
     }
     Ok(out)
@@ -115,13 +149,14 @@ pub async fn start_crawl(
 
     let opts = scrape_opts_to_internal(&v2.scrape_options)?;
     let req = CrawlRequest {
+        headers: opts.headers,
         url: v2.url.clone(),
         max_depth: v2.max_discovery_depth,
         max_pages: v2.limit,
         formats: opts.formats,
         only_main_content: opts.only_main_content,
         json_schema: opts.json_schema,
-        render_js: None,
+        render_js: opts.render_js,
         wait_for: opts.wait_for,
         renderer: v2.renderer,
         country: v2.country,
@@ -211,12 +246,180 @@ pub async fn get_errors(
     let job = jobs
         .get(&id)
         .ok_or_else(|| CrwError::NotFound(format!("Crawl job {id} not found")))?;
-    let err = job.rx.borrow().error.clone();
-    let errors: Vec<Value> = err
-        .into_iter()
+    // Job-level failure first (the whole job died), then the per-URL ones. A URL
+    // the engine could not turn into a document is retained as a placeholder
+    // carrying `block` and no body, and `V2Document` has no field to show the
+    // block, so without this it would reach the caller as an empty document
+    // with nothing to explain it while this route, the one documented to carry
+    // these, said there were no errors at all. An origin error page that was
+    // kept readable is a delivered document, not an error: listing it here too
+    // would make a caller retry a URL it already holds.
+    //
+    // Each entry gets its own id, the way Firecrawl keys errors per scrape
+    // rather than per job, so a caller keying them into a map keeps them all.
+    // The id is the job id plus the document's position, so it is stable
+    // across polls and a caller deduplicating by id sees each failure once.
+    let guard = job.rx.borrow();
+    let mut errors: Vec<Value> = guard
+        .error
+        .iter()
         .map(|e| serde_json::json!({ "id": id.to_string(), "error": e }))
         .collect();
+    errors.extend(
+        guard
+            .data
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| !d.has_body())
+            .filter_map(|(index, d)| {
+                d.block.as_ref().map(|b| {
+                    serde_json::json!({
+                        "id": format!("{id}-{index}"),
+                        "url": d.metadata.source_url,
+                        "error": b.reason,
+                    })
+                })
+            }),
+    );
+    drop(guard);
     Ok(Json(
         serde_json::json!({ "success": true, "errors": errors, "robotsBlocked": [] }),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A batch URL the engine could not turn into a document is retained with a
+    /// `block`, but `V2Document` has no field that can show it, so on this
+    /// surface it is otherwise an empty document with nothing to explain it.
+    /// This route is the one documented to carry those failures, so it has to.
+    #[tokio::test]
+    async fn get_errors_reports_the_per_url_failures_of_a_batch() {
+        let config: crw_core::config::AppConfig = toml::from_str("").unwrap();
+        let state = AppState::new(config).unwrap();
+        // `actions` is rejected per URL inside the scrape, which is the shortest
+        // deterministic way to make one URL fail without touching the network.
+        let template = crw_core::types::ScrapeRequest {
+            actions: Some(serde_json::json!([])),
+            ..Default::default()
+        };
+        let url = "https://example.com/error";
+        let id = state.start_batch_job(vec![url.to_string()], template).await;
+
+        let mut settled = false;
+        for _ in 0..100 {
+            tokio::task::yield_now().await;
+            let jobs = state.crawl_jobs.read().await;
+            if jobs.get(&id).unwrap().rx.borrow().status != CrawlStatus::InProgress {
+                settled = true;
+                break;
+            }
+        }
+        assert!(settled, "batch job did not settle");
+
+        let Ok(Json(body)) = get_errors(State(state.clone()), Path(id)).await else {
+            panic!("errors route should succeed for an existing job");
+        };
+        let errors = body["errors"].as_array().expect("errors array");
+        assert_eq!(errors.len(), 1, "got: {body}");
+        assert_eq!(errors[0]["url"], url, "got: {body}");
+        assert!(
+            errors[0]["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("actions")),
+            "got: {body}"
+        );
+    }
+
+    /// Firecrawl bodies put per-page headers under `scrapeOptions`, and
+    /// `/v2/scrape` already honours its own `headers`. A crawl that dropped
+    /// them would be the same silent-ignore as #346.
+    #[test]
+    fn scrape_options_headers_reach_the_crawl_request() {
+        let opts = Some(serde_json::json!({
+            "headers": { "Authorization": "Bearer x", "X-Env": "staging" }
+        }));
+        let parsed = scrape_opts_to_internal(&opts).unwrap();
+        assert_eq!(
+            parsed.headers.get("Authorization"),
+            Some(&"Bearer x".to_string())
+        );
+        assert_eq!(parsed.headers.get("X-Env"), Some(&"staging".to_string()));
+
+        // Absent or null stays empty rather than erroring.
+        assert!(scrape_opts_to_internal(&None).unwrap().headers.is_empty());
+        assert!(
+            scrape_opts_to_internal(&Some(serde_json::json!({ "headers": null })))
+                .unwrap()
+                .headers
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_malformed_scrape_options_headers_is_rejected_not_ignored() {
+        for bad in [
+            serde_json::json!({ "headers": "Authorization: x" }),
+            serde_json::json!({ "headers": { "X-Num": 1 } }),
+            serde_json::json!({ "headers": ["a", "b"] }),
+        ] {
+            assert!(
+                scrape_opts_to_internal(&Some(bad.clone())).is_err(),
+                "should reject {bad}"
+            );
+        }
+    }
+
+    /// Regression for #346. `scrapeOptions` is parsed key-by-key out of a raw
+    /// `Value`, so a key nobody reads is silently dropped; `renderJs` was such a
+    /// key and `CrawlRequest.render_js` was hardcoded `None`. A v2 caller then
+    /// had no way to keep a crawl off the browser tiers.
+    #[test]
+    fn scrape_opts_reads_render_js() {
+        for (key, wire, expected) in [
+            ("renderJs", serde_json::json!(false), Some(false)),
+            ("renderJs", serde_json::json!(true), Some(true)),
+            ("render_js", serde_json::json!(false), Some(false)),
+        ] {
+            let opts = Some(serde_json::json!({ key: wire }));
+            let parsed = scrape_opts_to_internal(&opts).unwrap();
+            assert_eq!(parsed.render_js, expected, "{key} = {wire}");
+        }
+    }
+
+    #[test]
+    fn scrape_opts_render_js_defaults_to_none() {
+        // "No scrapeOptions at all", "scrapeOptions without renderJs" and an
+        // explicit null must all stay None so the server's render_js_default
+        // still applies.
+        assert_eq!(scrape_opts_to_internal(&None).unwrap().render_js, None);
+        for opts in [
+            serde_json::json!({ "onlyMainContent": false }),
+            serde_json::json!({ "renderJs": null }),
+        ] {
+            let parsed = scrape_opts_to_internal(&Some(opts.clone())).unwrap();
+            assert_eq!(parsed.render_js, None, "{opts}");
+        }
+    }
+
+    /// A non-boolean must not degrade to auto. `scrapeOptions` is hand-parsed
+    /// out of a `Value`, so `"false"` would otherwise read as "key absent" and
+    /// leave JS on — the same silent-drop shape as #346 itself.
+    #[test]
+    fn scrape_opts_render_js_rejects_non_boolean() {
+        for bad in [
+            serde_json::json!("false"),
+            serde_json::json!(0),
+            serde_json::json!([false]),
+        ] {
+            let opts = Some(serde_json::json!({ "renderJs": bad }));
+            match scrape_opts_to_internal(&opts) {
+                Err(CrwError::InvalidRequest(m)) => assert!(m.contains("renderJs"), "{m}"),
+                Err(e) => panic!("{bad} rejected with the wrong error: {e}"),
+                Ok(_) => panic!("{bad} must be rejected, not silently ignored"),
+            }
+        }
+    }
 }

@@ -36,6 +36,23 @@ jobs:
           key: ${{ runner.os }}-crw-${{ hashFiles('crw/Cargo.lock') }}
       - name: Workspace gate
         run: make check-crw
+      # The Camofox tier, the ladder wiring around it, and the impersonated
+      # (wreq/BoringSSL) tier are feature-gated, so the default-feature gate
+      # above never compiles them. The runtime image ships
+      # `cdp,camofox,impersonated`; lint and test what ships. btls-sys builds
+      # BoringSSL with CMake and generates bindings through libclang.
+      - name: Install BoringSSL build dependencies
+        run: |
+          SUDO=""
+          if [ "$(id -u)" != "0" ]; then SUDO=sudo; fi
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends cmake clang libclang-dev
+      - name: Clippy (camofox + impersonated tiers)
+        working-directory: crw
+        run: cargo clippy -p crw-renderer -p crw-server --all-targets --features crw-renderer/cdp,crw-renderer/camofox,crw-renderer/impersonated,crw-server/camofox,crw-server/impersonated -- -D warnings
+      - name: Test (camofox + impersonated tiers)
+        working-directory: crw
+        run: cargo test -p crw-renderer -p crw-server --features crw-renderer/cdp,crw-renderer/camofox,crw-renderer/impersonated,crw-server/camofox,crw-server/impersonated
       - name: Process and version guards
         working-directory: crw
         run: |
